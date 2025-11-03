@@ -33,6 +33,15 @@ fi
 
 echo -e "${GREEN}✓ Found Ollama at: $OLLAMA_BIN${NC}"
 
+# Get project root directory (where this script is located)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+LOG_DIR="$PROJECT_ROOT/logs"
+
+# Create logs directory in project
+mkdir -p "$LOG_DIR"
+echo -e "${GREEN}✓ Logs directory: $LOG_DIR${NC}"
+
 # Create launchd plist
 LAUNCHD_DIR="$HOME/Library/LaunchAgents"
 PLIST_FILE="$LAUNCHD_DIR/com.ollama.service.plist"
@@ -59,9 +68,9 @@ cat > "$PLIST_FILE" << EOF
     <key>KeepAlive</key>
     <true/>
     <key>StandardOutPath</key>
-    <string>$HOME/.ollama/ollama.log</string>
+    <string>$LOG_DIR/ollama.log</string>
     <key>StandardErrorPath</key>
-    <string>$HOME/.ollama/ollama.error.log</string>
+    <string>$LOG_DIR/ollama.error.log</string>
     <key>EnvironmentVariables</key>
     <dict>
         <key>OLLAMA_HOST</key>
@@ -113,7 +122,8 @@ echo "Service Management:"
 echo "  Start:   launchctl load $PLIST_FILE"
 echo "  Stop:    launchctl unload $PLIST_FILE"
 echo "  Status:  launchctl list | grep ollama"
-echo "  Logs:    tail -f ~/.ollama/ollama.log"
+echo "  Logs:    tail -f $LOG_DIR/ollama.log"
+echo "  Errors:  tail -f $LOG_DIR/ollama.error.log"
 echo ""
 echo "Ollama will now start automatically on login."
 echo ""

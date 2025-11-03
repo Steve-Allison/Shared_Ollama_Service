@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from enum import Enum
 import requests
 import logging
+import time
 from pathlib import Path
 
 # Configure logging
@@ -77,32 +78,47 @@ class SharedOllamaClient:
         >>> print(response.text)
     """
     
-    def __init__(self, config: Optional[OllamaConfig] = None):
+    def __init__(self, config: Optional[OllamaConfig] = None, verify_on_init: bool = True):
         """
         Initialize the Ollama client.
         
         Args:
             config: Optional configuration (uses defaults if not provided)
+            verify_on_init: If True, verify connection immediately (default: True)
         """
         self.config = config or OllamaConfig()
         self.session = requests.Session()
-        self._verify_connection()
+        if verify_on_init:
+            self._verify_connection()
     
-    def _verify_connection(self) -> None:
-        """Verify connection to Ollama service."""
-        try:
-            response = self.session.get(
-                f"{self.config.base_url}/api/tags",
-                timeout=5
-            )
-            response.raise_for_status()
-            logger.info("Connected to Ollama service")
-        except requests.exceptions.RequestException as e:
-            logger.error(f"Failed to connect to Ollama: {e}")
-            raise ConnectionError(
-                f"Cannot connect to Ollama at {self.config.base_url}. "
-                "Make sure the service is running."
-            )
+    def _verify_connection(self, retries: int = 3, delay: float = 1.0) -> None:
+        """
+        Verify connection to Ollama service with retry logic.
+        
+        Args:
+            retries: Number of retry attempts
+            delay: Delay between retries in seconds
+        """
+        for attempt in range(retries):
+            try:
+                response = self.session.get(
+                    f"{self.config.base_url}/api/tags",
+                    timeout=5
+                )
+                response.raise_for_status()
+                logger.info("Connected to Ollama service")
+                return
+            except requests.exceptions.RequestException as e:
+                if attempt < retries - 1:
+                    logger.warning(f"Connection attempt {attempt + 1} failed, retrying in {delay}s...")
+                    time.sleep(delay)
+                else:
+                    logger.error(f"Failed to connect to Ollama after {retries} attempts: {e}")
+                    raise ConnectionError(
+                        f"Cannot connect to Ollama at {self.config.base_url}. "
+                        "Make sure the service is running.\n"
+                        "Start with: ./scripts/setup_launchd.sh or 'ollama serve'"
+                    )
     
     def list_models(self) -> List[Dict[str, Any]]:
         """

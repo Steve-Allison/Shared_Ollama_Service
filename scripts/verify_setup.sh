@@ -33,10 +33,10 @@ echo ""
 print_status() {
     if [ $1 -eq 0 ]; then
         echo -e "${GREEN}✓${NC} $2"
-        ((STEPS_PASSED++))
+        STEPS_PASSED=$((STEPS_PASSED + 1))
     else
         echo -e "${RED}✗${NC} $2"
-        ((STEPS_FAILED++))
+        STEPS_FAILED=$((STEPS_FAILED + 1))
     fi
 }
 
@@ -65,7 +65,7 @@ else
         echo "Installing via Homebrew..."
         if brew install ollama > /dev/null 2>&1; then
             print_status 0 "Ollama installed via Homebrew"
-            ((AUTO_FIXED++))
+            AUTO_FIXED=$((AUTO_FIXED + 1))
         else
             print_status 1 "Failed to install via Homebrew"
             echo "Please install manually: https://ollama.ai/download"
@@ -124,6 +124,11 @@ echo -e "${BLUE}[3/6]${NC} Checking model availability..."
 MODELS_JSON=$(curl -s "${API_ENDPOINT}/tags" 2>/dev/null || echo "")
 MODELS_LIST=$(echo "$MODELS_JSON" | jq -r '.models[].name' 2>/dev/null || echo "")
 
+# Fallback: use ollama list if API doesn't have models yet
+if [ -z "$MODELS_LIST" ] || [ "$MODELS_LIST" = "" ]; then
+    MODELS_LIST=$(ollama list 2>/dev/null | awk 'NR>1 {print $1}' || echo "")
+fi
+
 MISSING_MODELS=()
 for model in "${REQUIRED_MODELS[@]}"; do
     if echo "$MODELS_LIST" | grep -q "^${model}$"; then
@@ -137,6 +142,7 @@ done
 # ============================================================================
 # Step 4: Download Missing Models
 # ============================================================================
+MODELS_DOWNLOADED=false
 if [ ${#MISSING_MODELS[@]} -gt 0 ]; then
     echo ""
     echo -e "${BLUE}[4/6]${NC} Downloading missing models..."
@@ -147,18 +153,29 @@ if [ ${#MISSING_MODELS[@]} -gt 0 ]; then
         print_info "Downloading ${model}..."
         echo "This may take several minutes depending on your connection..."
         
-        if ollama pull "${model}" 2>&1 | grep -q "success\|pulling\|extracting\|complete"; then
-            print_status 0 "${model} downloaded successfully"
-            ((AUTO_FIXED++))
-        else
-            # Check if it succeeded despite no match
-            if ollama list 2>/dev/null | grep -q "^${model}"; then
+        # Run the pull command and capture output
+        if ollama pull "${model}" > /tmp/ollama_pull_${model//[:\/]/_}.log 2>&1; then
+            # Download command completed, verify the model exists
+            sleep 2  # Brief wait for Ollama to register the model
+            if ollama list 2>/dev/null | awk '{print $1}' | grep -q "^${model}$"; then
                 print_status 0 "${model} downloaded successfully"
-                ((AUTO_FIXED++))
+                AUTO_FIXED=$((AUTO_FIXED + 1))
+                MODELS_DOWNLOADED=true
+            else
+                print_status 1 "Download completed but model not found in list"
+            fi
+        else
+            # Pull command failed, but check if model exists anyway
+            sleep 2
+            if ollama list 2>/dev/null | awk '{print $1}' | grep -q "^${model}$"; then
+                print_status 0 "${model} already exists"
+                AUTO_FIXED=$((AUTO_FIXED + 1))
+                MODELS_DOWNLOADED=true
             else
                 print_status 1 "Failed to download ${model}"
             fi
         fi
+        rm -f /tmp/ollama_pull_${model//[:\/]/_}.log
     done
 else
     echo ""
@@ -167,8 +184,21 @@ else
 fi
 
 # Refresh models list after downloads
+# Wait a moment for API to sync after downloads
+if [ "$MODELS_DOWNLOADED" = true ]; then
+    echo ""
+    print_info "Waiting for API to sync..."
+    sleep 3
+fi
+
 MODELS_JSON=$(curl -s "${API_ENDPOINT}/tags" 2>/dev/null || echo "")
 MODELS_LIST=$(echo "$MODELS_JSON" | jq -r '.models[].name' 2>/dev/null || echo "")
+
+# Fallback: use ollama list if API doesn't have models yet
+if [ -z "$MODELS_LIST" ] || [ "$MODELS_LIST" = "" ]; then
+    print_warning "API not returning models, using ollama list as fallback"
+    MODELS_LIST=$(ollama list 2>/dev/null | awk 'NR>1 {print $1}' || echo "")
+fi
 
 # ============================================================================
 # Step 5: Verify All Required Models
@@ -256,7 +286,7 @@ if [ $STEPS_FAILED -eq 0 ]; then
     echo "Next steps:"
     echo "  - Start using models: curl http://localhost:11434/api/generate -d '{\"model\":\"llava:13b\",\"prompt\":\"Hello\"}'"
     echo "  - Warm up models: ./scripts/warmup_models.sh"
-    echo "  - View logs: tail -f ~/.ollama/ollama.log"
+    echo "  - View logs: tail -f ./logs/ollama.log"
     exit 0
 else
     echo -e "${RED}✗ Some checks failed. Please review above and fix issues.${NC}"

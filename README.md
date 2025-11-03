@@ -69,7 +69,10 @@ This automatically checks and downloads all required models, ensuring they're re
 ### Verify Installation
 
 ```bash
-# Run health check
+# Quick status check (recommended)
+./scripts/status.sh
+
+# Comprehensive health check
 ./scripts/health_check.sh
 
 # Or manually check
@@ -79,46 +82,123 @@ curl http://localhost:11434/api/tags
 ollama list
 ```
 
+## Quick Start - Using in Your Projects
+
+The easiest way to use the shared service from any project:
+
+```python
+import sys
+sys.path.insert(0, "/path/to/Shared_Ollama_Service")
+
+from shared_ollama_client import SharedOllamaClient
+from utils import ensure_service_running
+
+# Ensure service is running (with helpful error messages)
+ensure_service_running()
+
+# Create client (auto-discovers URL from environment)
+client = SharedOllamaClient()
+
+# Use it!
+response = client.generate("Hello, world!")
+print(response.text)
+```
+
+**Environment Variables** (optional - defaults work too):
+```bash
+export OLLAMA_BASE_URL="http://localhost:11434"
+```
+
+See [INTEGRATION_GUIDE.md](docs/INTEGRATION_GUIDE.md) for complete integration instructions and project-specific examples.
+
 ## Usage in Projects
 
-### Knowledge Machine
+### Recommended: Using the Shared Client (Easiest)
+
+```python
+import sys
+sys.path.insert(0, "/path/to/Shared_Ollama_Service")
+
+from shared_ollama_client import SharedOllamaClient
+from utils import get_ollama_base_url, ensure_service_running
+
+# Automatic service discovery from environment
+ensure_service_running()
+
+client = SharedOllamaClient()
+response = client.generate("Your prompt here")
+```
+
+### Project-Specific Integration
+
+#### Knowledge Machine
 
 Update `Knowledge_Machine/config/main.py`:
 ```python
-ollama_base_url = "http://localhost:11434"
+import sys
+sys.path.insert(0, "/path/to/Shared_Ollama_Service")
+from shared_ollama_client import SharedOllamaClient, OllamaConfig
+
+# Or configure via environment
+import os
+ollama_base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
 default_model = "llava:13b"
+
+client = SharedOllamaClient(OllamaConfig(
+    base_url=ollama_base_url,
+    default_model=default_model
+))
 ```
 
-### Course Intelligence Compiler
+#### Course Intelligence Compiler
 
 Update `Course_Intelligence_Compiler/config/rag_config.yaml`:
 ```yaml
 generation:
   ollama:
-    base_url: "http://localhost:11434"
+    base_url: "http://localhost:11434"  # Or use OLLAMA_BASE_URL env var
     model: "llava:13b"  # or "qwen2.5:14b" for alternative model
 ```
 
-### Story Machine
+#### Story Machine
 
 Update `Story_Machine/src/story_machine/core/config.py`:
 ```python
-ollama:
-    base_url: "http://localhost:11434"
-    model: "llava:13b"  # or "qwen2.5:14b" for specific use cases
+import sys
+sys.path.insert(0, "/path/to/Shared_Ollama_Service")
+from shared_ollama_client import SharedOllamaClient
+from utils import get_ollama_base_url
+
+# Auto-discover from environment
+base_url = get_ollama_base_url()
+model = "llava:13b"
+
+client = SharedOllamaClient()
 ```
+
+See [INTEGRATION_GUIDE.md](docs/INTEGRATION_GUIDE.md) for detailed project-specific examples and migration instructions.
 
 ## Configuration
 
 ### Environment Variables
 
-Create `.env` file:
+**For Client Projects** (detected automatically by `utils.py`):
+```bash
+export OLLAMA_BASE_URL="http://localhost:11434"  # Preferred
+# OR
+export OLLAMA_HOST="localhost"
+export OLLAMA_PORT="11434"
+```
+
+**For Service Configuration** (create `.env` file in project root):
 ```env
 OLLAMA_HOST=0.0.0.0
 OLLAMA_ORIGINS=*
 OLLAMA_KEEP_ALIVE=5m  # How long models stay loaded after last use (see Keep-Alive section below)
 OLLAMA_DEBUG=false
 ```
+
+The client automatically discovers the service URL from these environment variables, so projects don't need hardcoded URLs.
 
 ### Keep-Alive Configuration
 
@@ -356,14 +436,28 @@ Models are stored locally: `~/.ollama/models`
 
 ## Monitoring
 
+### Quick Status Check
+
+```bash
+# Fast status overview (recommended)
+./scripts/status.sh
+```
+
+Shows:
+- Service health
+- Available models
+- Process information
+- Memory usage
+- Quick health test
+
 ### Logs
 
 ```bash
 # View logs (if using launchd service)
-tail -f ~/.ollama/ollama.log
+tail -f ./logs/ollama.log
 
 # View error logs
-tail -f ~/.ollama/ollama.error.log
+tail -f ./logs/ollama.error.log
 
 # If running manually, logs output to terminal
 ollama serve
@@ -372,7 +466,8 @@ ollama serve
 ### Metrics
 
 Monitor with:
-- **Health checks**: `scripts/health_check.sh`
+- **Quick status**: `./scripts/status.sh` (fast overview)
+- **Health checks**: `./scripts/health_check.sh` (comprehensive)
 - **Model status**: `curl http://localhost:11434/api/tags`
 - **Resource usage**: `top -pid $(pgrep ollama)` or Activity Monitor
 

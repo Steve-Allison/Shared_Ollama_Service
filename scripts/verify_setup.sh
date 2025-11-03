@@ -18,7 +18,7 @@ OLLAMA_URL="${OLLAMA_URL:-http://localhost:11434}"
 API_ENDPOINT="${OLLAMA_URL}/api"
 
 # Required models
-REQUIRED_MODELS=("llava:13b" "qwen2.5:14b")
+REQUIRED_MODELS=("qwen2.5vl:7b" "qwen2.5:14b")
 
 # Status tracking
 STEPS_PASSED=0
@@ -220,9 +220,9 @@ done
 # ============================================================================
 echo ""
 echo -e "${BLUE}[6/6]${NC} Running health check (model generation test)..."
-if echo "$MODELS_LIST" | grep -q "llava:13b"; then
-    print_info "Testing model generation with llava:13b..."
-    TEST_PROMPT='{"model": "llava:13b", "prompt": "Say hello in one word", "stream": false}'
+if echo "$MODELS_LIST" | grep -q "qwen2.5vl:7b"; then
+    print_info "Testing model generation with qwen2.5vl:7b..."
+    TEST_PROMPT='{"model": "qwen2.5vl:7b", "prompt": "Say hello in one word", "stream": false}'
     
     RESPONSE=$(curl -s -X POST "${API_ENDPOINT}/generate" \
         -H "Content-Type: application/json" \
@@ -284,7 +284,7 @@ if [ $STEPS_FAILED -eq 0 ]; then
     echo -e "${GREEN}✓✓✓ All checks passed! Ollama service is ready to use.${NC}"
     echo ""
     echo "Next steps:"
-    echo "  - Start using models: curl http://localhost:11434/api/generate -d '{\"model\":\"llava:13b\",\"prompt\":\"Hello\"}'"
+    echo "  - Start using models: curl http://localhost:11434/api/generate -d '{\"model\":\"qwen2.5vl:7b\",\"prompt\":\"Hello\"}'"
     echo "  - Warm up models: ./scripts/warmup_models.sh"
     echo "  - View logs: tail -f ./logs/ollama.log"
     exit 0

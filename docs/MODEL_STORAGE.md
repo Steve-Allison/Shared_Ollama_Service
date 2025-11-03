@@ -65,10 +65,10 @@ rm -rf ~/.ollama/models/*
 
 ### Model Size Reference
 
-- **llava:13b**: ~8 GB
+- **qwen2.5vl:7b**: ~6 GB
 - **qwen2.5:14b**: ~9 GB
 
-**Total if all loaded**: ~17 GB in `~/.ollama/models/`
+**Total if all loaded**: ~15 GB in `~/.ollama/models/`
 
 ### Finding Models on Your System
 
@@ -90,7 +90,7 @@ du -sh ~/.ollama/
 ollama list
 
 # Show model details
-ollama show llava:13b
+ollama show qwen2.5vl:7b
 ```
 
 ### Disk Space Management

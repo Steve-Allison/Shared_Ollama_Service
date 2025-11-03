@@ -82,7 +82,7 @@ echo ""
 
 # Define models to pull
 MODELS=(
-    "llava:13b"
+    "qwen2.5vl:7b"
     "qwen2.5:14b"
 )
 
@@ -100,7 +100,7 @@ echo ""
 echo -e "${BLUE}Step 4: Verifying installation...${NC}"
 
 # Verify models are available
-MODELS_LIST=$(ollama list 2>/dev/null | grep -E "llava:13b|qwen2.5:14b" || echo "")
+MODELS_LIST=$(ollama list 2>/dev/null | grep -E "qwen2.5vl:7b|qwen2.5:14b" || echo "")
 if [ -n "$MODELS_LIST" ]; then
     echo -e "${GREEN}✓ Models verified:${NC}"
     echo "$MODELS_LIST" | while read -r line; do

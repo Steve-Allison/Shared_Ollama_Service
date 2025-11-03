@@ -65,7 +65,7 @@ fi
 # Verify required models are available
 echo "Checking required models..."
 
-REQUIRED_MODELS=("llava:13b" "qwen2.5:14b")
+REQUIRED_MODELS=("qwen2.5vl:7b" "qwen2.5:14b")
 MODELS_JSON=$(curl -s "${API_ENDPOINT}/tags" 2>/dev/null || echo "")
 MODELS_LIST=$(echo "$MODELS_JSON" | jq -r '.models[].name' 2>/dev/null || echo "")
 
@@ -99,7 +99,7 @@ echo ""
 echo "Running health test..."
 TEST_RESPONSE=$(curl -s -X POST "${API_ENDPOINT}/generate" \
     -H "Content-Type: application/json" \
-    -d '{"model": "llava:13b", "prompt": "Say OK", "stream": false}' \
+    -d '{"model": "qwen2.5vl:7b", "prompt": "Say OK", "stream": false}' \
     2>/dev/null || echo "")
 
 if echo "$TEST_RESPONSE" | jq -r '.response' > /dev/null 2>&1; then

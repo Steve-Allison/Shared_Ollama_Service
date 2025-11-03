@@ -16,7 +16,7 @@ OLLAMA_URL="${OLLAMA_URL:-http://localhost:11434}"
 API_ENDPOINT="${OLLAMA_URL}/api"
 
 # Required models
-REQUIRED_MODELS=("llava:13b" "qwen2.5:14b")
+REQUIRED_MODELS=("qwen2.5vl:7b" "qwen2.5:14b")
 
 # Status tracking
 CHECK_PASSED=0
@@ -97,10 +97,10 @@ for model in "${REQUIRED_MODELS[@]}"; do
 done
 
 # Check 4: Test model generation (quick smoke test)
-if echo "$MODELS_LIST" | grep -q "llava:13b"; then
+if echo "$MODELS_LIST" | grep -q "qwen2.5vl:7b"; then
     echo ""
-    echo "Testing model generation with llava:13b..."
-    TEST_PROMPT='{"model": "llava:13b", "prompt": "Say hello", "stream": false}'
+    echo "Testing model generation with qwen2.5vl:7b..."
+    TEST_PROMPT='{"model": "qwen2.5vl:7b", "prompt": "Say hello", "stream": false}'
     
     if curl -s -X POST "${API_ENDPOINT}/generate" \
         -H "Content-Type: application/json" \

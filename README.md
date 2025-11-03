@@ -14,10 +14,10 @@ This service provides a single Ollama instance accessible on port `11434` that a
 
 **Note**: Models are loaded on-demand. Only one model is in memory at a time based on which model is requested.
 
-- **Primary**: `llava:13b` (13B parameters, vision model)
+- **Primary**: `qwen2.5vl:7b` (7B parameters, vision-language model)
   - Vision-language model with multimodal capabilities
-  - Best overall performance and reasoning
-  - Loaded into memory when requested (~8 GB RAM)
+  - Excellent performance for vision and text tasks
+  - Loaded into memory when requested (~6 GB RAM)
 - **Secondary**: `qwen2.5:14b` (14.8B parameters)
   - Large language model with excellent reasoning
   - Good alternative for text-only tasks
@@ -51,8 +51,8 @@ Models remain in memory for 5 minutes after last use (OLLAMA_KEEP_ALIVE), then a
 
 **Option 1: Manual Pull**
 ```bash
-# Pull primary model (llava:13b)
-ollama pull llava:13b
+# Pull primary model (qwen2.5vl:7b)
+ollama pull qwen2.5vl:7b
 
 # Pull secondary model (qwen2.5:14b)
 ollama pull qwen2.5:14b
@@ -142,7 +142,7 @@ from shared_ollama_client import SharedOllamaClient, OllamaConfig
 # Or configure via environment
 import os
 ollama_base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-default_model = "llava:13b"
+default_model = "qwen2.5vl:7b"
 
 client = SharedOllamaClient(OllamaConfig(
     base_url=ollama_base_url,
@@ -157,7 +157,7 @@ Update `Course_Intelligence_Compiler/config/rag_config.yaml`:
 generation:
   ollama:
     base_url: "http://localhost:11434"  # Or use OLLAMA_BASE_URL env var
-    model: "llava:13b"  # or "qwen2.5:14b" for alternative model
+    model: "qwen2.5vl:7b"  # or "qwen2.5:14b" for alternative model
 ```
 
 #### Story Machine
@@ -171,7 +171,7 @@ from utils import get_ollama_base_url
 
 # Auto-discover from environment
 base_url = get_ollama_base_url()
-model = "llava:13b"
+model = "qwen2.5vl:7b"
 
 client = SharedOllamaClient()
 ```
@@ -258,7 +258,7 @@ curl http://localhost:11434/api/tags
 
 # Test generation
 curl http://localhost:11434/api/generate -d '{
-  "model": "llava:13b",
+  "model": "qwen2.5vl:7b",
   "prompt": "Why is the sky blue?"
 }'
 ```
@@ -281,7 +281,7 @@ ollama rm model_name
 
 ```bash
 # Pull latest version
-ollama pull llava:13b
+ollama pull qwen2.5vl:7b
 ```
 
 ## Service Management
@@ -371,7 +371,7 @@ tail -f ~/.ollama/ollama.log
 
 ```bash
 # Pull models
-ollama pull llava:13b
+ollama pull qwen2.5vl:7b
 ollama pull qwen2.5:14b
 
 # Verify
@@ -476,7 +476,7 @@ Monitor with:
 ### Memory Usage
 
 **Memory Usage:**
-- `llava:13b`: ~8 GB RAM when loaded
+- `qwen2.5vl:7b`: ~6 GB RAM when loaded
 - `qwen2.5:14b`: ~9 GB RAM when loaded
 - **Both models can run simultaneously** if you have sufficient RAM
 
@@ -549,7 +549,7 @@ crontab -e
 ```bash
 # Warm up a specific model
 curl http://localhost:11434/api/generate -d '{
-  "model": "llava:13b",
+  "model": "qwen2.5vl:7b",
   "prompt": "Hi",
   "options": {"num_predict": 1},
   "keep_alive": "30m"

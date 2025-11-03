@@ -50,7 +50,7 @@ class OllamaConfig(BaseSettings):
 **After:**
 ```python
 class OllamaConfig(BaseSettings):
-    default_model: str = "llava:13b"
+    default_model: str = "qwen2.5vl:7b"
     base_url: str = "http://localhost:11434"  # Add this
 ```
 
@@ -83,7 +83,7 @@ generation:
 generation:
   ollama:
     base_url: "http://localhost:11434"  # Already correct
-    model: "llava:13b"  # or "qwen2.5:14b" for alternative model
+    model: "qwen2.5vl:7b"  # or "qwen2.5:14b" for alternative model
 ```
 
 **Optional**: Update client code to use shared client:
@@ -117,7 +117,7 @@ class OllamaConfig(BaseModel):
         default="http://localhost:11434"  # Already correct!
     )
     model: str = Field(
-        default="llava:13b"  # Or use qwen2.5:14b if needed
+        default="qwen2.5vl:7b"  # Or use qwen2.5:14b if needed
     )
 ```
 
@@ -243,7 +243,7 @@ docker-compose up -d ollama
 **Solution:**
 ```bash
 cd Shared_Ollama_Service
-docker-compose exec ollama ollama pull llava:13b
+docker-compose exec ollama ollama pull qwen2.5vl:7b
 docker-compose exec ollama ollama pull qwen2.5:14b
 ```
 
@@ -279,7 +279,7 @@ docker-compose restart ollama
 
 ### Issue: Different model versions
 
-Some projects might expect specific model versions (e.g., `llava:13b` vs `qwen2.5:14b`).
+Some projects might expect specific model versions (e.g., `qwen2.5vl:7b` vs `qwen2.5:14b`).
 
 **Solution:**
 1. Pull both versions
@@ -287,7 +287,7 @@ Some projects might expect specific model versions (e.g., `llava:13b` vs `qwen2.
 3. Or create aliases in Ollama:
 
 ```bash
-docker-compose exec ollama ollama create llava:13b -f Modelfile
+docker-compose exec ollama ollama create qwen2.5vl:7b -f Modelfile
 ```
 
 ## Verification Checklist

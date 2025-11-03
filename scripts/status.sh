@@ -105,11 +105,11 @@ echo ""
 
 # Quick health test
 echo -e "${BLUE}Health Check:${NC}"
-if echo "$MODELS_LIST" | grep -q "llava:13b"; then
+if echo "$MODELS_LIST" | grep -q "qwen2.5vl:7b"; then
     echo "  Testing model generation..."
     TEST_RESPONSE=$(curl -s -X POST "${API_ENDPOINT}/generate" \
         -H "Content-Type: application/json" \
-        -d '{"model": "llava:13b", "prompt": "Say OK", "stream": false}' \
+        -d '{"model": "qwen2.5vl:7b", "prompt": "Say OK", "stream": false}' \
         2>/dev/null)
     
     if echo "$TEST_RESPONSE" | jq -r '.response' > /dev/null 2>&1; then
@@ -118,7 +118,7 @@ if echo "$MODELS_LIST" | grep -q "llava:13b"; then
         echo -e "${YELLOW}  ⚠ Generation test failed or incomplete${NC}"
     fi
 else
-    echo -e "${YELLOW}  ⚠ Cannot test - llava:13b not available${NC}"
+    echo -e "${YELLOW}  ⚠ Cannot test - qwen2.5vl:7b not available${NC}"
 fi
 
 echo ""

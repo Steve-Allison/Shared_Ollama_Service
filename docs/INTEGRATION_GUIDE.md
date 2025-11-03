@@ -71,7 +71,7 @@ base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
 response = requests.post(
     f"{base_url}/api/generate",
     json={
-        "model": "llava:13b",
+        "model": "qwen2.5vl:7b",
         "prompt": "Hello, world!",
         "stream": False
     }
@@ -91,7 +91,7 @@ from pydantic_settings import BaseSettings
 
 class OllamaConfig(BaseSettings):
     base_url: str = "http://localhost:11434"
-    default_model: str = "llava:13b"
+    default_model: str = "qwen2.5vl:7b"
     
     class Config:
         env_prefix = "OLLAMA_"
@@ -118,7 +118,7 @@ client = SharedOllamaClient(
 generation:
   ollama:
     base_url: "http://localhost:11434"
-    model: "llava:13b"
+    model: "qwen2.5vl:7b"
     timeout: 120
 ```
 
@@ -156,7 +156,7 @@ from shared_ollama_client import SharedOllamaClient, OllamaConfig
 
 class StoryConfig(BaseModel):
     ollama_base_url: str = Field(default="http://localhost:11434")
-    ollama_model: str = Field(default="llava:13b")
+    ollama_model: str = Field(default="qwen2.5vl:7b")
     
     def get_ollama_client(self):
         return SharedOllamaClient(

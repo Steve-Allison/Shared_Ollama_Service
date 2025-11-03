@@ -72,10 +72,10 @@ docker-compose down -v  # Also removes volumes and models!
 
 ### Model Size Reference
 
-- **llama3.1:8b**: ~4.7 GB
-- **mistral**: ~4.1 GB
+- **llava:13b**: ~8 GB
+- **qwen2.5:14b**: ~9 GB
 
-**Total if all loaded**: ~8.8 GB in Docker volume
+**Total if all loaded**: ~17 GB in Docker volume
 
 ### Finding Models on Your System
 

@@ -25,15 +25,15 @@ logger = logging.getLogger(__name__)
 
 class Model(str, Enum):
     """Available Ollama models."""
-    LLAMA31_8B = "llama3.1:8b"   # Primary: 8B params, 128k context
-    MISTRAL = "mistral"            # Secondary: 7B params
+    LLAVA_13B = "llava:13b"       # Primary: 13B params, vision model
+    QWEN25_14B = "qwen2.5:14b"    # Secondary: 14.8B params
 
 
 @dataclass
 class OllamaConfig:
     """Configuration for Ollama client."""
     base_url: str = "http://localhost:11434"
-    default_model: str = Model.LLAMA31_8B.value
+    default_model: str = Model.LLAVA_13B.value
     timeout: int = 60
     verbose: bool = False
 
@@ -144,7 +144,7 @@ class SharedOllamaClient:
             >>> client = SharedOllamaClient()
             >>> response = client.generate(
             ...     "Why is the sky blue?",
-            ...     model=Model.LLAMA31_8B
+            ...     model=Model.LLAVA_13B
             ... )
             >>> print(response.text)
         """

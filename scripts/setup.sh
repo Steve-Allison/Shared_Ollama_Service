@@ -55,8 +55,8 @@ echo ""
 
 # Define models to pull
 MODELS=(
-    "llama3.1:8b"
-    "mistral"
+    "llava:13b"
+    "qwen2.5:14b"
 )
 
 # Pull models

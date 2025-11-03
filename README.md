@@ -11,12 +11,12 @@ This service provides a single Ollama instance accessible on port `11434` that a
 
 ## Models Loaded
 
-- **Primary**: `llama3.1:8b` (8B parameters, 128k context)
+- **Primary**: `llava:13b` (13B parameters, vision model)
+  - Vision-language model with multimodal capabilities
   - Best overall performance and reasoning
-  - Universal compatibility
-- **Secondary**: `mistral` (7B parameters)
-  - Used by Story Machine
-  - Good alternative for specific use cases
+- **Secondary**: `qwen2.5:14b` (14.8B parameters)
+  - Large language model with excellent reasoning
+  - Good alternative for text-only tasks
 
 ## Quick Start
 
@@ -38,11 +38,11 @@ docker-compose up
 ### Pull Models
 
 ```bash
-# Pull primary model (llama3.1:8b)
-docker-compose exec ollama ollama pull llama3.1:8b
+# Pull primary model (llava:13b)
+docker-compose exec ollama ollama pull llava:13b
 
-# Pull secondary model (mistral)
-docker-compose exec ollama ollama pull mistral
+# Pull secondary model (qwen2.5:14b)
+docker-compose exec ollama ollama pull qwen2.5:14b
 ```
 
 ### Verify Installation
@@ -62,7 +62,7 @@ curl http://localhost:11434/api/tags
 Update `Knowledge_Machine/config/main.py`:
 ```python
 ollama_base_url = "http://localhost:11434"
-default_model = "llama3.1:8b"
+default_model = "llava:13b"
 ```
 
 ### Course Intelligence Compiler
@@ -72,7 +72,7 @@ Update `Course_Intelligence_Compiler/config/rag_config.yaml`:
 generation:
   ollama:
     base_url: "http://localhost:11434"
-    model: "llama3.1:8b"  # or "mistral" for alternative model
+    model: "llava:13b"  # or "qwen2.5:14b" for alternative model
 ```
 
 ### Story Machine
@@ -81,7 +81,7 @@ Update `Story_Machine/src/story_machine/core/config.py`:
 ```python
 ollama:
     base_url: "http://localhost:11434"
-    model: "llama3.1:8b"  # or "mistral" for specific use cases
+    model: "llava:13b"  # or "qwen2.5:14b" for specific use cases
 ```
 
 ## Configuration
@@ -123,7 +123,7 @@ curl http://localhost:11434/api/tags
 
 # Test generation
 curl http://localhost:11434/api/generate -d '{
-  "model": "llama3.1:8b",
+  "model": "llava:13b",
   "prompt": "Why is the sky blue?"
 }'
 ```
@@ -146,7 +146,7 @@ docker-compose exec ollama ollama rm model_name
 
 ```bash
 # Pull latest version
-docker-compose exec ollama ollama pull llama3.1:8b
+docker-compose exec ollama ollama pull llava:13b
 ```
 
 ## Performance Tuning
@@ -185,7 +185,7 @@ docker-compose restart ollama
 
 ```bash
 # Pull models
-docker-compose exec ollama ollama pull llama3.1:8b
+docker-compose exec ollama ollama pull llava:13b
 
 # Verify
 docker-compose exec ollama ollama list
@@ -269,8 +269,8 @@ Monitor with:
 
 ### Memory Usage
 
-- `llama3.1:8b`: ~4.7 GB RAM
-- `mistral`: ~4.1 GB RAM
+- `llava:13b`: ~8 GB RAM
+- `qwen2.5:14b`: ~9 GB RAM
 
 **Recommendation**: Load only models you need.
 

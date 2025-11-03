@@ -45,11 +45,13 @@ if curl -f -s "${API_ENDPOINT}/tags" > /dev/null 2>&1; then
 else
     print_status 1 "Ollama service is not accessible"
     echo ""
-    echo "Attempting to start service..."
+    echo "Attempting to start service with MPS/Metal optimization..."
     
     # Start native Ollama service
     if command -v ollama &> /dev/null; then
-        echo "Starting Ollama service..."
+        echo "Starting Ollama service with optimizations..."
+        export OLLAMA_METAL=1
+        export OLLAMA_NUM_GPU=-1
         ollama serve > /dev/null 2>&1 &
         echo "Waiting 3 seconds for service to start..."
         sleep 3

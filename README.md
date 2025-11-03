@@ -35,8 +35,11 @@ Models remain in memory for 5 minutes after last use (OLLAMA_KEEP_ALIVE), then a
 # Install and setup native Ollama with MPS optimization
 ./scripts/install_native.sh
 
-# Optional: Setup as launchd service for automatic startup with MPS enabled
-./scripts/setup_launchd.sh
+# Service runs manually - start when needed:
+ollama serve
+
+# Optional (NOT recommended): Setup as launchd service for automatic startup
+# ./scripts/setup_launchd.sh
 ```
 
 **MPS/Metal Optimizations Enabled:**
@@ -229,7 +232,7 @@ export OLLAMA_KEEP_ALIVE=15m
 ollama serve
 ```
 
-Or update the launchd service (if using): Edit `~/Library/LaunchAgents/com.ollama.service.plist`
+Or set it when starting Ollama manually (launchd not recommended)
 
 ### Port Configuration
 
@@ -286,26 +289,38 @@ ollama pull qwen2.5vl:7b
 
 ## Service Management
 
+**Default: Manual Start** - Service must be started manually when needed.
+
 ```bash
-# Start service
-ollama serve
+# Start service with MPS/Metal optimization (RECOMMENDED)
+./scripts/start.sh
+
+# Or start manually with optimizations:
+export OLLAMA_METAL=1
+export OLLAMA_NUM_GPU=-1
+ollama serve > ./logs/ollama.log 2> ./logs/ollama.error.log &
 
 # Stop service
 pkill ollama
+# Or use shutdown script
+./scripts/shutdown.sh
 
 # Check if running
 curl http://localhost:11434/api/tags
 
-# Setup as launchd service (automatic startup)
-./scripts/setup_launchd.sh
+# View logs
+tail -f ./logs/ollama.log
+```
 
-# Manage launchd service
-launchctl load ~/Library/LaunchAgents/com.ollama.service.plist  # Start
-launchctl unload ~/Library/LaunchAgents/com.ollama.service.plist  # Stop
-launchctl list | grep ollama  # Status
+**Optional: Auto-start on Boot** (NOT recommended - disabled by default)
+```bash
+# Only if you want the service to auto-start on login/boot:
+# ./scripts/setup_launchd.sh
 
-# View logs (if using launchd)
-tail -f ~/.ollama/ollama.log
+# Manage launchd service (if enabled)
+# launchctl load ~/Library/LaunchAgents/com.ollama.service.plist  # Start
+# launchctl unload ~/Library/LaunchAgents/com.ollama.service.plist  # Stop
+# launchctl list | grep ollama  # Status
 ```
 
 ## Performance Optimizations

@@ -62,7 +62,9 @@ echo -e "${BLUE}Step 2: Starting Ollama service...${NC}"
 if curl -f -s http://localhost:11434/api/tags > /dev/null 2>&1; then
     echo -e "${GREEN}✓ Ollama service is already running${NC}"
 else
-    echo "Starting Ollama service..."
+    echo "Starting Ollama service with MPS/Metal optimization..."
+    export OLLAMA_METAL=1
+    export OLLAMA_NUM_GPU=-1
     ollama serve > /dev/null 2>&1 &
     sleep 3
     
@@ -137,7 +139,7 @@ echo "  2. Warm up models:          ./scripts/warmup_models.sh"
 echo "  3. Setup auto-start:        ./scripts/setup_launchd.sh"
 echo ""
 echo "To manage the service:"
-echo "  Start:    OLLAMA_METAL=1 ollama serve"
-echo "  Stop:     pkill ollama"
+echo "  Start:    ./scripts/start.sh (recommended - includes optimizations)"
+echo "  Stop:     ./scripts/shutdown.sh"
 echo "  Status:   curl http://localhost:11434/api/tags"
 echo "  Models:   ollama list"

@@ -89,14 +89,20 @@ if curl -f -s "${API_ENDPOINT}/tags" > /dev/null 2>&1; then
 else
     print_status 1 "Ollama service is not accessible"
     echo ""
-    print_info "Attempting to start service..."
+    print_info "Attempting to start service with MPS/Metal optimization..."
     
     # Try to start via Homebrew services (macOS)
     if command -v brew &> /dev/null && brew services list 2>/dev/null | grep -q ollama; then
         echo "Starting via Homebrew services..."
-        brew services start ollama > /dev/null 2>&1 || ollama serve > /dev/null 2>&1 &
+        brew services start ollama > /dev/null 2>&1 || {
+            export OLLAMA_METAL=1
+            export OLLAMA_NUM_GPU=-1
+            ollama serve > /dev/null 2>&1 &
+        }
     else
-        echo "Starting Ollama service directly..."
+        echo "Starting Ollama service directly with optimizations..."
+        export OLLAMA_METAL=1
+        export OLLAMA_NUM_GPU=-1
         ollama serve > /dev/null 2>&1 &
     fi
     

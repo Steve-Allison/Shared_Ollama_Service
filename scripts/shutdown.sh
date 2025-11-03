@@ -3,7 +3,8 @@
 # Ollama Service Shutdown and Cleanup Script
 # Safely shuts down Ollama service and optionally cleans up caches, logs, and temp files
 
-set -e
+# Don't use set -e here because we want the script to continue through all cleanup steps
+# even if some operations fail
 
 # Colors for output
 RED='\033[0;31m'
@@ -66,10 +67,13 @@ if [ -f "$LAUNCHD_PLIST" ]; then
 fi
 
 # Kill any remaining ollama processes
-OLLAMA_PIDS=$(ps aux | grep -i "ollama" | grep -v grep | awk '{print $2}' || true)
+OLLAMA_PIDS=$(ps aux | grep -i "[o]llama serve" | awk '{print $2}' 2>/dev/null || true)
 if [ -n "$OLLAMA_PIDS" ]; then
     print_info "Killing remaining Ollama processes..."
-    echo "$OLLAMA_PIDS" | xargs kill -9 2>/dev/null || true
+    # Kill each PID individually to avoid killing the script itself
+    for pid in $OLLAMA_PIDS; do
+        kill -9 "$pid" 2>/dev/null || true
+    done
     sleep 1
     print_status 0 "All Ollama processes terminated"
 else
@@ -239,7 +243,8 @@ if [ -f "$LAUNCHD_PLIST" ]; then
 elif command -v brew &> /dev/null && brew services list 2>/dev/null | grep -q "ollama"; then
     echo "  - brew services start ollama"
 else
-    echo "  - ollama serve"
+    echo "  - ./scripts/start.sh (recommended - includes MPS/Metal optimizations)"
+    echo "  - ollama serve (manual start)"
 fi
 
 echo ""

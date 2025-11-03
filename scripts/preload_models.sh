@@ -34,7 +34,9 @@ echo ""
 
 # Check if Ollama service is running
 if ! curl -f -s http://localhost:11434/api/tags > /dev/null 2>&1; then
-    echo "Starting Ollama service..."
+    echo "Starting Ollama service with MPS/Metal optimization..."
+    export OLLAMA_METAL=1
+    export OLLAMA_NUM_GPU=-1
     ollama serve > /dev/null 2>&1 &
     sleep 3
 fi

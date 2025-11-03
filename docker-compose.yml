@@ -1,0 +1,47 @@
+services:
+  # Ollama - Centralized LLM Service for All Projects
+  ollama:
+    image: ollama/ollama:latest
+    container_name: shared-ollama-service
+    restart: always
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    environment:
+      - OLLAMA_HOST=0.0.0.0
+      - OLLAMA_ORIGINS=*
+      - OLLAMA_KEEP_ALIVE=5m
+      - OLLAMA_DEBUG=false
+      # Hardware optimization
+      - OLLAMA_NUM_THREAD=8
+      - OLLAMA_NUM_GPU=-1  # Use all GPU layers (-1 = all)
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 30s
+      timeout: 10s
+      start_period: 10s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          # Adjust based on your hardware
+          # For 8GB RAM machine: 4G
+          # For 16GB RAM machine: 8G
+          memory: 8G
+          cpus: '4'
+        reservations:
+          memory: 1G
+          cpus: '1'
+    networks:
+      - ollama_network
+
+networks:
+  ollama_network:
+    name: shared_ollama_network
+    driver: bridge
+
+volumes:
+  ollama_data:
+    name: shared_ollama_data
+    driver: local

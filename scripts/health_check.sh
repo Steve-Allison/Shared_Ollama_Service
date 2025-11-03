@@ -47,22 +47,23 @@ else
     echo ""
     echo "Attempting to start service..."
     
-    # Try to start docker-compose if available
-    if command -v docker-compose &> /dev/null; then
-        docker-compose up -d
-        echo "Waiting 10 seconds for service to start..."
-        sleep 10
+    # Start native Ollama service
+    if command -v ollama &> /dev/null; then
+        echo "Starting Ollama service..."
+        ollama serve > /dev/null 2>&1 &
+        echo "Waiting 3 seconds for service to start..."
+        sleep 3
         
         if curl -f -s "${API_ENDPOINT}/tags" > /dev/null 2>&1; then
             print_status 0 "Ollama service started successfully"
         else
             print_status 1 "Failed to start Ollama service"
-            echo ""
-            echo "Manual start: docker-compose up -d"
+            echo "Try: ollama serve"
             exit 1
         fi
     else
-        echo "docker-compose not found. Please start Ollama manually."
+        echo "Ollama not found. Please install: https://ollama.ai/download"
+        echo "Or run: ./scripts/install_native.sh"
         exit 1
     fi
 fi
@@ -91,7 +92,7 @@ for model in "${REQUIRED_MODELS[@]}"; do
         print_status 0 "Model '${model}' is available"
     else
         print_status 1 "Model '${model}' is NOT available"
-        echo "    Pull with: docker-compose exec ollama ollama pull ${model}"
+        echo "    Pull with: ollama pull ${model}"
     fi
 done
 

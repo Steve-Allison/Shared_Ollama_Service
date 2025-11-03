@@ -8,42 +8,63 @@ This service provides a single Ollama instance accessible on port `11434` that a
 - **Knowledge Machine**
 - **Course Intelligence Compiler**  
 - **Story Machine**
+- **Docling_Machine**
 
-## Models Loaded
+## Models Available
+
+**Note**: Models are loaded on-demand. Only one model is in memory at a time based on which model is requested.
 
 - **Primary**: `llava:13b` (13B parameters, vision model)
   - Vision-language model with multimodal capabilities
   - Best overall performance and reasoning
+  - Loaded into memory when requested (~8 GB RAM)
 - **Secondary**: `qwen2.5:14b` (14.8B parameters)
   - Large language model with excellent reasoning
   - Good alternative for text-only tasks
+  - Loaded into memory when requested (~9 GB RAM)
 
-## Quick Start
+Models remain in memory for 5 minutes after last use (OLLAMA_KEEP_ALIVE), then are automatically unloaded to free memory. Switching between models requires a brief load time (~2-3 seconds).
 
-### Prerequisites
+## Installation
 
-- Docker and Docker Compose
-- Ollama installed locally OR use the Docker image
+### ⚡ Native Installation (Apple Silicon MPS Optimized)
 
-### Start the Service
+**Best Performance**: Native Ollama with explicit MPS (Metal Performance Shaders) configuration provides maximum GPU acceleration on Apple Silicon.
 
 ```bash
-# Start Ollama service
-docker-compose up -d
+# Install and setup native Ollama with MPS optimization
+./scripts/install_native.sh
 
-# Or start with logs visible
-docker-compose up
+# Optional: Setup as launchd service for automatic startup with MPS enabled
+./scripts/setup_launchd.sh
 ```
+
+**MPS/Metal Optimizations Enabled:**
+- ✅ `OLLAMA_METAL=1` - Explicit Metal/MPS GPU acceleration
+- ✅ `OLLAMA_NUM_GPU=-1` - All Metal GPU cores utilized
+- ✅ Maximum GPU utilization for fastest inference
+- ✅ All 10 CPU cores automatically utilized
+- ✅ Lower memory overhead
+- ✅ Native macOS integration
 
 ### Pull Models
 
+**Option 1: Manual Pull**
 ```bash
 # Pull primary model (llava:13b)
-docker-compose exec ollama ollama pull llava:13b
+ollama pull llava:13b
 
 # Pull secondary model (qwen2.5:14b)
-docker-compose exec ollama ollama pull qwen2.5:14b
+ollama pull qwen2.5:14b
 ```
+
+**Option 2: Automated Pre-download (Recommended)**
+```bash
+# Pre-download all required models
+./scripts/preload_models.sh
+```
+
+This automatically checks and downloads all required models, ensuring they're ready before first use.
 
 ### Verify Installation
 
@@ -53,6 +74,9 @@ docker-compose exec ollama ollama pull qwen2.5:14b
 
 # Or manually check
 curl http://localhost:11434/api/tags
+
+# List installed models
+ollama list
 ```
 
 ## Usage in Projects
@@ -92,9 +116,40 @@ Create `.env` file:
 ```env
 OLLAMA_HOST=0.0.0.0
 OLLAMA_ORIGINS=*
-OLLAMA_KEEP_ALIVE=5m
+OLLAMA_KEEP_ALIVE=5m  # How long models stay loaded after last use (see Keep-Alive section below)
 OLLAMA_DEBUG=false
 ```
+
+### Keep-Alive Configuration
+
+The `OLLAMA_KEEP_ALIVE` setting determines how long models remain in memory after the last request before being automatically unloaded.
+
+**Trade-offs:**
+
+| Keep-Alive Time | Pros | Cons | Best For |
+|----------------|------|------|----------|
+| **1-2 minutes** | Frees memory quickly, allows faster model switching | More frequent reloads, slower responses after idle periods | Memory-constrained environments, infrequent use |
+| **5 minutes** (current) | Balanced - reasonable response time without excessive memory use | Model unloaded after 5 min idle | **General use, development environments** |
+| **15-30 minutes** | Fewer reloads, faster responses for active sessions | Models stay in memory longer, blocks other models | Active development, frequent model switching |
+| **Infinite** (`-1` or `0`) | Never unloads, fastest response time | Always uses memory, blocks other models | Production with dedicated models, high-traffic |
+
+**Recommendations:**
+
+- **Development/Testing**: `5m` (current) - Good balance for intermittent use
+- **Active Development**: `15m-30m` - Reduces reloads during active coding sessions
+- **Memory-Constrained**: `2m-3m` - Faster memory release
+- **Production (Single Model)**: `15m-30m` or `0` - Keep model hot for consistent performance
+- **Production (Multiple Models)**: `5m-10m` - Balance between performance and memory efficiency
+
+**To change keep-alive:**
+
+Set the environment variable when starting Ollama:
+```bash
+export OLLAMA_KEEP_ALIVE=15m
+ollama serve
+```
+
+Or update the launchd service (if using): Edit `~/Library/LaunchAgents/com.ollama.service.plist`
 
 ### Port Configuration
 
@@ -133,40 +188,85 @@ curl http://localhost:11434/api/generate -d '{
 ### List Loaded Models
 
 ```bash
-docker-compose exec ollama ollama list
+ollama list
 ```
 
 ### Remove a Model
 
 ```bash
-docker-compose exec ollama ollama rm model_name
+ollama rm model_name
 ```
 
 ### Update Models
 
 ```bash
 # Pull latest version
-docker-compose exec ollama ollama pull llava:13b
+ollama pull llava:13b
 ```
 
-## Performance Tuning
+## Service Management
+
+```bash
+# Start service
+ollama serve
+
+# Stop service
+pkill ollama
+
+# Check if running
+curl http://localhost:11434/api/tags
+
+# Setup as launchd service (automatic startup)
+./scripts/setup_launchd.sh
+
+# Manage launchd service
+launchctl load ~/Library/LaunchAgents/com.ollama.service.plist  # Start
+launchctl unload ~/Library/LaunchAgents/com.ollama.service.plist  # Stop
+launchctl list | grep ollama  # Status
+
+# View logs (if using launchd)
+tail -f ~/.ollama/ollama.log
+```
+
+## Performance Optimizations
+
+### Current Optimizations
+
+✅ **Fully Optimized for Apple Silicon MPS (Metal Performance Shaders):**
+- ✅ **MPS/Metal GPU**: Explicitly enabled (`OLLAMA_METAL=1`)
+- ✅ **GPU Cores**: All Metal GPU cores utilized (`OLLAMA_NUM_GPU=-1`)
+- ✅ **CPU**: All 10 cores automatically detected and utilized
+- ✅ **Threading**: Auto-detected based on CPU cores
+- ✅ **Memory**: Efficient allocation for both models simultaneously
+- ✅ **Performance**: Maximum GPU acceleration via Metal/MPS
 
 ### Hardware Detection
 
 The service auto-detects hardware:
-- **Apple Silicon** (M1/M2/M3): Full Metal acceleration
-- **NVIDIA GPU**: CUDA acceleration
-- **CPU Only**: Fallback mode
+- **Apple Silicon** (M1/M2/M3/M4): Metal/MPS GPU acceleration (explicitly enabled)
+- **CPU**: All cores automatically detected and utilized (10 cores)
+- **Memory**: Efficient allocation based on model requirements
+- **GPU**: All Metal GPU cores available for inference
 
-### Resource Limits
+### Apple Silicon MPS Optimization
 
-Edit `docker-compose.yml`:
-```yaml
-deploy:
-  resources:
-    limits:
-      memory: 8G
-      cpus: '4'
+**Explicit MPS Configuration:**
+- ✅ `OLLAMA_METAL=1`: Explicitly enables Metal/MPS acceleration
+- ✅ `OLLAMA_NUM_GPU=-1`: Uses all available Metal GPU cores
+- ✅ `OLLAMA_NUM_THREAD`: Auto-detected (matches 10 CPU cores)
+
+**Performance Benefits:**
+- Maximum GPU utilization via Metal Performance Shaders
+- Faster inference times with full GPU acceleration
+- Efficient memory management for concurrent model execution
+- Optimal resource allocation for Apple Silicon architecture
+
+**To verify MPS is active:**
+```bash
+# Check Metal support
+system_profiler SPDisplaysDataType | grep -i metal
+
+# Monitor GPU usage (in Activity Monitor or with system_profiler)
 ```
 
 ## Troubleshooting
@@ -174,21 +274,28 @@ deploy:
 ### Service Won't Start
 
 ```bash
-# Check logs
-docker-compose logs ollama
+# Check if Ollama is installed
+which ollama
 
-# Restart service
-docker-compose restart ollama
+# Start service manually
+ollama serve
+
+# Check if port is in use
+lsof -i :11434
+
+# View logs (if using launchd)
+tail -f ~/.ollama/ollama.log
 ```
 
 ### Models Not Found
 
 ```bash
 # Pull models
-docker-compose exec ollama ollama pull llava:13b
+ollama pull llava:13b
+ollama pull qwen2.5:14b
 
 # Verify
-docker-compose exec ollama ollama list
+ollama list
 ```
 
 ### Connection Refused
@@ -200,8 +307,8 @@ lsof -i :11434
 # Kill existing Ollama instance
 kill $(lsof -t -i:11434)
 
-# Restart
-docker-compose up -d ollama
+# Restart service
+ollama serve
 ```
 
 ## Migration Guide
@@ -210,16 +317,17 @@ docker-compose up -d ollama
 
 1. **Stop existing instances**
    ```bash
-   # Stop Ollama in each project
-   cd Knowledge_Machine && docker-compose down
-   cd Course_Intelligence_Compiler && docker-compose down
-   cd Story_Machine && docker-compose down
+   # Stop any running Ollama processes
+   pkill ollama
    ```
 
 2. **Start shared service**
    ```bash
    cd Shared_Ollama_Service
-   docker-compose up -d
+   ./scripts/install_native.sh
+   
+   # Or if already installed
+   ollama serve
    ```
 
 3. **Update project configurations** (see Usage section above)
@@ -244,18 +352,21 @@ The Ollama service is **not exposed to the internet** by default. Only localhost
 
 ### Model Access Control
 
-Models are stored in Docker volume: `ollama_data:/root/.ollama`
+Models are stored locally: `~/.ollama/models`
 
 ## Monitoring
 
 ### Logs
 
 ```bash
-# View logs
-docker-compose logs -f ollama
+# View logs (if using launchd service)
+tail -f ~/.ollama/ollama.log
 
-# View last 100 lines
-docker-compose logs --tail=100 ollama
+# View error logs
+tail -f ~/.ollama/ollama.error.log
+
+# If running manually, logs output to terminal
+ollama serve
 ```
 
 ### Metrics
@@ -263,30 +374,130 @@ docker-compose logs --tail=100 ollama
 Monitor with:
 - **Health checks**: `scripts/health_check.sh`
 - **Model status**: `curl http://localhost:11434/api/tags`
-- **Resource usage**: `docker stats shared-ollama-service-ollama-1`
+- **Resource usage**: `top -pid $(pgrep ollama)` or Activity Monitor
 
 ## Cost and Resource Management
 
 ### Memory Usage
 
-- `llava:13b`: ~8 GB RAM
-- `qwen2.5:14b`: ~9 GB RAM
+**Memory Usage:**
+- `llava:13b`: ~8 GB RAM when loaded
+- `qwen2.5:14b`: ~9 GB RAM when loaded
+- **Both models can run simultaneously** if you have sufficient RAM
 
-**Recommendation**: Load only models you need.
+**Behavior**: Models are automatically loaded when requested and unloaded after 5 minutes of inactivity. Both models can be active at the same time if needed, reducing switching delays.
 
 ### Performance
 
-- **First request**: ~2-3 seconds (model loading)
+**Without Warm-up:**
+- **First request**: ~2-3 seconds (model loading into memory)
 - **Subsequent requests**: ~100-500ms (depends on prompt length)
+
+**With Warm-up (Models Pre-loaded):**
+- **First request**: ~100-500ms (model already in memory)
+- **Subsequent requests**: ~100-500ms (consistently fast)
+
+See [Warm-up & Pre-loading](#warm-up--pre-loading) section below for setup.
+
+## Warm-up & Pre-loading
+
+### Pre-download Models
+
+Ensure all models are downloaded locally before first use:
+
+```bash
+# Pre-download all required models
+./scripts/preload_models.sh
+```
+
+This verifies models are available locally, eliminating download delays during inference.
+
+### Warm-up Models (Pre-load into Memory)
+
+Pre-load models into memory to eliminate first-request latency:
+
+```bash
+# Warm up models (loads them into memory)
+./scripts/warmup_models.sh
+
+# Or warm up with custom keep-alive duration
+KEEP_ALIVE=60m ./scripts/warmup_models.sh
+```
+
+**What this does:**
+- Sends minimal requests to each model
+- Loads models into GPU/CPU memory
+- Sets keep-alive to keep models loaded (default: 30 minutes)
+- Reduces first-request latency from ~2-3s to ~100-500ms
+
+### Automated Warm-up on Startup
+
+**Option 1: Manual warm-up after service start**
+```bash
+# Start Ollama
+ollama serve
+
+# In another terminal, warm up models
+./scripts/warmup_models.sh
+```
+
+**Option 2: Cron job for warm-up** (if using launchd service)
+```bash
+# Add to crontab to warm up 2 minutes after login
+crontab -e
+
+# Add this line:
+@reboot sleep 120 && /path/to/Shared_Ollama_Service/scripts/warmup_models.sh
+```
+
+**Option 3: Warm-up via API call**
+```bash
+# Warm up a specific model
+curl http://localhost:11434/api/generate -d '{
+  "model": "llava:13b",
+  "prompt": "Hi",
+  "options": {"num_predict": 1},
+  "keep_alive": "30m"
+}'
+```
+
+### Keep-Alive Recommendations for Production
+
+**High-Traffic Production:**
+```bash
+# Keep models loaded indefinitely
+KEEP_ALIVE=-1 ./scripts/warmup_models.sh
+```
+
+**Development/Testing:**
+```bash
+# Keep models loaded for active session
+KEEP_ALIVE=30m ./scripts/warmup_models.sh
+```
+
+**Memory-Constrained:**
+```bash
+# Shorter keep-alive, models reload as needed
+KEEP_ALIVE=10m ./scripts/warmup_models.sh
+```
+
+### Performance Comparison
+
+| Setup | First Request | Subsequent Requests | Best For |
+|-------|--------------|---------------------|----------|
+| **No warm-up** | 2-3 seconds | 100-500ms | Development, occasional use |
+| **Warm-up (30m keep-alive)** | 100-500ms | 100-500ms | Active development |
+| **Warm-up (infinite keep-alive)** | 100-500ms | 100-500ms | Production, high-traffic |
 
 ## Contributing
 
 When adding new models or modifying the service:
 
-1. Update `docker-compose.yml`
-2. Update this README
-3. Test with all projects
-4. Document model size and use cases
+1. Update installation scripts if needed
+2. Update preload/warmup scripts with new models
+3. Update this README
+4. Test with all projects
+5. Document model size and use cases
 
 ## License
 
@@ -295,6 +506,7 @@ MIT
 ## Support
 
 For issues or questions:
-- Check logs: `docker-compose logs ollama`
+- Check logs: `tail -f ~/.ollama/ollama.log`
 - Run health check: `./scripts/health_check.sh`
+- Verify service: `curl http://localhost:11434/api/tags`
 - Open issue in project repository

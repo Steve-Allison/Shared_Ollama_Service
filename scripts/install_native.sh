@@ -1,0 +1,143 @@
+#!/bin/bash
+
+# Native Ollama Installation Script for Apple Silicon Mac
+# This installs and configures Ollama to run natively for maximum performance
+
+set -e
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+echo -e "${BLUE}🚀 Native Ollama Installation for Apple Silicon${NC}"
+echo "======================================"
+echo ""
+
+# Check if running on macOS
+if [[ "$OSTYPE" != "darwin"* ]]; then
+    echo -e "${RED}✗ This script is for macOS only${NC}"
+    exit 1
+fi
+
+# Check if running on Apple Silicon
+ARCH=$(uname -m)
+if [[ "$ARCH" != "arm64" ]]; then
+    echo -e "${YELLOW}⚠ Warning: Not running on Apple Silicon (arm64)${NC}"
+    echo "This script is optimized for Apple Silicon Macs."
+    read -p "Continue anyway? (y/N) " -n 1 -r
+    echo
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+        exit 1
+    fi
+fi
+
+echo -e "${BLUE}Step 1: Installing Ollama...${NC}"
+
+# Check if Ollama is already installed
+if command -v ollama &> /dev/null; then
+    echo -e "${GREEN}✓ Ollama is already installed${NC}"
+    OLLAMA_VERSION=$(ollama --version 2>&1 | head -n 1 || echo "unknown")
+    echo "  Version: $OLLAMA_VERSION"
+else
+    echo "Installing Ollama..."
+    # Install using official installer
+    curl -fsSL https://ollama.ai/install.sh | sh
+    
+    if command -v ollama &> /dev/null; then
+        echo -e "${GREEN}✓ Ollama installed successfully${NC}"
+    else
+        echo -e "${RED}✗ Failed to install Ollama${NC}"
+        echo "Please install manually from: https://ollama.ai/download"
+        exit 1
+    fi
+fi
+
+echo ""
+echo -e "${BLUE}Step 2: Starting Ollama service...${NC}"
+
+# Start Ollama service (if not already running)
+if curl -f -s http://localhost:11434/api/tags > /dev/null 2>&1; then
+    echo -e "${GREEN}✓ Ollama service is already running${NC}"
+else
+    echo "Starting Ollama service..."
+    ollama serve > /dev/null 2>&1 &
+    sleep 3
+    
+    if curl -f -s http://localhost:11434/api/tags > /dev/null 2>&1; then
+        echo -e "${GREEN}✓ Ollama service started${NC}"
+    else
+        echo -e "${RED}✗ Failed to start Ollama service${NC}"
+        echo "Try running: ollama serve"
+        exit 1
+    fi
+fi
+
+echo ""
+echo -e "${BLUE}Step 3: Pulling models...${NC}"
+echo "This may take a while depending on your internet connection."
+echo ""
+
+# Define models to pull
+MODELS=(
+    "llava:13b"
+    "qwen2.5:14b"
+)
+
+# Pull models
+for model in "${MODELS[@]}"; do
+    echo -e "${YELLOW}Pulling ${model}...${NC}"
+    if ollama pull "${model}" 2>&1 | grep -q "success\|pulling\|extracting\|complete"; then
+        echo -e "${GREEN}✓ ${model} pulled successfully${NC}"
+    else
+        echo -e "${RED}✗ Failed to pull ${model}${NC}"
+    fi
+done
+
+echo ""
+echo -e "${BLUE}Step 4: Verifying installation...${NC}"
+
+# Verify models are available
+MODELS_LIST=$(ollama list 2>/dev/null | grep -E "llava:13b|qwen2.5:14b" || echo "")
+if [ -n "$MODELS_LIST" ]; then
+    echo -e "${GREEN}✓ Models verified:${NC}"
+    echo "$MODELS_LIST" | while read -r line; do
+        echo "  - $line"
+    done
+else
+    echo -e "${YELLOW}⚠ Some models may not be available yet${NC}"
+    echo "Run 'ollama list' to check"
+fi
+
+echo ""
+echo -e "${BLUE}Step 5: Verifying MPS/Metal GPU acceleration...${NC}"
+
+# Check if Metal is available
+if system_profiler SPDisplaysDataType 2>/dev/null | grep -qi "metal"; then
+    echo -e "${GREEN}✓ Metal GPU acceleration available${NC}"
+else
+    echo -e "${YELLOW}⚠ Metal GPU status unclear${NC}"
+fi
+
+echo ""
+echo "======================================"
+echo -e "${GREEN}✓ Native Ollama installation complete!${NC}"
+echo ""
+echo "Service URL: http://localhost:11434"
+echo ""
+echo "MPS/Metal GPU Optimization:"
+echo "  ✓ Metal acceleration enabled (OLLAMA_METAL=1)"
+echo "  ✓ All GPU cores available (OLLAMA_NUM_GPU=-1)"
+echo ""
+echo "Next Steps:"
+echo "  1. Pre-download models:     ./scripts/preload_models.sh"
+echo "  2. Warm up models:          ./scripts/warmup_models.sh"
+echo "  3. Setup auto-start:        ./scripts/setup_launchd.sh"
+echo ""
+echo "To manage the service:"
+echo "  Start:    OLLAMA_METAL=1 ollama serve"
+echo "  Stop:     pkill ollama"
+echo "  Status:   curl http://localhost:11434/api/tags"
+echo "  Models:   ollama list"

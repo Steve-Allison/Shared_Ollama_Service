@@ -2,40 +2,38 @@
 
 ## Where Models Are Stored
 
-Models are cached in a **Docker volume**, not in the project directory.
+Models are cached in your home directory: **`~/.ollama/models`** (native installation).
 
-### Docker Volume Setup
+### Native Storage Location
 
-```yaml
-volumes:
-  ollama_data:
-    name: shared_ollama_data
-    driver: local
+**macOS:**
+```
+~/.ollama/models/
 ```
 
-This creates a Docker-managed volume that persists across container restarts.
+This directory is automatically created by Ollama when you first pull a model.
 
-### Benefits of Docker Volume Storage
+### Benefits of Native Storage
 
-1. **Persistence**: Models persist even if you `docker-compose down`
-2. **Isolation**: Models stored separate from project code
-3. **Performance**: Docker-optimized storage location
-4. **Portability**: Easy to backup/restore volumes
-5. **Cleanup**: Easy to remove with `docker-compose down -v`
+1. **Persistence**: Models persist across system restarts
+2. **Accessibility**: Direct access to model files
+3. **Performance**: No container overhead, fastest access
+4. **Simplicity**: Native filesystem storage
+5. **Backup**: Easy to backup/restore with standard tools
 
-### Inspecting the Volume
+### Inspecting Models
 
-To see where Docker stores the models:
+To see where models are stored:
 
 ```bash
-# List volumes
-docker volume ls
+# List models
+ollama list
 
-# Inspect the volume
-docker volume inspect shared_ollama_data
+# Check storage location
+ls -lh ~/.ollama/models/
 
-# Mount Point shows where Docker stores the data
-# (typically in Docker's internal storage, not your home directory)
+# Get size of models directory
+du -sh ~/.ollama/models/
 ```
 
 ### Backup and Restore
@@ -43,31 +41,26 @@ docker volume inspect shared_ollama_data
 **Backup:**
 ```bash
 # Create backup
-docker run --rm \
-  -v shared_ollama_data:/data \
-  -v $(pwd):/backup \
-  alpine tar czf /backup/ollama-models-backup.tar.gz /data
+tar czf ~/ollama-models-backup.tar.gz ~/.ollama/models/
 ```
 
 **Restore:**
 ```bash
 # Restore from backup
-docker run --rm \
-  -v shared_ollama_data:/data \
-  -v $(pwd):/backup \
-  alpine tar xzf /backup/ollama-models-backup.tar.gz -C /
+tar xzf ~/ollama-models-backup.tar.gz -C ~
 ```
 
 ### Removing Models
 
-**Keep models, remove container:**
+**Remove a specific model:**
 ```bash
-docker-compose down  # Keeps volumes
+ollama rm model_name
 ```
 
-**Remove everything:**
+**Remove all models:**
 ```bash
-docker-compose down -v  # Also removes volumes and models!
+# Remove all models (be careful!)
+rm -rf ~/.ollama/models/*
 ```
 
 ### Model Size Reference
@@ -75,40 +68,45 @@ docker-compose down -v  # Also removes volumes and models!
 - **llava:13b**: ~8 GB
 - **qwen2.5:14b**: ~9 GB
 
-**Total if all loaded**: ~17 GB in Docker volume
+**Total if all loaded**: ~17 GB in `~/.ollama/models/`
 
 ### Finding Models on Your System
 
 **macOS:**
 ```bash
-# Models stored in Docker's internal VM
-# Path varies by Docker Desktop version
-# Use docker volume inspect to find exact location
+# Models stored in:
+~/.ollama/models/
+
+# View models
+ls -lh ~/.ollama/models/
+
+# Check disk usage
+du -sh ~/.ollama/
 ```
 
-**Linux:**
+**Check Model Information:**
 ```bash
-# Models typically stored in:
-# /var/lib/docker/volumes/shared_ollama_data/_data
+# List installed models with sizes
+ollama list
+
+# Show model details
+ollama show llava:13b
 ```
 
-### Alternative: Bind Mount to Project Directory
+### Disk Space Management
 
-If you want models in your project directory instead:
-
-```yaml
-volumes:
-  - ./models:/root/.ollama  # Change this line
+**Check available space:**
+```bash
+df -h ~
 ```
 
-**Pros:**
-- Models visible in project directory
-- Easy to backup with git
-- Easy to delete manually
+**Clean up unused models:**
+```bash
+# Remove unused models
+ollama rm model_name
 
-**Cons:**
-- Large files in version control (not recommended)
-- Slower on some systems
-- Permissions issues possible
+# Models are stored as GGUF files
+# You can manually delete files from ~/.ollama/models/ if needed
+```
 
-**Recommendation**: Keep using Docker volume (default) - it's optimized and cleaner.
+**Recommendation**: Keep models you use regularly. Models can be re-downloaded with `ollama pull` if needed.

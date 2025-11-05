@@ -14,7 +14,8 @@ Usage:
 import logging
 import time
 from dataclasses import dataclass
-from enum import Enum
+from enum import StrEnum
+from http import HTTPStatus
 from typing import Any
 
 import requests
@@ -24,7 +25,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
-class Model(str, Enum):
+class Model(StrEnum):
     """Available Ollama models."""
 
     QWEN25_VL_7B = "qwen2.5vl:7b"  # Primary: 7B params, vision-language model
@@ -120,7 +121,6 @@ class SharedOllamaClient:
                 )
                 response.raise_for_status()
                 logger.info("Connected to Ollama service")
-                return
             except requests.exceptions.RequestException as e:
                 if attempt < retries - 1:
                     logger.warning(
@@ -128,12 +128,14 @@ class SharedOllamaClient:
                     )
                     time.sleep(delay)
                 else:
-                    logger.error(f"Failed to connect to Ollama after {retries} attempts: {e}")
+                    logger.exception(f"Failed to connect to Ollama after {retries} attempts")
                     raise ConnectionError(
                         f"Cannot connect to Ollama at {self.config.base_url}. "
                         "Make sure the service is running.\n"
                         "Start with: ./scripts/setup_launchd.sh or 'ollama serve'"
-                    )
+                    ) from e
+            else:
+                return
 
     def list_models(self) -> list[dict[str, Any]]:
         """
@@ -279,9 +281,10 @@ class SharedOllamaClient:
         """
         try:
             response = self.session.get(f"{self.config.base_url}/api/tags", timeout=5)
-            return response.status_code == 200
         except requests.exceptions.RequestException:
             return False
+        else:
+            return response.status_code == HTTPStatus.OK
 
     def get_model_info(self, model: str) -> dict[str, Any] | None:
         """

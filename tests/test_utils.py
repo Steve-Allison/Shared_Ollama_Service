@@ -6,13 +6,15 @@ import os
 from unittest.mock import Mock, patch
 
 import pytest
+import requests
 
+from shared_ollama_client import SharedOllamaClient
 from utils import (
-    get_ollama_base_url,
     check_service_health,
     ensure_service_running,
-    get_project_root,
     get_client_path,
+    get_ollama_base_url,
+    get_project_root,
     import_client,
 )
 
@@ -34,9 +36,7 @@ class TestGetOllamaBaseUrl:
 
     def test_host_port_separate(self):
         """Test OLLAMA_HOST and OLLAMA_PORT environment variables."""
-        with patch.dict(
-            os.environ, {"OLLAMA_HOST": "custom", "OLLAMA_PORT": "8080"}, clear=True
-        ):
+        with patch.dict(os.environ, {"OLLAMA_HOST": "custom", "OLLAMA_PORT": "8080"}, clear=True):
             url = get_ollama_base_url()
             assert url == "http://custom:8080"
 
@@ -77,8 +77,6 @@ class TestCheckServiceHealth:
     @patch("utils.requests.get")
     def test_connection_error(self, mock_get):
         """Test connection error."""
-        import requests
-
         mock_get.side_effect = requests.exceptions.ConnectionError("Connection failed")
 
         is_healthy, error = check_service_health()
@@ -89,8 +87,6 @@ class TestCheckServiceHealth:
     @patch("utils.requests.get")
     def test_timeout_error(self, mock_get):
         """Test timeout error."""
-        import requests
-
         mock_get.side_effect = requests.exceptions.Timeout("Request timed out")
 
         is_healthy, error = check_service_health()
@@ -158,7 +154,4 @@ class TestImportClient:
         """Test importing client dynamically."""
         client_class = import_client()
         assert client_class is not None
-        from shared_ollama_client import SharedOllamaClient
-
         assert client_class == SharedOllamaClient
-

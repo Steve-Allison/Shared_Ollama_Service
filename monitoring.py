@@ -7,11 +7,11 @@ model infrastructure service.
 
 Usage:
     from monitoring import MetricsCollector, track_request
-    
+
     # Track a request
     with track_request("generate", model="qwen2.5vl:7b"):
         response = client.generate("Hello!")
-    
+
     # Get metrics
     metrics = MetricsCollector.get_metrics()
     print(f"Total requests: {metrics['total_requests']}")
@@ -23,7 +23,7 @@ from collections import defaultdict
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from typing import Any
+from typing import Any, ClassVar
 
 logger = logging.getLogger(__name__)
 
@@ -48,9 +48,7 @@ class ServiceMetrics:
     successful_requests: int = 0
     failed_requests: int = 0
     requests_by_model: dict[str, int] = field(default_factory=lambda: defaultdict(int))
-    requests_by_operation: dict[str, int] = field(
-        default_factory=lambda: defaultdict(int)
-    )
+    requests_by_operation: dict[str, int] = field(default_factory=lambda: defaultdict(int))
     average_latency_ms: float = 0.0
     p50_latency_ms: float = 0.0
     p95_latency_ms: float = 0.0
@@ -63,13 +61,13 @@ class ServiceMetrics:
 class MetricsCollector:
     """
     Collects and aggregates metrics for the Ollama service.
-    
+
     This is a simple in-memory metrics collector. For production,
     consider integrating with Prometheus, StatsD, or similar.
     """
 
-    _metrics: list[RequestMetrics] = []
-    _max_metrics: int = 10000  # Keep last 10k requests
+    _metrics: ClassVar[list[RequestMetrics]] = []
+    _max_metrics: ClassVar[int] = 10000  # Keep last 10k requests
 
     @classmethod
     def record_request(
@@ -82,7 +80,7 @@ class MetricsCollector:
     ):
         """
         Record a request metric.
-        
+
         Args:
             model: Model name used
             operation: Operation type (generate, chat, etc.)
@@ -110,10 +108,10 @@ class MetricsCollector:
     def get_metrics(cls, window_minutes: int | None = None) -> ServiceMetrics:
         """
         Get aggregated metrics.
-        
+
         Args:
             window_minutes: Only include metrics from last N minutes (None = all)
-            
+
         Returns:
             ServiceMetrics with aggregated statistics
         """
@@ -178,10 +176,10 @@ class MetricsCollector:
     def get_metrics_json(cls, window_minutes: int | None = None) -> dict[str, Any]:
         """
         Get metrics as JSON-serializable dictionary.
-        
+
         Args:
             window_minutes: Only include metrics from last N minutes (None = all)
-            
+
         Returns:
             Dictionary with metrics
         """
@@ -219,12 +217,12 @@ def track_request(
 ):
     """
     Context manager to track a request with automatic timing.
-    
+
     Args:
         model: Model name
         operation: Operation type (generate, chat, etc.)
         response: Optional GenerateResponse object for detailed metrics
-        
+
     Example:
         >>> with track_request("qwen2.5vl:7b", "generate") as ctx:
         ...     response = client.generate("Hello!")
@@ -256,7 +254,7 @@ def track_request(
 def get_metrics_endpoint() -> dict[str, Any]:
     """
     Get metrics for HTTP endpoint (e.g., /metrics).
-    
+
     Returns:
         JSON-serializable dictionary with current metrics
     """
@@ -291,4 +289,3 @@ if __name__ == "__main__":
     # Get JSON metrics
     json_metrics = MetricsCollector.get_metrics_json()
     print(f"\nJSON metrics: {json_metrics}")
-

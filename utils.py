@@ -5,6 +5,7 @@ Provides service discovery, configuration, and helper functions.
 
 import os
 import sys
+from http import HTTPStatus
 from pathlib import Path
 
 import requests
@@ -56,7 +57,7 @@ def check_service_health(base_url: str | None = None, timeout: int = 5) -> tuple
 
     try:
         response = requests.get(f"{base_url}/api/tags", timeout=timeout)
-        if response.status_code == 200:
+        if response.status_code == HTTPStatus.OK:
             return True, None
         return False, f"Service returned status code {response.status_code}"
     except requests.exceptions.ConnectionError:
@@ -84,11 +85,12 @@ def ensure_service_running(base_url: str | None = None, raise_on_fail: bool = Tr
     is_healthy, error = check_service_health(base_url)
 
     if not is_healthy and raise_on_fail:
-        raise ConnectionError(
+        msg = (
             f"Ollama service is not available. {error}\n"
             "Start the service with: ./scripts/setup_launchd.sh\n"
             "Or manually: ollama serve"
         )
+        raise ConnectionError(msg)
 
     return is_healthy
 
@@ -160,11 +162,12 @@ def import_client():
     """
     client_path = get_client_path()
     if not client_path:
-        raise ImportError(
+        msg = (
             "Cannot find shared_ollama_client.py. "
             "Set SHARED_OLLAMA_SERVICE_PATH environment variable to the project root, "
             "or ensure the file is in your Python path."
         )
+        raise ImportError(msg)
 
     # Add project root to path temporarily
     project_root = client_path.parent
@@ -172,11 +175,12 @@ def import_client():
         sys.path.insert(0, str(project_root))
 
     try:
-        from shared_ollama_client import SharedOllamaClient
-
-        return SharedOllamaClient
+        from shared_ollama_client import SharedOllamaClient  # noqa: PLC0415
     except ImportError as e:
-        raise ImportError(f"Failed to import SharedOllamaClient: {e}")
+        msg = f"Failed to import SharedOllamaClient: {e}"
+        raise ImportError(msg) from e
+    else:
+        return SharedOllamaClient
 
 
 if __name__ == "__main__":

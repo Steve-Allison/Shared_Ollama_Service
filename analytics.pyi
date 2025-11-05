@@ -1,6 +1,5 @@
 """Type stubs for analytics module."""
 
-from collections.abc import Iterator
 from contextlib import AbstractContextManager
 from datetime import datetime
 from pathlib import Path
@@ -8,6 +7,7 @@ from typing import Any
 
 class ProjectMetrics:
     """Metrics aggregated by project."""
+
     project_name: str
     total_requests: int
     successful_requests: int
@@ -21,6 +21,7 @@ class ProjectMetrics:
 
 class TimeSeriesMetrics:
     """Time-series aggregated metrics."""
+
     timestamp: datetime
     requests_count: int
     successful_count: int
@@ -30,6 +31,7 @@ class TimeSeriesMetrics:
 
 class AnalyticsReport:
     """Comprehensive analytics report."""
+
     total_requests: int
     successful_requests: int
     failed_requests: int
@@ -48,7 +50,7 @@ class AnalyticsReport:
 
 class AnalyticsCollector:
     """Enhanced analytics collector with project tracking and time-series analysis."""
-    
+
     @classmethod
     def record_request_with_project(
         cls,
@@ -59,14 +61,12 @@ class AnalyticsCollector:
         project: str | None = ...,
         error: str | None = ...,
     ) -> None: ...
-    
     @classmethod
     def get_analytics(
         cls,
         window_minutes: int | None = ...,
         project: str | None = ...,
     ) -> AnalyticsReport: ...
-    
     @classmethod
     def export_json(
         cls,
@@ -74,7 +74,6 @@ class AnalyticsCollector:
         window_minutes: int | None = ...,
         project: str | None = ...,
     ) -> Path: ...
-    
     @classmethod
     def export_csv(
         cls,
@@ -88,9 +87,7 @@ def track_request_with_project(
     operation: str = ...,
     project: str | None = ...,
 ) -> AbstractContextManager[None]: ...
-
 def get_analytics_json(
     window_minutes: int | None = ...,
     project: str | None = ...,
 ) -> dict[str, Any]: ...
-

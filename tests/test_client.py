@@ -2,15 +2,13 @@
 Unit tests for SharedOllamaClient.
 """
 
-import pytest
-from unittest.mock import Mock, patch
+from unittest.mock import Mock
 
 from shared_ollama_client import (
-    SharedOllamaClient,
-    OllamaConfig,
-    Model,
     GenerateOptions,
     GenerateResponse,
+    Model,
+    OllamaConfig,
 )
 
 
@@ -173,4 +171,3 @@ class TestSharedOllamaClient:
         model_info = mock_client.get_model_info("nonexistent:model")
 
         assert model_info is None
-

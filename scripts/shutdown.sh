@@ -88,88 +88,30 @@ else
 fi
 
 # ============================================================================
-# Step 2: Clean Up Temporary Files
+# Step 2: Run Cleanup Script
 # ============================================================================
 echo ""
-echo -e "${BLUE}[2/5]${NC} Cleaning temporary files..."
-
-TEMP_FILES_CLEANED=0
-
-# Clean up temp pull logs
-if ls /tmp/ollama_pull_*.log 2>/dev/null | grep -q .; then
-    TEMP_COUNT=$(ls /tmp/ollama_pull_*.log 2>/dev/null | wc -l | tr -d ' ')
-    rm -f /tmp/ollama_pull_*.log
-    TEMP_FILES_CLEANED=$((TEMP_FILES_CLEANED + TEMP_COUNT))
-fi
-
-# Clean up any other temp files
-if [ -d "/tmp" ]; then
-    TEMP_OLLAMA_FILES=$(find /tmp -maxdepth 1 -name "*ollama*" -type f 2>/dev/null | wc -l | tr -d ' ' || echo "0")
-    if [ "$TEMP_OLLAMA_FILES" -gt 0 ]; then
-        find /tmp -maxdepth 1 -name "*ollama*" -type f -delete 2>/dev/null || true
-        TEMP_FILES_CLEANED=$((TEMP_FILES_CLEANED + TEMP_OLLAMA_FILES))
-    fi
-fi
-
-if [ $TEMP_FILES_CLEANED -gt 0 ]; then
-    print_status 0 "Cleaned up $TEMP_FILES_CLEANED temporary file(s)"
-else
-    print_status 0 "No temporary files found"
-fi
-
-# ============================================================================
-# Step 3: Clean Up Logs (Optional)
-# ============================================================================
-echo ""
-echo -e "${BLUE}[3/5]${NC} Checking log files..."
+echo -e "${BLUE}[2/5]${NC} Running cleanup script..."
 
 # Get project root directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-LOG_DIR="$PROJECT_ROOT/logs"
+CLEANUP_SCRIPT="$SCRIPT_DIR/cleanup.sh"
 
-# Also check old location for migration
-OLD_LOG_DIR="$HOME/.ollama"
-LOG_FILES=(
-    "$LOG_DIR/ollama.log"
-    "$LOG_DIR/ollama.error.log"
-    "$OLD_LOG_DIR/ollama.log"
-    "$OLD_LOG_DIR/ollama.error.log"
-)
-
-LOG_SIZE=0
-for log_file in "${LOG_FILES[@]}"; do
-    if [ -f "$log_file" ]; then
-        SIZE=$(stat -f%z "$log_file" 2>/dev/null || stat -c%s "$log_file" 2>/dev/null || echo "0")
-        LOG_SIZE=$((LOG_SIZE + SIZE))
-    fi
-done
-
-if [ $LOG_SIZE -gt 0 ]; then
-    LOG_SIZE_MB=$((LOG_SIZE / 1024 / 1024))
-    print_info "Found log files totaling ~${LOG_SIZE_MB} MB"
-    echo ""
-    read -p "Clear log files? (y/N): " -n 1 -r
-    echo ""
-    if [[ $REPLY =~ ^[Yy]$ ]]; then
-        for log_file in "${LOG_FILES[@]}"; do
-            if [ -f "$log_file" ]; then
-                > "$log_file" 2>/dev/null || rm -f "$log_file" 2>/dev/null || true
-            fi
-        done
-        print_status 0 "Log files cleared"
-    else
-        print_info "Log files preserved"
-    fi
+if [ -f "$CLEANUP_SCRIPT" ]; then
+    print_info "Running cleanup script to remove logs, Python caches, and temp files..."
+    "$CLEANUP_SCRIPT"
+    print_status 0 "Cleanup script completed"
 else
-    print_status 0 "No log files found"
+    print_warning "Cleanup script not found at $CLEANUP_SCRIPT"
+    print_info "Skipping cleanup step"
 fi
 
 # ============================================================================
-# Step 4: Check Model Cache (Info Only)
+# Step 3: Check Model Cache (Info Only)
 # ============================================================================
 echo ""
-echo -e "${BLUE}[4/5]${NC} Checking model cache..."
+echo -e "${BLUE}[3/5]${NC} Checking model cache..."
 
 MODEL_DIR="$HOME/.ollama/models"
 if [ -d "$MODEL_DIR" ]; then
@@ -189,10 +131,10 @@ else
 fi
 
 # ============================================================================
-# Step 5: Optional - Remove Launch Agent (Optional)
+# Step 4: Optional - Remove Launch Agent (Optional)
 # ============================================================================
 echo ""
-echo -e "${BLUE}[5/5]${NC} Launch Agent status..."
+echo -e "${BLUE}[4/5]${NC} Launch Agent status..."
 
 if [ -f "$LAUNCHD_PLIST" ]; then
     print_info "Custom launch agent found: $LAUNCHD_PLIST"
@@ -222,18 +164,16 @@ else
 fi
 
 # ============================================================================
-# Final Summary
+# Step 5: Final Summary
 # ============================================================================
+echo ""
+echo -e "${BLUE}[5/5]${NC} Final summary..."
 echo ""
 echo "=================================================="
 echo -e "${BLUE}📊 Shutdown Summary${NC}"
 echo "=================================================="
 echo -e "${GREEN}Service Status:${NC} Stopped"
-echo -e "${GREEN}Temp Files:${NC} Cleaned"
-if [ $LOG_SIZE -gt 0 ]; then
-    echo -e "${GREEN}Logs:${NC} Preserved (${LOG_SIZE_MB} MB)"
-    echo -e "${BLUE}  Location:${NC} $LOG_DIR/"
-fi
+echo -e "${GREEN}Cleanup:${NC} Completed (logs, caches, temp files)"
 echo -e "${GREEN}Models:${NC} Preserved"
 echo ""
 

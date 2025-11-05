@@ -2,10 +2,11 @@
 Pytest configuration and fixtures for Shared Ollama Service tests.
 """
 
-import pytest
 from unittest.mock import Mock, patch
 
-from shared_ollama_client import SharedOllamaClient, OllamaConfig
+import pytest
+
+from shared_ollama_client import OllamaConfig, SharedOllamaClient
 
 
 @pytest.fixture
@@ -103,4 +104,3 @@ def sample_chat_response():
         "message": {"role": "assistant", "content": "Hello! How can I help you today?"},
         "done": True,
     }
-

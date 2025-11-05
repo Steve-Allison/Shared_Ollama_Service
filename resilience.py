@@ -16,18 +16,21 @@ Usage:
 """
 
 import logging
+import random
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 import requests
 
+from shared_ollama_client import OllamaConfig, SharedOllamaClient
+
 logger = logging.getLogger(__name__)
 
 
-class CircuitState(str, Enum):
+class CircuitState(StrEnum):
     """Circuit breaker states."""
 
     CLOSED = "closed"  # Normal operation
@@ -168,16 +171,14 @@ def exponential_backoff_retry[T](
 
                 # Add jitter if enabled
                 if config.jitter:
-                    import random
-
-                    delay = delay * (0.5 + random.random() * 0.5)
+                    delay *= 0.5 + random.random() * 0.5  # noqa: S311
 
                 logger.warning(
                     f"Retry attempt {attempt + 1}/{config.max_retries} after {delay:.2f}s: {e}"
                 )
                 time.sleep(delay)
             else:
-                logger.error(f"All {config.max_retries} retry attempts failed")
+                logger.exception(f"All {config.max_retries} retry attempts failed")
 
     # All retries exhausted
     raise last_exception
@@ -212,8 +213,6 @@ class ResilientOllamaClient:
             retry_config: Retry configuration
             circuit_breaker_config: Circuit breaker configuration
         """
-        from shared_ollama_client import OllamaConfig, SharedOllamaClient
-
         self.base_url = base_url
         self.retry_config = retry_config or RetryConfig()
         self.circuit_breaker = CircuitBreaker(circuit_breaker_config)
@@ -233,7 +232,8 @@ class ResilientOllamaClient:
         """
         # Check circuit breaker
         if not self.circuit_breaker.can_proceed():
-            raise ConnectionError("Circuit breaker is OPEN - service is unavailable")
+            msg = "Circuit breaker is OPEN - service is unavailable"
+            raise ConnectionError(msg)
 
         # Execute with retry
         try:
@@ -242,10 +242,11 @@ class ResilientOllamaClient:
                 config=self.retry_config,
             )
             self.circuit_breaker.record_success()
-            return result
         except Exception:
             self.circuit_breaker.record_failure()
             raise
+        else:
+            return result
 
     def generate(self, prompt: str, model: str | None = None, **kwargs) -> Any:
         """

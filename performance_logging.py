@@ -10,11 +10,11 @@ Captures and logs Ollama's internal performance metrics including:
 
 Usage:
     from performance_logging import track_performance, get_performance_stats
-    
+
     # Track with detailed metrics
     with track_performance("qwen2.5vl:7b", "generate"):
         response = client.generate("Hello!")
-    
+
     # Get performance statistics
     stats = get_performance_stats()
     print(f"Avg tokens/sec: {stats.avg_tokens_per_second}")
@@ -25,10 +25,10 @@ import logging
 import time
 from collections import defaultdict
 from contextlib import contextmanager
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
 from shared_ollama_client import GenerateResponse
 
@@ -53,12 +53,12 @@ class DetailedPerformanceMetrics:
     model: str
     operation: str
     timestamp: datetime
-    
+
     # Overall metrics
     total_latency_ms: float
     success: bool
     error: str | None = None
-    
+
     # Ollama internal metrics (from GenerateResponse)
     load_duration_ns: int | None = None
     prompt_eval_count: int | None = None
@@ -66,14 +66,14 @@ class DetailedPerformanceMetrics:
     eval_count: int | None = None
     eval_duration_ns: int | None = None
     total_duration_ns: int | None = None
-    
+
     # Calculated metrics
     load_time_ms: float | None = None
     prompt_eval_time_ms: float | None = None
     generation_time_ms: float | None = None
     tokens_per_second: float | None = None
     prompt_tokens_per_second: float | None = None
-    
+
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
         return {
@@ -84,20 +84,28 @@ class DetailedPerformanceMetrics:
             "success": self.success,
             "error": self.error,
             "load_time_ms": round(self.load_time_ms, 2) if self.load_time_ms else None,
-            "prompt_eval_time_ms": round(self.prompt_eval_time_ms, 2) if self.prompt_eval_time_ms else None,
-            "generation_time_ms": round(self.generation_time_ms, 2) if self.generation_time_ms else None,
+            "prompt_eval_time_ms": round(self.prompt_eval_time_ms, 2)
+            if self.prompt_eval_time_ms
+            else None,
+            "generation_time_ms": round(self.generation_time_ms, 2)
+            if self.generation_time_ms
+            else None,
             "prompt_tokens": self.prompt_eval_count,
             "generated_tokens": self.eval_count,
-            "tokens_per_second": round(self.tokens_per_second, 2) if self.tokens_per_second else None,
-            "prompt_tokens_per_second": round(self.prompt_tokens_per_second, 2) if self.prompt_tokens_per_second else None,
+            "tokens_per_second": round(self.tokens_per_second, 2)
+            if self.tokens_per_second
+            else None,
+            "prompt_tokens_per_second": round(self.prompt_tokens_per_second, 2)
+            if self.prompt_tokens_per_second
+            else None,
         }
 
 
 class PerformanceCollector:
     """Collects detailed performance metrics for Ollama requests."""
 
-    _metrics: list[DetailedPerformanceMetrics] = []
-    _max_metrics: int = 10000  # Keep last 10k requests
+    _metrics: ClassVar[list[DetailedPerformanceMetrics]] = []
+    _max_metrics: ClassVar[int] = 10000  # Keep last 10k requests
 
     @classmethod
     def record_performance(
@@ -111,7 +119,7 @@ class PerformanceCollector:
     ):
         """
         Record detailed performance metrics.
-        
+
         Args:
             model: Model name used
             operation: Operation type
@@ -128,7 +136,7 @@ class PerformanceCollector:
             success=success,
             error=error,
         )
-        
+
         # Extract Ollama internal metrics if available
         if response and success:
             metric.load_duration_ns = response.load_duration
@@ -137,39 +145,39 @@ class PerformanceCollector:
             metric.eval_count = response.eval_count
             metric.eval_duration_ns = response.eval_duration
             metric.total_duration_ns = response.total_duration
-            
+
             # Calculate derived metrics
             if metric.load_duration_ns:
                 metric.load_time_ms = metric.load_duration_ns / 1_000_000
-            
+
             if metric.prompt_eval_duration_ns:
                 metric.prompt_eval_time_ms = metric.prompt_eval_duration_ns / 1_000_000
-            
+
             if metric.eval_duration_ns:
                 metric.generation_time_ms = metric.eval_duration_ns / 1_000_000
-            
+
             # Calculate tokens per second
             if metric.eval_duration_ns and metric.eval_count:
                 # Convert nanoseconds to seconds
                 eval_seconds = metric.eval_duration_ns / 1_000_000_000
                 if eval_seconds > 0:
                     metric.tokens_per_second = metric.eval_count / eval_seconds
-            
+
             if metric.prompt_eval_duration_ns and metric.prompt_eval_count:
                 prompt_seconds = metric.prompt_eval_duration_ns / 1_000_000_000
                 if prompt_seconds > 0:
                     metric.prompt_tokens_per_second = metric.prompt_eval_count / prompt_seconds
-        
+
         # Store metric
         cls._metrics.append(metric)
-        
+
         # Prune old metrics
         if len(cls._metrics) > cls._max_metrics:
             cls._metrics = cls._metrics[-cls._max_metrics :]
-        
+
         # Log to JSON Lines file
         performance_logger.info(json.dumps(metric.to_dict()))
-        
+
         # Also log summary to standard logger
         if metric.tokens_per_second:
             logging.info(
@@ -182,31 +190,43 @@ class PerformanceCollector:
         """Get aggregated performance statistics."""
         if not cls._metrics:
             return {}
-        
+
         successful = [m for m in cls._metrics if m.success and m.tokens_per_second]
-        
+
         if not successful:
             return {}
-        
+
         # Aggregate statistics
         avg_tokens_per_second = sum(m.tokens_per_second for m in successful) / len(successful)
-        avg_load_time = sum(m.load_time_ms for m in successful if m.load_time_ms) / len([m for m in successful if m.load_time_ms])
-        avg_generation_time = sum(m.generation_time_ms for m in successful if m.generation_time_ms) / len([m for m in successful if m.generation_time_ms])
-        
+        avg_load_time = sum(m.load_time_ms for m in successful if m.load_time_ms) / len([
+            m for m in successful if m.load_time_ms
+        ])
+        avg_generation_time = sum(
+            m.generation_time_ms for m in successful if m.generation_time_ms
+        ) / len([m for m in successful if m.generation_time_ms])
+
         # By model
         by_model: dict[str, list[DetailedPerformanceMetrics]] = defaultdict(list)
         for m in successful:
             by_model[m.model].append(m)
-        
+
         model_stats = {}
         for model, metrics in by_model.items():
             model_stats[model] = {
                 "avg_tokens_per_second": sum(m.tokens_per_second for m in metrics) / len(metrics),
-                "avg_load_time_ms": sum(m.load_time_ms for m in metrics if m.load_time_ms) / len([m for m in metrics if m.load_time_ms]) if any(m.load_time_ms for m in metrics) else 0,
-                "avg_generation_time_ms": sum(m.generation_time_ms for m in metrics if m.generation_time_ms) / len([m for m in metrics if m.generation_time_ms]) if any(m.generation_time_ms for m in metrics) else 0,
+                "avg_load_time_ms": sum(m.load_time_ms for m in metrics if m.load_time_ms)
+                / len([m for m in metrics if m.load_time_ms])
+                if any(m.load_time_ms for m in metrics)
+                else 0,
+                "avg_generation_time_ms": sum(
+                    m.generation_time_ms for m in metrics if m.generation_time_ms
+                )
+                / len([m for m in metrics if m.generation_time_ms])
+                if any(m.generation_time_ms for m in metrics)
+                else 0,
                 "request_count": len(metrics),
             }
-        
+
         return {
             "avg_tokens_per_second": round(avg_tokens_per_second, 2),
             "avg_load_time_ms": round(avg_load_time, 2) if avg_load_time else 0,
@@ -229,12 +249,12 @@ def track_performance(
 ):
     """
     Context manager to track request with detailed Ollama performance metrics.
-    
+
     Args:
         model: Model name
         operation: Operation type
         response: GenerateResponse object (optional, for detailed metrics)
-        
+
     Example:
         >>> response = client.generate("Hello!")
         >>> with track_performance("qwen2.5vl:7b", "generate", response=response):
@@ -243,7 +263,7 @@ def track_performance(
     start_time = time.time()
     success = False
     error = None
-    
+
     try:
         yield
         success = True
@@ -271,15 +291,15 @@ if __name__ == "__main__":
     # Example usage
     print("Performance Logging Example")
     print("=" * 40)
-    
+
     # Simulate some requests
-    from shared_ollama_client import SharedOllamaClient, GenerateResponse
-    
+    from shared_ollama_client import GenerateResponse, SharedOllamaClient
+
     client = SharedOllamaClient()
-    
+
     try:
         response = client.generate("Hello!")
-        
+
         # Track with detailed metrics
         PerformanceCollector.record_performance(
             model="qwen2.5vl:7b",
@@ -288,15 +308,14 @@ if __name__ == "__main__":
             success=True,
             response=response,
         )
-        
+
         # Get stats
         stats = get_performance_stats()
-        print(f"\nPerformance Statistics:")
+        print("\nPerformance Statistics:")
         print(f"  Avg tokens/sec: {stats.get('avg_tokens_per_second', 'N/A')}")
         print(f"  Avg load time: {stats.get('avg_load_time_ms', 'N/A')}ms")
         print(f"  Avg generation time: {stats.get('avg_generation_time_ms', 'N/A')}ms")
-        print(f"\n✓ Performance metrics logged to logs/performance.jsonl")
-        
+        print("\n✓ Performance metrics logged to logs/performance.jsonl")
+
     except Exception as e:
         print(f"Error: {e}")
-

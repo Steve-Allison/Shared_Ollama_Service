@@ -212,25 +212,33 @@ class MetricsCollector:
 
 
 @contextmanager
-def track_request(model: str, operation: str = "generate"):
+def track_request(
+    model: str,
+    operation: str = "generate",
+    response: Any = None,
+):
     """
     Context manager to track a request with automatic timing.
     
     Args:
         model: Model name
         operation: Operation type (generate, chat, etc.)
+        response: Optional GenerateResponse object for detailed metrics
         
     Example:
-        >>> with track_request("qwen2.5vl:7b", "generate"):
+        >>> with track_request("qwen2.5vl:7b", "generate") as ctx:
         ...     response = client.generate("Hello!")
+        ...     ctx.response = response  # For detailed metrics
     """
     start_time = time.time()
     success = False
     error = None
+    ctx = type("Context", (), {"response": None})()
 
     try:
-        yield
+        yield ctx
         success = True
+        response = ctx.response if hasattr(ctx, "response") else response
     except Exception as e:
         error = str(e)
         raise

@@ -46,7 +46,8 @@ class AsyncOllamaConfig:
 
     base_url: str = "http://localhost:11434"
     default_model: str = Model.QWEN25_VL_7B.value
-    timeout: int = 60
+    timeout: int = 300  # 5 minutes for long generations
+    health_check_timeout: int = 5  # 5 seconds for quick health checks
     verbose: bool = False
     max_retries: int = 3
     retry_delay: float = 1.0
@@ -100,7 +101,16 @@ class AsyncSharedOllamaClient:
         if self.client is None:
             self.client = httpx.AsyncClient(
                 base_url=self.config.base_url,
-                timeout=self.config.timeout,
+                timeout=httpx.Timeout(
+                    connect=5.0,
+                    read=self.config.timeout,
+                    write=5.0,
+                    pool=5.0,
+                ),
+                limits=httpx.Limits(
+                    max_keepalive_connections=10,
+                    max_connections=20,
+                ),
             )
             if self._needs_verification:
                 await self._verify_connection()
@@ -120,7 +130,10 @@ class AsyncSharedOllamaClient:
         
         for attempt in range(retries):
             try:
-                response = await self.client.get("/api/tags", timeout=5)
+                response = await self.client.get(
+                    "/api/tags",
+                    timeout=self.config.health_check_timeout,
+                )
                 response.raise_for_status()
                 logger.info("Connected to Ollama service")
                 self._needs_verification = False
@@ -153,7 +166,11 @@ class AsyncSharedOllamaClient:
             List of model information dictionaries
         """
         await self._ensure_client()
-        response = await self.client.get("/api/tags", timeout=self.config.timeout)
+        # Quick API call, use health_check_timeout
+        response = await self.client.get(
+            "/api/tags",
+            timeout=self.config.health_check_timeout,
+        )
         response.raise_for_status()
         data = response.json()
         return data.get("models", [])
@@ -220,8 +237,7 @@ class AsyncSharedOllamaClient:
         response = await self.client.post(
             "/api/generate",
             json=payload,
-            timeout=self.config.timeout,
-        )
+        )  # Timeout configured in client initialization
         response.raise_for_status()
         
         data = response.json()

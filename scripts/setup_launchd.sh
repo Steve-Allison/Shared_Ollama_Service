@@ -42,6 +42,19 @@ LOG_DIR="$PROJECT_ROOT/logs"
 mkdir -p "$LOG_DIR"
 echo -e "${GREEN}✓ Logs directory: $LOG_DIR${NC}"
 
+# Calculate optimal memory limit if not set
+if [ -z "$OLLAMA_MAX_RAM" ]; then
+    echo ""
+    echo -e "${BLUE}Calculating optimal memory limit...${NC}"
+    if [ -f "$PROJECT_ROOT/scripts/calculate_memory_limit.sh" ]; then
+        CALCULATED_RAM=$("$PROJECT_ROOT/scripts/calculate_memory_limit.sh" 2>/dev/null | grep "OLLAMA_MAX_RAM=" | cut -d'=' -f2)
+        if [ -n "$CALCULATED_RAM" ]; then
+            OLLAMA_MAX_RAM="$CALCULATED_RAM"
+            echo -e "${GREEN}✓ Auto-calculated OLLAMA_MAX_RAM: ${OLLAMA_MAX_RAM}${NC}"
+        fi
+    fi
+fi
+
 # Create launchd plist
 LAUNCHD_DIR="$HOME/Library/LaunchAgents"
 PLIST_FILE="$LAUNCHD_DIR/com.ollama.service.plist"
@@ -80,7 +93,9 @@ cat > "$PLIST_FILE" << EOF
         <key>OLLAMA_METAL</key>
         <string>1</string>
         <key>OLLAMA_NUM_GPU</key>
-        <string>-1</string>
+        <string>-1</string>$(if [ -n "$OLLAMA_MAX_RAM" ]; then echo "
+        <key>OLLAMA_MAX_RAM</key>
+        <string>$OLLAMA_MAX_RAM</string>"; fi)
     </dict>
 </dict>
 </plist>

@@ -37,7 +37,8 @@ class OllamaConfig:
 
     base_url: str = "http://localhost:11434"
     default_model: str = Model.QWEN25_VL_7B.value
-    timeout: int = 60
+    timeout: int = 300  # 5 minutes for long generations (was 60s)
+    health_check_timeout: int = 5  # 5 seconds for quick health checks
     verbose: bool = False
 
 
@@ -92,6 +93,14 @@ class SharedOllamaClient:
         """
         self.config = config or OllamaConfig()
         self.session = requests.Session()
+        # Configure connection pooling for better performance
+        adapter = requests.adapters.HTTPAdapter(
+            pool_connections=10,
+            pool_maxsize=10,
+            max_retries=3,
+        )
+        self.session.mount("http://", adapter)
+        self.session.mount("https://", adapter)
         if verify_on_init:
             self._verify_connection()
 
@@ -105,7 +114,10 @@ class SharedOllamaClient:
         """
         for attempt in range(retries):
             try:
-                response = self.session.get(f"{self.config.base_url}/api/tags", timeout=5)
+                response = self.session.get(
+                    f"{self.config.base_url}/api/tags",
+                    timeout=self.config.health_check_timeout,
+                )
                 response.raise_for_status()
                 logger.info("Connected to Ollama service")
                 return

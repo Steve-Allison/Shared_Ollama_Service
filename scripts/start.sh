@@ -44,6 +44,18 @@ export OLLAMA_NUM_GPU=-1       # Use all available Metal GPU cores (-1 = all)
 export OLLAMA_HOST="${OLLAMA_HOST:-0.0.0.0:11434}"
 export OLLAMA_KEEP_ALIVE="${OLLAMA_KEEP_ALIVE:-5m}"
 
+# Auto-calculate memory limit if not set
+if [ -z "$OLLAMA_MAX_RAM" ]; then
+    # Try to calculate optimal memory limit
+    if [ -f "$PROJECT_ROOT/scripts/calculate_memory_limit.sh" ]; then
+        CALCULATED_RAM=$("$PROJECT_ROOT/scripts/calculate_memory_limit.sh" 2>/dev/null | grep "OLLAMA_MAX_RAM=" | cut -d'=' -f2)
+        if [ -n "$CALCULATED_RAM" ]; then
+            export OLLAMA_MAX_RAM="$CALCULATED_RAM"
+            echo -e "${GREEN}✓ Auto-calculated OLLAMA_MAX_RAM: ${OLLAMA_MAX_RAM}${NC}"
+        fi
+    fi
+fi
+
 echo -e "${BLUE}Configuration:${NC}"
 echo "  ✓ Metal/MPS GPU: Enabled (OLLAMA_METAL=1)"
 echo "  ✓ GPU Cores: All available (OLLAMA_NUM_GPU=-1)"

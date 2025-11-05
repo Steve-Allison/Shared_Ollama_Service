@@ -551,13 +551,37 @@ tail -f ./logs/ollama.error.log
 ollama serve
 ```
 
-### Metrics
+### Metrics & Performance
 
-Monitor with:
+**Request Metrics** (via monitoring):
+- Overall latency (p50, p95, p99)
+- Success/failure rates
+- Usage by model and operation
+
+**Ollama Service Logs**:
+- HTTP request logs: `logs/ollama.log`
+- Error logs: `logs/ollama.error.log`
+- Performance logs: `logs/performance.jsonl` (if using performance tracking)
+
+**Performance Analysis**:
+```bash
+# View performance report
+python scripts/performance_report.py
+
+# Filter by model
+python scripts/performance_report.py --model qwen2.5vl:7b
+
+# Last hour
+python scripts/performance_report.py --window 60
+```
+
+**Quick Monitoring**:
 - **Quick status**: `./scripts/status.sh` (fast overview)
 - **Health checks**: `./scripts/health_check.sh` (comprehensive)
 - **Model status**: `curl http://localhost:11434/api/tags`
 - **Resource usage**: `top -pid $(pgrep ollama)` or Activity Monitor
+
+**Note**: See `PERFORMANCE_MONITORING.md` for detailed performance tracking capabilities.
 
 ## Cost and Resource Management
 

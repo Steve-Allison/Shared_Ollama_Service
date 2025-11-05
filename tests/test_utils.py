@@ -72,7 +72,7 @@ class TestCheckServiceHealth:
         is_healthy, error = check_service_health()
 
         assert is_healthy is False
-        assert "status code 500" in error
+        assert error is not None and "status code 500" in error
 
     @patch("utils.requests.get")
     def test_connection_error(self, mock_get):
@@ -82,7 +82,7 @@ class TestCheckServiceHealth:
         is_healthy, error = check_service_health()
 
         assert is_healthy is False
-        assert "Cannot connect" in error
+        assert error is not None and "Cannot connect" in error
 
     @patch("utils.requests.get")
     def test_timeout_error(self, mock_get):
@@ -92,7 +92,7 @@ class TestCheckServiceHealth:
         is_healthy, error = check_service_health()
 
         assert is_healthy is False
-        assert "timed out" in error
+        assert error is not None and "timed out" in error
 
 
 class TestEnsureServiceRunning:

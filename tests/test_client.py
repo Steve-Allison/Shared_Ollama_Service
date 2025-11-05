@@ -19,7 +19,7 @@ class TestOllamaConfig:
         """Test default configuration."""
         config = OllamaConfig()
         assert config.base_url == "http://localhost:11434"
-        assert config.default_model == Model.QWEN25_VL_7B.value
+        assert config.default_model == Model.QWEN25_VL_7B
         assert config.timeout == 60
         assert config.verbose is False
 
@@ -27,12 +27,12 @@ class TestOllamaConfig:
         """Test custom configuration."""
         config = OllamaConfig(
             base_url="http://custom:11434",
-            default_model=Model.QWEN25_14B.value,
+            default_model=Model.QWEN25_14B,
             timeout=120,
             verbose=True,
         )
         assert config.base_url == "http://custom:11434"
-        assert config.default_model == Model.QWEN25_14B.value
+        assert config.default_model == Model.QWEN25_14B
         assert config.timeout == 120
         assert config.verbose is True
 

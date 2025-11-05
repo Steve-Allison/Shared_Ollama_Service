@@ -44,7 +44,7 @@ class AsyncOllamaConfig:
     """Configuration for Async Ollama client."""
 
     base_url: str = "http://localhost:11434"
-    default_model: str = Model.QWEN25_VL_7B.value
+    default_model: str = Model.QWEN25_VL_7B
     timeout: int = 300  # 5 minutes for long generations
     health_check_timeout: int = 5  # 5 seconds for quick health checks
     verbose: bool = False
@@ -89,7 +89,7 @@ class AsyncSharedOllamaClient:
         await self._ensure_client()
         return self
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
+    async def __aexit__(self, exc_type: type[BaseException] | None, exc_val: BaseException | None, exc_tb: Any) -> None:
         """Async context manager exit."""
         await self.close()
 
@@ -127,6 +127,9 @@ class AsyncSharedOllamaClient:
 
         await self._ensure_client()
 
+        if self.client is None:
+            raise RuntimeError("Client not initialized")
+        
         for attempt in range(retries):
             try:
                 response = await self.client.get(
@@ -166,6 +169,9 @@ class AsyncSharedOllamaClient:
             List of model information dictionaries
         """
         await self._ensure_client()
+        if self.client is None:
+            raise RuntimeError("Client not initialized")
+        
         # Quick API call, use health_check_timeout
         response = await self.client.get(
             "/api/tags",
@@ -204,10 +210,13 @@ class AsyncSharedOllamaClient:
             >>> asyncio.run(main())
         """
         await self._ensure_client()
-        model = model or self.config.default_model
+        if self.client is None:
+            raise RuntimeError("Client not initialized")
+        
+        model_str = str(model or self.config.default_model)
 
-        payload = {
-            "model": model,
+        payload: dict[str, Any] = {
+            "model": model_str,
             "prompt": prompt,
             "stream": stream,
         }
@@ -216,7 +225,7 @@ class AsyncSharedOllamaClient:
             payload["system"] = system
 
         if options:
-            payload["options"] = {
+            options_dict: dict[str, Any] = {
                 "temperature": options.temperature,
                 "top_p": options.top_p,
                 "top_k": options.top_k,
@@ -224,15 +233,17 @@ class AsyncSharedOllamaClient:
             }
 
             if options.max_tokens:
-                payload["options"]["num_predict"] = options.max_tokens
+                options_dict["num_predict"] = options.max_tokens
 
             if options.seed:
-                payload["options"]["seed"] = options.seed
+                options_dict["seed"] = options.seed
 
             if options.stop:
-                payload["options"]["stop"] = options.stop
+                options_dict["stop"] = options.stop
 
-        logger.info(f"Generating with model {model}")
+            payload["options"] = options_dict
+
+        logger.info(f"Generating with model {model_str}")
 
         response = await self.client.post(
             "/api/generate",
@@ -280,10 +291,13 @@ class AsyncSharedOllamaClient:
             >>> asyncio.run(main())
         """
         await self._ensure_client()
-        model = model or self.config.default_model
+        if self.client is None:
+            raise RuntimeError("Client not initialized")
+        
+        model_str = str(model or self.config.default_model)
 
-        payload = {
-            "model": model,
+        payload: dict[str, Any] = {
+            "model": model_str,
             "messages": messages,
             "stream": stream,
         }
@@ -306,6 +320,8 @@ class AsyncSharedOllamaClient:
         """
         try:
             await self._ensure_client()
+            if self.client is None:
+                return False
             response = await self.client.get("/api/tags", timeout=5)
         except Exception:
             return False

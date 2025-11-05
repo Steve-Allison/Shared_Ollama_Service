@@ -138,7 +138,7 @@ class AnalyticsCollector:
         # Store project metadata if provided
         if project:
             # Get the last metric (just added)
-            metrics = MetricsCollector._metrics
+            metrics = getattr(MetricsCollector, "_metrics", [])
             if metrics:
                 # Store project association
                 cls._project_metadata[model] = project  # Simplified mapping
@@ -162,15 +162,16 @@ class AnalyticsCollector:
         # Get base metrics
         base_metrics = MetricsCollector.get_metrics(window_minutes)
 
-        if not MetricsCollector._metrics:
+        all_metrics = getattr(MetricsCollector, "_metrics", [])
+        if not all_metrics:
             return AnalyticsReport()
 
         # Filter metrics by time window and project
         if window_minutes:
             cutoff = datetime.now() - timedelta(minutes=window_minutes)
-            metrics = [m for m in MetricsCollector._metrics if m.timestamp >= cutoff]
+            metrics = [m for m in all_metrics if m.timestamp >= cutoff]
         else:
-            metrics = MetricsCollector._metrics
+            metrics = all_metrics
 
         # Filter by project if specified
         if project:
@@ -359,7 +360,7 @@ class AnalyticsCollector:
             ])
 
             # Write data rows
-            metrics = MetricsCollector._metrics
+            metrics = getattr(MetricsCollector, "_metrics", [])
             if window_minutes:
                 cutoff = datetime.now() - timedelta(minutes=window_minutes)
                 metrics = [m for m in metrics if m.timestamp >= cutoff]
@@ -453,7 +454,7 @@ def get_analytics_json(
             return [convert_datetime(item) for item in obj]
         return obj
 
-    return convert_datetime(data)
+    return convert_datetime(data)  # type: ignore[return-value]
 
 
 if __name__ == "__main__":

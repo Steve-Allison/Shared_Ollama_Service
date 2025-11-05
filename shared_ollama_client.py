@@ -19,6 +19,7 @@ from http import HTTPStatus
 from typing import Any
 
 import requests
+from requests.adapters import HTTPAdapter
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -37,7 +38,7 @@ class OllamaConfig:
     """Configuration for Ollama client."""
 
     base_url: str = "http://localhost:11434"
-    default_model: str = Model.QWEN25_VL_7B.value
+    default_model: str = Model.QWEN25_VL_7B
     timeout: int = 300  # 5 minutes for long generations (was 60s)
     health_check_timeout: int = 5  # 5 seconds for quick health checks
     verbose: bool = False
@@ -95,7 +96,7 @@ class SharedOllamaClient:
         self.config = config or OllamaConfig()
         self.session = requests.Session()
         # Configure connection pooling for better performance
-        adapter = requests.adapters.HTTPAdapter(
+        adapter = HTTPAdapter(
             pool_connections=10,
             pool_maxsize=10,
             max_retries=3,
@@ -175,15 +176,15 @@ class SharedOllamaClient:
             >>> response = client.generate("Why is the sky blue?", model=Model.QWEN25_VL_7B)
             >>> print(response.text)
         """
-        model = model or self.config.default_model
+        model_str = str(model or self.config.default_model)
 
-        payload = {"model": model, "prompt": prompt, "stream": stream}
+        payload: dict[str, Any] = {"model": model_str, "prompt": prompt, "stream": stream}
 
         if system:
             payload["system"] = system
 
         if options:
-            payload["options"] = {
+            options_dict: dict[str, Any] = {
                 "temperature": options.temperature,
                 "top_p": options.top_p,
                 "top_k": options.top_k,
@@ -191,15 +192,17 @@ class SharedOllamaClient:
             }
 
             if options.max_tokens:
-                payload["options"]["num_predict"] = options.max_tokens
+                options_dict["num_predict"] = options.max_tokens
 
             if options.seed:
-                payload["options"]["seed"] = options.seed
+                options_dict["seed"] = options.seed
 
             if options.stop:
-                payload["options"]["stop"] = options.stop
+                options_dict["stop"] = options.stop
 
-        logger.info(f"Generating with model {model}")
+            payload["options"] = options_dict
+
+        logger.info(f"Generating with model {model_str}")
 
         response = self.session.post(
             f"{self.config.base_url}/api/generate", json=payload, timeout=self.config.timeout

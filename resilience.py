@@ -154,7 +154,7 @@ def exponential_backoff_retry[T](
         Last exception if all retries fail
     """
     config = config or RetryConfig()
-    last_exception = None
+    last_exception: Exception | None = None
 
     for attempt in range(config.max_retries):
         try:
@@ -181,6 +181,8 @@ def exponential_backoff_retry[T](
                 logger.exception(f"All {config.max_retries} retry attempts failed")
 
     # All retries exhausted
+    if last_exception is None:
+        raise RuntimeError("All retries exhausted but no exception was captured")
     raise last_exception
 
 
@@ -218,7 +220,7 @@ class ResilientOllamaClient:
         self.circuit_breaker = CircuitBreaker(circuit_breaker_config)
         self.client = SharedOllamaClient(OllamaConfig(base_url=base_url), verify_on_init=False)
 
-    def _execute_with_resilience(self, operation: Callable, *args, **kwargs) -> Any:
+    def _execute_with_resilience(self, operation: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
         """
         Execute operation with resilience features.
 
@@ -248,7 +250,7 @@ class ResilientOllamaClient:
         else:
             return result
 
-    def generate(self, prompt: str, model: str | None = None, **kwargs) -> Any:
+    def generate(self, prompt: str, model: str | None = None, **kwargs: Any) -> Any:
         """
         Generate text with resilience.
 
@@ -262,7 +264,7 @@ class ResilientOllamaClient:
         """
         return self._execute_with_resilience(self.client.generate, prompt, model=model, **kwargs)
 
-    def chat(self, messages: list[dict[str, str]], model: str | None = None, **kwargs) -> Any:
+    def chat(self, messages: list[dict[str, str]], model: str | None = None, **kwargs: Any) -> Any:
         """
         Chat with model with resilience.
 

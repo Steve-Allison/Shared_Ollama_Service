@@ -236,7 +236,7 @@ def track_request(
     try:
         yield ctx
         success = True
-        response = ctx.response if hasattr(ctx, "response") else response
+        response = getattr(ctx, "response", None)
     except Exception as e:
         error = str(e)
         raise

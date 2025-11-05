@@ -197,13 +197,14 @@ class PerformanceCollector:
             return {}
 
         # Aggregate statistics
-        avg_tokens_per_second = sum(m.tokens_per_second for m in successful) / len(successful)
-        avg_load_time = sum(m.load_time_ms for m in successful if m.load_time_ms) / len([
-            m for m in successful if m.load_time_ms
-        ])
-        avg_generation_time = sum(
-            m.generation_time_ms for m in successful if m.generation_time_ms
-        ) / len([m for m in successful if m.generation_time_ms])
+        tokens_per_second_values = [m.tokens_per_second for m in successful if m.tokens_per_second is not None]
+        avg_tokens_per_second = sum(tokens_per_second_values) / len(tokens_per_second_values) if tokens_per_second_values else 0.0
+        
+        load_times = [m.load_time_ms for m in successful if m.load_time_ms is not None]
+        avg_load_time = sum(load_times) / len(load_times) if load_times else 0.0
+        
+        generation_times = [m.generation_time_ms for m in successful if m.generation_time_ms is not None]
+        avg_generation_time = sum(generation_times) / len(generation_times) if generation_times else 0.0
 
         # By model
         by_model: dict[str, list[DetailedPerformanceMetrics]] = defaultdict(list)
@@ -213,17 +214,26 @@ class PerformanceCollector:
         model_stats = {}
         for model, metrics in by_model.items():
             model_stats[model] = {
-                "avg_tokens_per_second": sum(m.tokens_per_second for m in metrics) / len(metrics),
-                "avg_load_time_ms": sum(m.load_time_ms for m in metrics if m.load_time_ms)
-                / len([m for m in metrics if m.load_time_ms])
-                if any(m.load_time_ms for m in metrics)
-                else 0,
-                "avg_generation_time_ms": sum(
-                    m.generation_time_ms for m in metrics if m.generation_time_ms
+                "avg_tokens_per_second": (
+                    sum(m.tokens_per_second for m in metrics if m.tokens_per_second is not None)
+                    / len([m for m in metrics if m.tokens_per_second is not None])
+                    if any(m.tokens_per_second for m in metrics)
+                    else 0.0
+                ),
+                "avg_load_time_ms": (
+                    sum(m.load_time_ms for m in metrics if m.load_time_ms is not None)
+                    / len([m for m in metrics if m.load_time_ms is not None])
+                    if any(m.load_time_ms for m in metrics)
+                    else 0.0
                 )
-                / len([m for m in metrics if m.generation_time_ms])
-                if any(m.generation_time_ms for m in metrics)
-                else 0,
+                if any(m.load_time_ms for m in metrics)
+                else 0.0,
+                "avg_generation_time_ms": (
+                    sum(m.generation_time_ms for m in metrics if m.generation_time_ms is not None)
+                    / len([m for m in metrics if m.generation_time_ms is not None])
+                    if any(m.generation_time_ms for m in metrics)
+                    else 0.0
+                ),
                 "request_count": len(metrics),
             }
 

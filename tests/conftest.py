@@ -18,7 +18,7 @@ def mock_ollama_url():
 @pytest.fixture
 def ollama_config(mock_ollama_url):
     """Create OllamaConfig for testing."""
-    return OllamaConfig(base_url=mock_ollama_url, verify_on_init=False)
+    return OllamaConfig(base_url=mock_ollama_url)
 
 
 @pytest.fixture

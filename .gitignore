@@ -8,13 +8,37 @@ __pycache__/
 *$py.class
 *.so
 .Python
+build/
+dist/
+*.egg-info/
+.eggs/
 venv/
 env/
 ENV/
-.venv
+.venv/
 
-# Docker
-docker-compose.override.yml
+# Ruff
+.ruff_cache/
+
+# Type checking
+.pyright/
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+*.cover
+.hypothesis/
+.tox/
+.pytest_cache/
+
+# Build artifacts
+*.egg
+*.whl
+*.tar.gz
 
 # IDE
 .vscode/
@@ -28,10 +52,20 @@ docker-compose.override.yml
 *.log
 logs/
 
-# Model data (Docker volumes)
+# Model data
 ollama_data/
 
 # OS
 .DS_Store
 Thumbs.db
+
+# Temporary files
+*.tmp
+*.bak
+*.swp
+*~
+
+# Analytics exports (optional - comment out if you want to track)
+analytics.json
+analytics.csv
 

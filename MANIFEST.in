@@ -1,0 +1,12 @@
+# Include type stubs
+include *.pyi
+recursive-include . *.pyi
+
+# Include documentation
+include README.md
+include LICENSE
+recursive-include docs *.md *.yaml
+
+# Include examples
+recursive-include examples *.py
+

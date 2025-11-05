@@ -1,0 +1,194 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "shared-ollama-service"
+version = "0.1.0"
+description = "Unified Ollama client library for shared Ollama service"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "requests>=2.31.0",
+]
+
+[project.optional-dependencies]
+async = [
+    "httpx>=0.27.0",
+]
+dev = [
+    "ruff>=0.8.0",
+    "pyright>=1.1.0",
+    "pytest>=8.0.0",
+    "pytest-cov>=5.0.0",
+]
+
+[tool.setuptools]
+py-modules = ["shared_ollama_client", "utils", "monitoring", "resilience", "shared_ollama_client_async", "analytics"]
+
+[tool.setuptools.package-data]
+"*" = ["*.pyi"]
+
+# Ruff Configuration - Modern Python Linter & Formatter
+[tool.ruff]
+# Target Python 3.13+
+target-version = "py313"
+line-length = 100
+indent-width = 4
+
+# Exclude common directories
+exclude = [
+    ".bzr",
+    ".direnv",
+    ".eggs",
+    ".git",
+    ".git-rewrite",
+    ".hg",
+    ".ipynb_checkpoints",
+    ".mypy_cache",
+    ".nox",
+    ".pants.d",
+    ".pyenv",
+    ".pytest_cache",
+    ".pytype",
+    ".ruff_cache",
+    ".svn",
+    ".tox",
+    ".venv",
+    ".vscode",
+    "__pypackages__",
+    "_build",
+    "buck-out",
+    "build",
+    "dist",
+    "node_modules",
+    "site-packages",
+    "venv",
+    "logs",
+    "*.egg-info",
+]
+
+# Enable preview features for latest Ruff capabilities
+preview = true
+
+[tool.ruff.lint]
+# Enable comprehensive rule sets
+select = [
+    "E",      # pycodestyle errors
+    "W",      # pycodestyle warnings
+    "F",      # Pyflakes
+    "I",      # isort
+    "B",      # flake8-bugbear
+    "C4",     # flake8-comprehensions
+    "UP",     # pyupgrade
+    "SIM",    # flake8-simplify
+    "RUF",    # Ruff-specific rules
+    "PERF",   # Perflint
+    "PIE",    # flake8-pie
+    "PT",     # flake8-pytest-style
+    "RET",    # flake8-return
+    "TCH",    # flake8-type-checking
+    "TID",    # flake8-tidy-imports
+    "ARG",    # flake8-unused-arguments
+    "PTH",    # flake8-use-pathlib
+    "ERA",    # eradicate
+    "PD",     # pandas-vet
+    "PL",     # Pylint
+    "TRY",    # tryceratops
+    "NPY",    # NumPy-specific rules
+    "RSE",    # flake8-raise
+    "A",      # flake8-builtins
+    "S",      # flake8-bandit
+]
+
+# Ignore specific rules
+ignore = [
+    "E501",   # Line too long (handled by formatter)
+    "S101",   # Use of assert detected (common in tests)
+    "PLR0913", # Too many arguments (allow for flexible APIs)
+    "PLR0912", # Too many branches (allow for complex logic)
+    "PLR0915", # Too many statements (allow for comprehensive functions)
+]
+
+# Allow automatic fixes for all enabled rules
+fixable = ["ALL"]
+unfixable = []
+
+# Per-file ignores
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["F401"]  # Unused imports allowed in __init__.py
+"tests/**/*.py" = ["S101", "S106", "S108"]  # Allow asserts and hardcoded temp in tests
+"examples/**/*.py" = ["E402"]  # Allow imports not at top in examples
+
+[tool.ruff.lint.isort]
+# Configure import sorting
+known-first-party = ["shared_ollama_client", "utils"]
+combine-as-imports = true
+split-on-trailing-comma = true
+force-single-line = false
+
+[tool.ruff.lint.pydocstyle]
+# Use Google-style docstrings
+convention = "google"
+
+[tool.ruff.lint.flake8-quotes]
+# Use double quotes for strings (consistent with Black)
+inline-quotes = "double"
+multiline-quotes = "double"
+docstring-quotes = "double"
+avoid-escape = true
+
+[tool.ruff.lint.flake8-type-checking]
+# Strict type checking mode
+strict = true
+
+[tool.ruff.format]
+# Black-compatible formatting
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"
+docstring-code-format = true
+docstring-code-line-length = "dynamic"
+
+# Pyright Configuration - Type Checking
+[tool.pyright]
+# Type checking mode: off, basic, standard, strict
+typeCheckingMode = "standard"
+
+# Python version
+pythonVersion = "3.13"
+
+# Include/exclude paths
+include = ["shared_ollama_client.py", "utils.py", "examples"]
+exclude = [
+    "**/node_modules",
+    "**/__pycache__",
+    ".venv",
+    "venv",
+    "build",
+    "dist",
+    "logs",
+]
+
+# Report settings
+reportMissingImports = "error"
+reportMissingTypeStubs = "warning"
+reportUnusedImport = "warning"
+reportUnusedVariable = "warning"
+reportUnusedFunction = "warning"
+reportUnusedClass = "warning"
+reportGeneralTypeIssues = "error"
+reportInvalidTypeForm = "error"
+reportMissingParameterType = "warning"
+reportMissingReturnType = "warning"
+
+# Type inference settings
+strictListInference = true
+strictDictionaryInference = true
+strictSetInference = true
+analyzeUnannotatedFunctions = true
+
+# Experimental features for Python 3.13+
+enableExperimentalFeatures = true
+

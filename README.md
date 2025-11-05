@@ -2,6 +2,8 @@
 
 A centralized Ollama instance for all AI projects to reduce duplication and improve resource management.
 
+**📚 Documentation**: See [docs/README.md](docs/README.md) for complete documentation index.
+
 ## Overview
 
 This service provides a single Ollama instance accessible on port `11434` that all projects can use:
@@ -68,6 +70,77 @@ ollama pull qwen2.5:14b
 ```
 
 This automatically checks and downloads all required models, ensuring they're ready before first use.
+
+### Python Development Environment
+
+**Recommended**: Use a virtual environment for development and testing.
+
+```bash
+# Create virtual environment (modern best practice: .venv)
+python3 -m venv .venv
+
+# Activate virtual environment
+source .venv/bin/activate  # On macOS/Linux
+# or
+.venv\Scripts\activate  # On Windows
+
+# Install dependencies (choose one method):
+pip install -r requirements.txt
+# OR (modern approach):
+pip install -e .
+
+# Deactivate when done
+deactivate
+```
+
+**Dependency Management:**
+- `requirements.txt` - Simple dependency list (pip install -r requirements.txt)
+- `pyproject.toml` - Modern Python packaging standard (pip install -e .)
+- Both files are provided for compatibility
+
+**Install Development Tools:**
+```bash
+# Install with development dependencies (Ruff, Pyright, pytest)
+pip install -e ".[dev]"
+```
+
+**Modern Development Tools:**
+- **Ruff** (v0.14.3+) - Fast linter and formatter (replaces Black, isort, flake8, etc.)
+- **Pyright** (v1.1.407+) - Type checker (Microsoft's static type checker)
+- **pytest** (v8.0.0+) - Modern testing framework
+
+**Quick Commands:**
+```bash
+# Format code
+ruff format .
+
+# Lint code
+ruff check .
+
+# Auto-fix linting issues
+ruff check --fix .
+
+# Type checking
+pyright shared_ollama_client.py utils.py
+
+# Run tests
+pytest
+
+# Or use Makefile (if available)
+make lint        # Run linter
+make format      # Format code
+make type-check  # Type checking
+make test        # Run tests
+make check       # Run all checks
+make fix         # Auto-fix issues
+```
+
+**Why `.venv` instead of `venv`?**
+- `.venv` is the modern convention (hidden directory keeps project cleaner)
+- Many modern tools (VS Code, PyCharm) auto-detect `.venv` by default
+- Both are acceptable, but `.venv` is increasingly preferred in 2024+
+
+**Note for Consuming Projects**: Projects that import this library should use their own virtual environments. The shared library can be imported via `sys.path` without needing to install its dependencies globally.
 
 ### Verify Installation
 
@@ -598,6 +671,177 @@ KEEP_ALIVE=10m ./scripts/warmup_models.sh
 | **No warm-up** | 2-3 seconds | 100-500ms | Development, occasional use |
 | **Warm-up (30m keep-alive)** | 100-500ms | 100-500ms | Active development |
 | **Warm-up (infinite keep-alive)** | 100-500ms | 100-500ms | Production, high-traffic |
+
+## New Features & Enhancements
+
+### Async/Await Support
+
+Modern async/await client for asynchronous Python applications:
+
+```python
+import asyncio
+from shared_ollama_client_async import AsyncSharedOllamaClient
+
+async def main():
+    async with AsyncSharedOllamaClient() as client:
+        response = await client.generate("Hello!")
+        print(response.text)
+
+asyncio.run(main())
+```
+
+**Installation**: `pip install -e ".[async]"`
+
+### Monitoring & Metrics
+
+Track usage, latency, and errors across all projects:
+
+```python
+from monitoring import track_request, MetricsCollector
+
+# Track a request
+with track_request("qwen2.5vl:7b", "generate"):
+    response = client.generate("Hello!")
+
+# Get metrics
+metrics = MetricsCollector.get_metrics()
+print(f"Total requests: {metrics.total_requests}")
+print(f"Average latency: {metrics.average_latency_ms:.2f}ms")
+```
+
+### Enhanced Resilience
+
+Automatic retry with exponential backoff and circuit breaker:
+
+```python
+from resilience import ResilientOllamaClient
+
+client = ResilientOllamaClient()
+response = client.generate("Hello!")  # Automatic retry & circuit breaker
+```
+
+### Testing
+
+Comprehensive test suite for reliability:
+
+```bash
+# Run tests
+pytest
+
+# With coverage
+pytest --cov
+```
+
+See `IMPLEMENTED_ENHANCEMENTS.md` for full details.
+
+### Enhanced Analytics
+
+Advanced analytics with project-level tracking and time-series analysis:
+
+```python
+from analytics import AnalyticsCollector, track_request_with_project
+
+# Track with project identifier
+with track_request_with_project("qwen2.5vl:7b", "generate", project="knowledge_machine"):
+    response = client.generate("Hello!")
+
+# View analytics dashboard
+python scripts/view_analytics.py
+
+# Export analytics
+AnalyticsCollector.export_json("analytics.json")
+AnalyticsCollector.export_csv("analytics.csv")
+```
+
+### API Documentation
+
+Complete API reference and OpenAPI specification:
+
+- **API Reference**: See `docs/API_REFERENCE.md`
+- **OpenAPI Spec**: `docs/openapi.yaml` (OpenAPI 3.1.0)
+- **View Interactive Docs**: Use Swagger UI or online editor
+
+### Type Stubs
+
+Full type stubs for better IDE support:
+
+```bash
+# Type stubs are automatically included
+# Your IDE should detect them automatically
+```
+
+### CI/CD
+
+GitHub Actions workflows for automated testing and releases:
+
+- **CI Workflow**: `.github/workflows/ci.yml` - Tests, linting, type checking
+- **Release Workflow**: `.github/workflows/release.yml` - Automated releases
+
+## Development
+
+This project uses modern Python 3.13+ tooling for development:
+
+### Development Setup
+
+```bash
+# Create virtual environment
+python3 -m venv .venv
+source .venv/bin/activate
+
+# Install development dependencies
+pip install -e ".[dev]"
+```
+
+### Code Quality Tools
+
+**Ruff** - Fast linter and formatter (replaces Black, isort, flake8, etc.)
+- **Format code**: `ruff format .`
+- **Lint code**: `ruff check .`
+- **Auto-fix**: `ruff check --fix .`
+
+**Pyright** - Static type checker (Microsoft's type checker)
+- **Type check**: `pyright shared_ollama_client.py utils.py`
+
+**Testing** - pytest with coverage
+- **Run tests**: `pytest`
+- **With coverage**: `pytest --cov`
+
+### Makefile Commands
+
+```bash
+make lint        # Run Ruff linter
+make format      # Format code with Ruff
+make type-check  # Run Pyright type checker
+make test        # Run tests with pytest
+make check       # Run all checks (lint, format, type-check)
+make fix         # Auto-fix linting issues
+make all         # Clean, install, format, fix, type-check, test
+```
+
+### Pre-commit Hooks
+
+Install pre-commit hooks for automatic code quality checks:
+
+```bash
+pip install pre-commit
+pre-commit install
+```
+
+This will automatically run Ruff and Pyright before each commit.
+
+### Configuration Files
+
+- **`pyproject.toml`** - Project configuration, dependencies, Ruff, and Pyright settings
+- **`.pre-commit-config.yaml`** - Pre-commit hooks configuration
+- **`Makefile`** - Convenient development commands
+
+### Python Version
+
+This project requires **Python 3.13+** and uses modern Python features:
+- Native type annotations (`list` instead of `List`, `dict` instead of `Dict`)
+- Union types (`X | None` instead of `Optional[X]`)
+- Modern enum patterns
+- Latest typing features
 
 ## Contributing
 

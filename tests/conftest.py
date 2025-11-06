@@ -26,6 +26,8 @@ def mock_client(ollama_config):
     """Create a SharedOllamaClient with mocked connection verification."""
     with patch("shared_ollama_client.SharedOllamaClient._verify_connection"):
         client = SharedOllamaClient(config=ollama_config, verify_on_init=False)
+        # Ensure session is a Mock for testing
+        client.session = Mock()
         yield client
 
 

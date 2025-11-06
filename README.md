@@ -7,8 +7,9 @@ A centralized Ollama instance for all AI projects to reduce duplication and impr
 ## Overview
 
 This service provides a single Ollama instance accessible on port `11434` that all projects can use:
+
 - **Knowledge Machine**
-- **Course Intelligence Compiler**  
+- **Course Intelligence Compiler**
 - **Story Machine**
 - **Docling_Machine**
 
@@ -45,6 +46,7 @@ ollama serve
 ```
 
 **MPS/Metal Optimizations Enabled:**
+
 - ✅ `OLLAMA_METAL=1` - Explicit Metal/MPS GPU acceleration
 - ✅ `OLLAMA_NUM_GPU=-1` - All Metal GPU cores utilized
 - ✅ Maximum GPU utilization for fastest inference
@@ -55,6 +57,7 @@ ollama serve
 ### Pull Models
 
 **Option 1: Manual Pull**
+
 ```bash
 # Pull primary model (qwen2.5vl:7b)
 ollama pull qwen2.5vl:7b
@@ -64,6 +67,7 @@ ollama pull qwen2.5:14b
 ```
 
 **Option 2: Automated Pre-download (Recommended)**
+
 ```bash
 # Pre-download all required models
 ./scripts/preload_models.sh
@@ -94,22 +98,26 @@ deactivate
 ```
 
 **Dependency Management:**
+
 - `requirements.txt` - Simple dependency list (pip install -r requirements.txt)
 - `pyproject.toml` - Modern Python packaging standard (pip install -e .)
 - Both files are provided for compatibility
 
 **Install Development Tools:**
+
 ```bash
 # Install with development dependencies (Ruff, Pyright, pytest)
 pip install -e ".[dev]"
 ```
 
 **Modern Development Tools:**
+
 - **Ruff** (v0.14.3+) - Fast linter and formatter (replaces Black, isort, flake8, etc.)
 - **Pyright** (v1.1.407+) - Type checker (Microsoft's static type checker)
 - **pytest** (v8.0.0+) - Modern testing framework
 
 **Quick Commands:**
+
 ```bash
 # Format code
 ruff format .
@@ -136,6 +144,7 @@ make fix         # Auto-fix issues
 ```
 
 **Why `.venv` instead of `venv`?**
+
 - `.venv` is the modern convention (hidden directory keeps project cleaner)
 - Many modern tools (VS Code, PyCharm) auto-detect `.venv` by default
 - Both are acceptable, but `.venv` is increasingly preferred in 2024+
@@ -181,6 +190,7 @@ print(response.text)
 ```
 
 **Environment Variables** (optional - defaults work too):
+
 ```bash
 export OLLAMA_BASE_URL="http://localhost:11434"
 ```
@@ -210,6 +220,7 @@ response = client.generate("Your prompt here")
 #### Knowledge Machine
 
 Update `Knowledge_Machine/config/main.py`:
+
 ```python
 import sys
 sys.path.insert(0, "/path/to/Shared_Ollama_Service")
@@ -229,6 +240,7 @@ client = SharedOllamaClient(OllamaConfig(
 #### Course Intelligence Compiler
 
 Update `Course_Intelligence_Compiler/config/rag_config.yaml`:
+
 ```yaml
 generation:
   ollama:
@@ -239,6 +251,7 @@ generation:
 #### Story Machine
 
 Update `Story_Machine/src/story_machine/core/config.py`:
+
 ```python
 import sys
 sys.path.insert(0, "/path/to/Shared_Ollama_Service")
@@ -259,6 +272,7 @@ See [INTEGRATION_GUIDE.md](docs/INTEGRATION_GUIDE.md) for detailed project-speci
 ### Environment Variables
 
 **For Client Projects** (detected automatically by `utils.py`):
+
 ```bash
 export OLLAMA_BASE_URL="http://localhost:11434"  # Preferred
 # OR
@@ -267,6 +281,7 @@ export OLLAMA_PORT="11434"
 ```
 
 **For Service Configuration** (create `.env` file in project root):
+
 ```env
 OLLAMA_HOST=0.0.0.0
 OLLAMA_ORIGINS=*
@@ -300,6 +315,7 @@ The `OLLAMA_KEEP_ALIVE` setting determines how long models remain in memory afte
 **To change keep-alive:**
 
 Set the environment variable when starting Ollama:
+
 ```bash
 export OLLAMA_KEEP_ALIVE=15m
 ollama serve
@@ -322,6 +338,7 @@ Or set it when starting Ollama manually (launchd not recommended)
 ```
 
 This checks:
+
 - Ollama service is running
 - All models are available
 - API is responding
@@ -386,6 +403,7 @@ tail -f ./logs/ollama.log
 ```
 
 **Optional: Auto-start on Boot** (NOT recommended - disabled by default)
+
 ```bash
 # Only if you want the service to auto-start on login/boot:
 # ./scripts/setup_launchd.sh
@@ -401,6 +419,7 @@ tail -f ./logs/ollama.log
 ### Current Optimizations
 
 ✅ **Fully Optimized for Apple Silicon MPS (Metal Performance Shaders):**
+
 - ✅ **MPS/Metal GPU**: Explicitly enabled (`OLLAMA_METAL=1`)
 - ✅ **GPU Cores**: All Metal GPU cores utilized (`OLLAMA_NUM_GPU=-1`)
 - ✅ **CPU**: All 10 cores automatically detected and utilized
@@ -411,6 +430,7 @@ tail -f ./logs/ollama.log
 ### Hardware Detection
 
 The service auto-detects hardware:
+
 - **Apple Silicon** (M1/M2/M3/M4): Metal/MPS GPU acceleration (explicitly enabled)
 - **CPU**: All cores automatically detected and utilized (10 cores)
 - **Memory**: Efficient allocation based on model requirements
@@ -419,17 +439,20 @@ The service auto-detects hardware:
 ### Apple Silicon MPS Optimization
 
 **Explicit MPS Configuration:**
+
 - ✅ `OLLAMA_METAL=1`: Explicitly enables Metal/MPS acceleration
 - ✅ `OLLAMA_NUM_GPU=-1`: Uses all available Metal GPU cores
 - ✅ `OLLAMA_NUM_THREAD`: Auto-detected (matches 10 CPU cores)
 
 **Performance Benefits:**
+
 - Maximum GPU utilization via Metal Performance Shaders
 - Faster inference times with full GPU acceleration
 - Efficient memory management for concurrent model execution
 - Optimal resource allocation for Apple Silicon architecture
 
 **To verify MPS is active:**
+
 ```bash
 # Check Metal support
 system_profiler SPDisplaysDataType | grep -i metal
@@ -484,16 +507,18 @@ ollama serve
 ### From Individual Project Ollama Instances
 
 1. **Stop existing instances**
+
    ```bash
    # Stop any running Ollama processes
    pkill ollama
    ```
 
 2. **Start shared service**
+
    ```bash
    cd Shared_Ollama_Service
    ./scripts/install_native.sh
-   
+
    # Or if already installed
    ollama serve
    ```
@@ -501,13 +526,14 @@ ollama serve
 3. **Update project configurations** (see Usage section above)
 
 4. **Test each project**
+
    ```bash
    # Test Knowledge Machine
    cd Knowledge_Machine && python -m pytest tests/integration/test_rag_integration.py
-   
+
    # Test Course Intelligence Compiler
    cd Course_Intelligence_Compiler && python -m pytest tests/common/llm/test_ollama_client.py
-   
+
    # Test Story Machine
    cd Story_Machine && pytest tests/
    ```
@@ -532,6 +558,7 @@ Models are stored locally: `~/.ollama/models`
 ```
 
 Shows:
+
 - Service health
 - Available models
 - Process information
@@ -554,16 +581,19 @@ ollama serve
 ### Metrics & Performance
 
 **Request Metrics** (via monitoring):
+
 - Overall latency (p50, p95, p99)
 - Success/failure rates
 - Usage by model and operation
 
 **Ollama Service Logs**:
+
 - HTTP request logs: `logs/ollama.log`
 - Error logs: `logs/ollama.error.log`
 - Performance logs: `logs/performance.jsonl` (if using performance tracking)
 
 **Performance Analysis**:
+
 ```bash
 # View performance report
 python scripts/performance_report.py
@@ -576,6 +606,7 @@ python scripts/performance_report.py --window 60
 ```
 
 **Quick Monitoring**:
+
 - **Quick status**: `./scripts/status.sh` (fast overview)
 - **Health checks**: `./scripts/health_check.sh` (comprehensive)
 - **Model status**: `curl http://localhost:11434/api/tags`
@@ -588,6 +619,7 @@ python scripts/performance_report.py --window 60
 ### Memory Usage
 
 **Memory Usage:**
+
 - `qwen2.5vl:7b`: ~6 GB RAM when loaded
 - `qwen2.5:14b`: ~9 GB RAM when loaded
 - **Both models can run simultaneously** if you have sufficient RAM
@@ -597,10 +629,12 @@ python scripts/performance_report.py --window 60
 ### Performance
 
 **Without Warm-up:**
+
 - **First request**: ~2-3 seconds (model loading into memory)
 - **Subsequent requests**: ~100-500ms (depends on prompt length)
 
 **With Warm-up (Models Pre-loaded):**
+
 - **First request**: ~100-500ms (model already in memory)
 - **Subsequent requests**: ~100-500ms (consistently fast)
 
@@ -632,6 +666,7 @@ KEEP_ALIVE=60m ./scripts/warmup_models.sh
 ```
 
 **What this does:**
+
 - Sends minimal requests to each model
 - Loads models into GPU/CPU memory
 - Sets keep-alive to keep models loaded (default: 30 minutes)
@@ -640,6 +675,7 @@ KEEP_ALIVE=60m ./scripts/warmup_models.sh
 ### Automated Warm-up on Startup
 
 **Option 1: Manual warm-up after service start**
+
 ```bash
 # Start Ollama
 ollama serve
@@ -649,6 +685,7 @@ ollama serve
 ```
 
 **Option 2: Cron job for warm-up** (if using launchd service)
+
 ```bash
 # Add to crontab to warm up 2 minutes after login
 crontab -e
@@ -658,6 +695,7 @@ crontab -e
 ```
 
 **Option 3: Warm-up via API call**
+
 ```bash
 # Warm up a specific model
 curl http://localhost:11434/api/generate -d '{
@@ -671,18 +709,21 @@ curl http://localhost:11434/api/generate -d '{
 ### Keep-Alive Recommendations for Production
 
 **High-Traffic Production:**
+
 ```bash
 # Keep models loaded indefinitely
 KEEP_ALIVE=-1 ./scripts/warmup_models.sh
 ```
 
 **Development/Testing:**
+
 ```bash
 # Keep models loaded for active session
 KEEP_ALIVE=30m ./scripts/warmup_models.sh
 ```
 
 **Memory-Constrained:**
+
 ```bash
 # Shorter keep-alive, models reload as needed
 KEEP_ALIVE=10m ./scripts/warmup_models.sh
@@ -819,14 +860,17 @@ pip install -e ".[dev]"
 ### Code Quality Tools
 
 **Ruff** - Fast linter and formatter (replaces Black, isort, flake8, etc.)
+
 - **Format code**: `ruff format .`
 - **Lint code**: `ruff check .`
 - **Auto-fix**: `ruff check --fix .`
 
 **Pyright** - Static type checker (Microsoft's type checker)
+
 - **Type check**: `pyright shared_ollama_client.py utils.py`
 
 **Testing** - pytest with coverage
+
 - **Run tests**: `pytest`
 - **With coverage**: `pytest --cov`
 
@@ -862,6 +906,7 @@ This will automatically run Ruff and Pyright before each commit.
 ### Python Version
 
 This project requires **Python 3.13+** and uses modern Python features:
+
 - Native type annotations (`list` instead of `List`, `dict` instead of `Dict`)
 - Union types (`X | None` instead of `Optional[X]`)
 - Modern enum patterns
@@ -884,6 +929,7 @@ MIT
 ## Support
 
 For issues or questions:
+
 - Check logs: `tail -f ~/.ollama/ollama.log`
 - Run health check: `./scripts/health_check.sh`
 - Verify service: `curl http://localhost:11434/api/tags`

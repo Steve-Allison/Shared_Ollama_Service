@@ -182,7 +182,8 @@ def exponential_backoff_retry[T](
 
     # All retries exhausted
     if last_exception is None:
-        raise RuntimeError("All retries exhausted but no exception was captured")
+        msg = "All retries exhausted but no exception was captured"
+        raise RuntimeError(msg)
     raise last_exception
 
 
@@ -220,7 +221,9 @@ class ResilientOllamaClient:
         self.circuit_breaker = CircuitBreaker(circuit_breaker_config)
         self.client = SharedOllamaClient(OllamaConfig(base_url=base_url), verify_on_init=False)
 
-    def _execute_with_resilience(self, operation: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
+    def _execute_with_resilience(
+        self, operation: Callable[..., Any], *args: Any, **kwargs: Any
+    ) -> Any:
         """
         Execute operation with resilience features.
 
@@ -298,20 +301,3 @@ class ResilientOllamaClient:
             List of model information
         """
         return self._execute_with_resilience(self.client.list_models)
-
-
-if __name__ == "__main__":
-    # Example usage
-    print("Resilience Features Example")
-    print("=" * 40)
-
-    client = ResilientOllamaClient()
-
-    # This will use exponential backoff and circuit breaker
-    try:
-        response = client.generate("Hello, world!")
-        print(f"Response: {response.text}")
-        print(f"Circuit breaker state: {client.circuit_breaker.state}")
-    except Exception as e:
-        print(f"Error: {e}")
-        print(f"Circuit breaker state: {client.circuit_breaker.state}")

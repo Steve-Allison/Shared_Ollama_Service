@@ -20,7 +20,7 @@ class TestOllamaConfig:
         config = OllamaConfig()
         assert config.base_url == "http://localhost:11434"
         assert config.default_model == Model.QWEN25_VL_7B
-        assert config.timeout == 60
+        assert config.timeout == 300
         assert config.verbose is False
 
     def test_custom_config(self):
@@ -140,11 +140,13 @@ class TestSharedOllamaClient:
         mock_response.status_code = 200
         mock_client.session.get.return_value = mock_response
 
-        assert mock_client.health_check() is True
+        result = mock_client.health_check()
+        assert result is True
 
     def test_health_check_failure(self, mock_client):
         """Test failed health check."""
-        mock_client.session.get.side_effect = Exception("Connection failed")
+        import requests
+        mock_client.session.get.side_effect = requests.exceptions.RequestException("Connection failed")
 
         assert mock_client.health_check() is False
 

@@ -89,7 +89,9 @@ class AsyncSharedOllamaClient:
         await self._ensure_client()
         return self
 
-    async def __aexit__(self, exc_type: type[BaseException] | None, exc_val: BaseException | None, exc_tb: Any) -> None:
+    async def __aexit__(
+        self, exc_type: type[BaseException] | None, exc_val: BaseException | None, exc_tb: Any
+    ) -> None:
         """Async context manager exit."""
         await self.close()
 
@@ -129,7 +131,7 @@ class AsyncSharedOllamaClient:
 
         if self.client is None:
             raise RuntimeError("Client not initialized")
-        
+
         for attempt in range(retries):
             try:
                 response = await self.client.get(
@@ -147,11 +149,12 @@ class AsyncSharedOllamaClient:
                     await asyncio.sleep(delay)
                 else:
                     logger.exception(f"Failed to connect to Ollama after {retries} attempts")
-                    raise ConnectionError(
+                    msg = (
                         f"Cannot connect to Ollama at {self.config.base_url}. "
                         "Make sure the service is running.\n"
                         "Start with: ./scripts/setup_launchd.sh or 'ollama serve'"
-                    ) from e
+                    )
+                    raise ConnectionError(msg) from e
             else:
                 return
 
@@ -171,7 +174,7 @@ class AsyncSharedOllamaClient:
         await self._ensure_client()
         if self.client is None:
             raise RuntimeError("Client not initialized")
-        
+
         # Quick API call, use health_check_timeout
         response = await self.client.get(
             "/api/tags",
@@ -212,7 +215,7 @@ class AsyncSharedOllamaClient:
         await self._ensure_client()
         if self.client is None:
             raise RuntimeError("Client not initialized")
-        
+
         model_str = str(model or self.config.default_model)
 
         payload: dict[str, Any] = {
@@ -293,7 +296,7 @@ class AsyncSharedOllamaClient:
         await self._ensure_client()
         if self.client is None:
             raise RuntimeError("Client not initialized")
-        
+
         model_str = str(model or self.config.default_model)
 
         payload: dict[str, Any] = {

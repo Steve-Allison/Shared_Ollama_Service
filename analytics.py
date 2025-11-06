@@ -103,7 +103,7 @@ class AnalyticsCollector:
     - Advanced reporting
     """
 
-    _project_metadata: ClassVar[dict[str, str]] = {}  # Maps request ID to project
+    _project_metadata: ClassVar[dict[int, str]] = {}  # Maps metric index to project
 
     @classmethod
     def record_request_with_project(
@@ -137,11 +137,12 @@ class AnalyticsCollector:
 
         # Store project metadata if provided
         if project:
-            # Get the last metric (just added)
+            # Get the last metric index (just added)
             metrics = getattr(MetricsCollector, "_metrics", [])
             if metrics:
-                # Store project association
-                cls._project_metadata[model] = project  # Simplified mapping
+                # Store project association using metric index
+                metric_index = len(metrics) - 1
+                cls._project_metadata[metric_index] = project
 
     @classmethod
     def get_analytics(
@@ -175,16 +176,27 @@ class AnalyticsCollector:
 
         # Filter by project if specified
         if project:
-            metrics = [m for m in metrics if cls._project_metadata.get(m.model) == project]
+            all_metrics_list = list(all_metrics)
+            # Create index mapping for O(1) lookup
+            metric_to_index = {id(m): i for i, m in enumerate(all_metrics_list)}
+            metrics = [
+                m
+                for m in metrics
+                if cls._project_metadata.get(metric_to_index.get(id(m), -1)) == project
+            ]
 
         if not metrics:
             return AnalyticsReport()
 
         # Calculate project-level metrics
         project_metrics_dict: dict[str, ProjectMetrics] = {}
+        all_metrics_list = list(all_metrics)
+        # Create index mapping for O(1) lookup
+        metric_to_index = {id(m): i for i, m in enumerate(all_metrics_list)}
 
         for metric in metrics:
-            proj = cls._project_metadata.get(metric.model, "unknown")
+            metric_index = metric_to_index.get(id(metric), -1)
+            proj = cls._project_metadata.get(metric_index, "unknown")
 
             if proj not in project_metrics_dict:
                 project_metrics_dict[proj] = ProjectMetrics(project_name=proj)
@@ -365,8 +377,12 @@ class AnalyticsCollector:
                 cutoff = datetime.now() - timedelta(minutes=window_minutes)
                 metrics = [m for m in metrics if m.timestamp >= cutoff]
 
+            all_metrics_list = list(getattr(MetricsCollector, "_metrics", []))
+            # Create index mapping for O(1) lookup
+            metric_to_index = {id(m): i for i, m in enumerate(all_metrics_list)}
             for metric in metrics:
-                proj = cls._project_metadata.get(metric.model, "unknown")
+                metric_index = metric_to_index.get(id(metric), -1)
+                proj = cls._project_metadata.get(metric_index, "unknown")
                 if project and proj != project:
                     continue
 
@@ -455,30 +471,3 @@ def get_analytics_json(
         return obj
 
     return convert_datetime(data)  # type: ignore[return-value]
-
-
-if __name__ == "__main__":
-    # Example usage
-    print("Enhanced Analytics Example")
-    print("=" * 40)
-
-    # Simulate some requests with project tracking
-    import time
-
-    with track_request_with_project("qwen2.5vl:7b", "generate", project="knowledge_machine"):
-        time.sleep(0.1)
-
-    with track_request_with_project("qwen2.5:14b", "chat", project="course_compiler"):
-        time.sleep(0.2)
-
-    # Get analytics
-    analytics = AnalyticsCollector.get_analytics()
-    print(f"\nTotal requests: {analytics.total_requests}")
-    print(f"Success rate: {analytics.success_rate:.2%}")
-    print(f"Requests by project: {analytics.requests_by_project}")
-    print(f"Average latency: {analytics.average_latency_ms:.2f}ms")
-
-    # Export
-    AnalyticsCollector.export_json("analytics.json")
-    AnalyticsCollector.export_csv("analytics.csv")
-    print("\n✓ Exported analytics to JSON and CSV")

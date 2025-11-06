@@ -39,7 +39,7 @@ class OllamaConfig:
 
     base_url: str = "http://localhost:11434"
     default_model: str = Model.QWEN25_VL_7B
-    timeout: int = 300  # 5 minutes for long generations (was 60s)
+    timeout: int = 300  # 5 minutes for long generations
     health_check_timeout: int = 5  # 5 seconds for quick health checks
     verbose: bool = False
 
@@ -130,11 +130,12 @@ class SharedOllamaClient:
                     time.sleep(delay)
                 else:
                     logger.exception(f"Failed to connect to Ollama after {retries} attempts")
-                    raise ConnectionError(
+                    msg = (
                         f"Cannot connect to Ollama at {self.config.base_url}. "
                         "Make sure the service is running.\n"
                         "Start with: ./scripts/setup_launchd.sh or 'ollama serve'"
-                    ) from e
+                    )
+                    raise ConnectionError(msg) from e
             else:
                 return
 
@@ -329,28 +330,3 @@ def quick_generate(prompt: str, model: str | None = None) -> str:
     client = SharedOllamaClient()
     response = client.generate(prompt, model=model)
     return response.text
-
-
-if __name__ == "__main__":
-    # Example usage
-    print("Shared Ollama Client Test")
-    print("=" * 40)
-
-    try:
-        client = SharedOllamaClient()
-
-        # List available models
-        print("\nAvailable models:")
-        models = client.list_models()
-        for model in models:
-            print(f"  - {model['name']}")
-
-        # Test generation
-        print("\nTesting generation...")
-        response = quick_generate("Say hello in one sentence.")
-        print(f"Response: {response}")
-
-        print("\n✓ All tests passed!")
-
-    except Exception as e:
-        print(f"✗ Error: {e}")

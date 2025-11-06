@@ -197,14 +197,24 @@ class PerformanceCollector:
             return {}
 
         # Aggregate statistics
-        tokens_per_second_values = [m.tokens_per_second for m in successful if m.tokens_per_second is not None]
-        avg_tokens_per_second = sum(tokens_per_second_values) / len(tokens_per_second_values) if tokens_per_second_values else 0.0
-        
+        tokens_per_second_values = [
+            m.tokens_per_second for m in successful if m.tokens_per_second is not None
+        ]
+        avg_tokens_per_second = (
+            sum(tokens_per_second_values) / len(tokens_per_second_values)
+            if tokens_per_second_values
+            else 0.0
+        )
+
         load_times = [m.load_time_ms for m in successful if m.load_time_ms is not None]
         avg_load_time = sum(load_times) / len(load_times) if load_times else 0.0
-        
-        generation_times = [m.generation_time_ms for m in successful if m.generation_time_ms is not None]
-        avg_generation_time = sum(generation_times) / len(generation_times) if generation_times else 0.0
+
+        generation_times = [
+            m.generation_time_ms for m in successful if m.generation_time_ms is not None
+        ]
+        avg_generation_time = (
+            sum(generation_times) / len(generation_times) if generation_times else 0.0
+        )
 
         # By model
         by_model: dict[str, list[DetailedPerformanceMetrics]] = defaultdict(list)
@@ -295,37 +305,3 @@ def track_performance(
 def get_performance_stats() -> dict[str, Any]:
     """Get aggregated performance statistics."""
     return PerformanceCollector.get_performance_stats()
-
-
-if __name__ == "__main__":
-    # Example usage
-    print("Performance Logging Example")
-    print("=" * 40)
-
-    # Simulate some requests
-    from shared_ollama_client import GenerateResponse, SharedOllamaClient
-
-    client = SharedOllamaClient()
-
-    try:
-        response = client.generate("Hello!")
-
-        # Track with detailed metrics
-        PerformanceCollector.record_performance(
-            model="qwen2.5vl:7b",
-            operation="generate",
-            total_latency_ms=500.0,
-            success=True,
-            response=response,
-        )
-
-        # Get stats
-        stats = get_performance_stats()
-        print("\nPerformance Statistics:")
-        print(f"  Avg tokens/sec: {stats.get('avg_tokens_per_second', 'N/A')}")
-        print(f"  Avg load time: {stats.get('avg_load_time_ms', 'N/A')}ms")
-        print(f"  Avg generation time: {stats.get('avg_generation_time_ms', 'N/A')}ms")
-        print("\n✓ Performance metrics logged to logs/performance.jsonl")
-
-    except Exception as e:
-        print(f"Error: {e}")

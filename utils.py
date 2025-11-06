@@ -181,23 +181,3 @@ def import_client():
         raise ImportError(msg) from e
     else:
         return SharedOllamaClient
-
-
-if __name__ == "__main__":
-    # Quick test
-    print("Shared Ollama Service Utilities")
-    print("=" * 40)
-
-    print(f"\nBase URL: {get_ollama_base_url()}")
-
-    is_healthy, error = check_service_health()
-    if is_healthy:
-        print("✓ Service is healthy")
-    else:
-        print(f"✗ Service is not available: {error}")
-
-    project_root = get_project_root()
-    if project_root:
-        print(f"\nProject root: {project_root}")
-    else:
-        print("\n⚠ Project root not found")

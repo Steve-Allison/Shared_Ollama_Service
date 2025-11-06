@@ -213,7 +213,6 @@ class MetricsCollector:
 def track_request(
     model: str,
     operation: str = "generate",
-    response: Any = None,
 ):
     """
     Context manager to track a request with automatic timing.
@@ -221,22 +220,20 @@ def track_request(
     Args:
         model: Model name
         operation: Operation type (generate, chat, etc.)
-        response: Optional GenerateResponse object for detailed metrics
 
     Example:
-        >>> with track_request("qwen2.5vl:7b", "generate") as ctx:
+        >>> with track_request("qwen2.5vl:7b", "generate"):
         ...     response = client.generate("Hello!")
-        ...     ctx.response = response  # For detailed metrics
+
+    Note: For detailed metrics with GenerateResponse, use performance_logging.track_performance instead.
     """
     start_time = time.time()
     success = False
     error = None
-    ctx = type("Context", (), {"response": None})()
 
     try:
-        yield ctx
+        yield
         success = True
-        response = getattr(ctx, "response", None)
     except Exception as e:
         error = str(e)
         raise
@@ -259,33 +256,3 @@ def get_metrics_endpoint() -> dict[str, Any]:
         JSON-serializable dictionary with current metrics
     """
     return MetricsCollector.get_metrics_json()
-
-
-if __name__ == "__main__":
-    # Example usage
-    print("Monitoring & Metrics Example")
-    print("=" * 40)
-
-    # Simulate some requests
-    with track_request("qwen2.5vl:7b", "generate"):
-        time.sleep(0.1)
-
-    with track_request("qwen2.5:14b", "chat"):
-        time.sleep(0.2)
-
-    with track_request("qwen2.5vl:7b", "generate"):
-        time.sleep(0.15)
-
-    # Get metrics
-    metrics = MetricsCollector.get_metrics()
-    print(f"\nTotal requests: {metrics.total_requests}")
-    print(f"Successful: {metrics.successful_requests}")
-    print(f"Failed: {metrics.failed_requests}")
-    print(f"Average latency: {metrics.average_latency_ms:.2f}ms")
-    print(f"P95 latency: {metrics.p95_latency_ms:.2f}ms")
-    print(f"\nRequests by model: {metrics.requests_by_model}")
-    print(f"Requests by operation: {metrics.requests_by_operation}")
-
-    # Get JSON metrics
-    json_metrics = MetricsCollector.get_metrics_json()
-    print(f"\nJSON metrics: {json_metrics}")

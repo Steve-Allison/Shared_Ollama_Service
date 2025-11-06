@@ -18,7 +18,7 @@ OLLAMA_URL="${OLLAMA_URL:-http://localhost:11434}"
 API_ENDPOINT="${OLLAMA_URL}/api"
 
 # Required models
-REQUIRED_MODELS=("qwen2.5vl:7b" "qwen2.5:14b")
+REQUIRED_MODELS=("qwen2.5vl:7b" "qwen2.5:7b" "qwen2.5:14b")
 
 # Status tracking
 STEPS_PASSED=0

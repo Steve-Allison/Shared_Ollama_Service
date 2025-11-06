@@ -8,7 +8,7 @@ Provides project-level tracking, time-series analysis, and export capabilities.
 Usage:
     from analytics import AnalyticsCollector, track_request_with_project
 
-    # Track request with project identifier
+    # Track request with project identifier (works with any model: qwen2.5vl:7b, qwen2.5:7b, qwen2.5:14b)
     with track_request_with_project("qwen2.5vl:7b", "generate", project="knowledge_machine"):
         response = client.generate("Hello!")
 

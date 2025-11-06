@@ -8,7 +8,7 @@ model infrastructure service.
 Usage:
     from monitoring import MetricsCollector, track_request
 
-    # Track a request
+    # Track a request (works with any model: qwen2.5vl:7b, qwen2.5:7b, qwen2.5:14b)
     with track_request("generate", model="qwen2.5vl:7b"):
         response = client.generate("Hello!")
 

@@ -21,6 +21,10 @@ This service provides a single Ollama instance accessible on port `11434` that a
   - Vision-language model with multimodal capabilities
   - Excellent performance for vision and text tasks
   - Loaded into memory when requested (~6 GB RAM)
+- **Standard**: `qwen2.5:7b` (7B parameters, text-only model)
+  - Efficient text-only model with excellent performance
+  - Fast inference for text generation tasks
+  - Loaded into memory when requested (~4.5 GB RAM)
 - **Secondary**: `qwen2.5:14b` (14.8B parameters)
   - Large language model with excellent reasoning
   - Good alternative for text-only tasks
@@ -61,6 +65,9 @@ ollama serve
 ```bash
 # Pull primary model (qwen2.5vl:7b)
 ollama pull qwen2.5vl:7b
+
+# Pull standard model (qwen2.5:7b)
+ollama pull qwen2.5:7b
 
 # Pull secondary model (qwen2.5:14b)
 ollama pull qwen2.5:14b
@@ -483,6 +490,7 @@ tail -f ~/.ollama/ollama.log
 ```bash
 # Pull models
 ollama pull qwen2.5vl:7b
+ollama pull qwen2.5:7b
 ollama pull qwen2.5:14b
 
 # Verify
@@ -621,6 +629,7 @@ python scripts/performance_report.py --window 60
 **Memory Usage:**
 
 - `qwen2.5vl:7b`: ~6 GB RAM when loaded
+- `qwen2.5:7b`: ~4.5 GB RAM when loaded
 - `qwen2.5:14b`: ~9 GB RAM when loaded
 - **Both models can run simultaneously** if you have sufficient RAM
 

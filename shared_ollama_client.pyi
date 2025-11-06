@@ -7,6 +7,7 @@ class Model(StrEnum):
     """Available Ollama models."""
 
     QWEN25_VL_7B: str
+    QWEN25_7B: str
     QWEN25_14B: str
 
 class OllamaConfig:

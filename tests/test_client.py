@@ -84,9 +84,10 @@ class TestSharedOllamaClient:
 
         models = mock_client.list_models()
 
-        assert len(models) == 2
+        assert len(models) == 3
         assert models[0]["name"] == "qwen2.5vl:7b"
-        assert models[1]["name"] == "qwen2.5:14b"
+        assert models[1]["name"] == "qwen2.5:7b"
+        assert models[2]["name"] == "qwen2.5:14b"
         mock_client.session.get.assert_called_once_with(
             f"{mock_client.config.base_url}/api/tags", timeout=mock_client.config.timeout
         )

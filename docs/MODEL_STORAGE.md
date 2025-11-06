@@ -66,9 +66,10 @@ rm -rf ~/.ollama/models/*
 ### Model Size Reference
 
 - **qwen2.5vl:7b**: ~6 GB
+- **qwen2.5:7b**: ~4.5 GB
 - **qwen2.5:14b**: ~9 GB
 
-**Total if all loaded**: ~15 GB in `~/.ollama/models/`
+**Total if all loaded**: ~19.5 GB in `~/.ollama/models/`
 
 ### Finding Models on Your System
 

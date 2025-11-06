@@ -30,6 +30,7 @@ class Model(StrEnum):
     """Available Ollama models."""
 
     QWEN25_VL_7B = "qwen2.5vl:7b"  # Primary: 7B params, vision-language model
+    QWEN25_7B = "qwen2.5:7b"  # Standard: 7B params, text-only model
     QWEN25_14B = "qwen2.5:14b"  # Secondary: 14.8B params
 
 

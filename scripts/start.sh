@@ -155,6 +155,7 @@ while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
             echo "Available models: $MODELS"
         else
             echo "No models downloaded yet. Run: ollama pull qwen2.5vl:7b"
+            echo "Or pull all models: ollama pull qwen2.5vl:7b && ollama pull qwen2.5:7b && ollama pull qwen2.5:14b"
         fi
         echo ""
         echo "=================================================="

@@ -45,7 +45,7 @@ def example_custom_config():
     print("\nExample 2: Custom Configuration")
     print("-" * 40)
 
-    # Create custom config
+    # Create custom config with qwen2.5:14b
     config = OllamaConfig(
         base_url=get_ollama_base_url(), default_model=Model.QWEN25_14B, timeout=120
     )
@@ -53,6 +53,21 @@ def example_custom_config():
     client = SharedOllamaClient(config)
     response = client.generate("What is machine learning?")
     print(f"Response: {response.text[:100]}...")
+
+
+def example_using_qwen7b():
+    """Example using qwen2.5:7b model."""
+    print("\nExample 2b: Using qwen2.5:7b Model")
+    print("-" * 40)
+
+    # Use qwen2.5:7b for efficient text generation
+    config = OllamaConfig(
+        base_url=get_ollama_base_url(), default_model=Model.QWEN25_7B, timeout=120
+    )
+
+    client = SharedOllamaClient(config)
+    response = client.generate("Explain Python in one sentence.")
+    print(f"Response: {response.text}")
 
 
 def example_chat_format():
@@ -109,6 +124,7 @@ if __name__ == "__main__":
     try:
         example_basic_usage()
         example_custom_config()
+        example_using_qwen7b()
         example_chat_format()
         example_with_options()
         example_error_handling()

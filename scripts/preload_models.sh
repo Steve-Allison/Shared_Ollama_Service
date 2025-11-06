@@ -19,6 +19,7 @@ echo ""
 # Required models
 MODELS=(
     "qwen2.5vl:7b"
+    "qwen2.5:7b"
     "qwen2.5:14b"
 )
 

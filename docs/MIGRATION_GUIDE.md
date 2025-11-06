@@ -83,7 +83,7 @@ generation:
 generation:
   ollama:
     base_url: "http://localhost:11434"  # Already correct
-    model: "qwen2.5vl:7b"  # or "qwen2.5:7b" or "qwen2.5:14b" for alternative models
+    model: "qwen2.5vl:7b"  # or "qwen2.5:7b" or "qwen2.5:14b" or "granite4:tiny-h" for alternative models
 ```
 
 **Optional**: Update client code to use shared client:
@@ -117,7 +117,7 @@ class OllamaConfig(BaseModel):
         default="http://localhost:11434"  # Already correct!
     )
     model: str = Field(
-        default="qwen2.5vl:7b"  # Or use qwen2.5:7b or qwen2.5:14b if needed
+        default="qwen2.5vl:7b"  # Or use qwen2.5:7b or qwen2.5:14b or granite4:tiny-h if needed
     )
 ```
 
@@ -246,6 +246,7 @@ cd Shared_Ollama_Service
 docker-compose exec ollama ollama pull qwen2.5vl:7b
 docker-compose exec ollama ollama pull qwen2.5:7b
 docker-compose exec ollama ollama pull qwen2.5:14b
+docker-compose exec ollama ollama pull granite4:tiny-h
 ```
 
 ### Issue: Port 11434 already in use

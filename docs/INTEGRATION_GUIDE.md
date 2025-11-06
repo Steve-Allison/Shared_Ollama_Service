@@ -118,7 +118,7 @@ client = SharedOllamaClient(
 generation:
   ollama:
     base_url: "http://localhost:11434"
-    model: "qwen2.5vl:7b"
+    model: "qwen2.5vl:7b"  # or "granite4:tiny-h" for RAG/function calling
     timeout: 120
 ```
 

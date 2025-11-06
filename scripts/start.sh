@@ -1,7 +1,11 @@
 #!/bin/bash
 
-# Start Ollama Service with Apple Silicon MPS/Metal Optimizations
-# Explicitly enables Metal acceleration and GPU cores for maximum performance
+# Start Ollama Service with System-Specific Optimizations
+# Automatically detects Mac system (Apple Silicon/Intel) and adjusts optimization parameters:
+# - Apple Silicon: Enables Metal/MPS GPU acceleration with all GPU cores
+# - Intel Mac: CPU-only mode (Metal disabled)
+# - Auto-detects CPU cores and sets optimal thread count
+# - Auto-calculates memory limits based on system RAM
 
 set -e
 
@@ -39,9 +43,61 @@ if curl -f -s http://localhost:11434/api/tags > /dev/null 2>&1; then
     exit 0
 fi
 
-# Set Apple Silicon MPS/Metal optimizations
-export OLLAMA_METAL=1          # Explicitly enable Metal acceleration (MPS)
-export OLLAMA_NUM_GPU=-1       # Use all available Metal GPU cores (-1 = all)
+# Detect system configuration
+echo -e "${BLUE}Detecting system configuration...${NC}"
+if [ -f "$PROJECT_ROOT/scripts/detect_system.sh" ]; then
+    # Source system detection
+    SYSTEM_INFO=$("$PROJECT_ROOT/scripts/detect_system.sh" 2>/dev/null)
+
+    # Parse system information
+    ARCH=$(echo "$SYSTEM_INFO" | grep "^ARCH=" | cut -d'=' -f2)
+    CHIP_TYPE=$(echo "$SYSTEM_INFO" | grep "^CHIP_TYPE=" | cut -d'=' -f2)
+    CHIP_MODEL=$(echo "$SYSTEM_INFO" | grep "^CHIP_MODEL=" | cut -d'=' -f2)
+    CPU_CORES=$(echo "$SYSTEM_INFO" | grep "^CPU_CORES=" | cut -d'=' -f2)
+    GPU_CORES=$(echo "$SYSTEM_INFO" | grep "^GPU_CORES=" | cut -d'=' -f2)
+    TOTAL_RAM_GB=$(echo "$SYSTEM_INFO" | grep "^TOTAL_RAM_GB=" | cut -d'=' -f2)
+
+    echo -e "${GREEN}✓ Detected: ${CHIP_MODEL} (${CHIP_TYPE})${NC}"
+    echo -e "${GREEN}✓ CPU Cores: ${CPU_CORES}${NC}"
+    if [[ "$CHIP_TYPE" == "Apple Silicon" ]]; then
+        echo -e "${GREEN}✓ GPU Cores: ${GPU_CORES}${NC}"
+    fi
+    echo -e "${GREEN}✓ Total RAM: ${TOTAL_RAM_GB} GB${NC}"
+    echo ""
+else
+    # Fallback: basic detection
+    ARCH=$(uname -m)
+    CPU_CORES=$(sysctl -n hw.ncpu 2>/dev/null || echo "0")
+    if [[ "$ARCH" == "arm64" ]]; then
+        CHIP_TYPE="Apple Silicon"
+        CHIP_MODEL="Apple Silicon (Unknown)"
+    else
+        CHIP_TYPE="Intel"
+        CHIP_MODEL="Intel"
+    fi
+    echo -e "${YELLOW}⚠ Using basic system detection${NC}"
+    echo ""
+fi
+
+# Set optimizations based on detected system
+if [[ "$CHIP_TYPE" == "Apple Silicon" ]]; then
+    # Apple Silicon: Enable Metal/MPS GPU acceleration
+    export OLLAMA_METAL=1
+    export OLLAMA_NUM_GPU=-1  # Use all available GPU cores
+    METAL_STATUS="Enabled (OLLAMA_METAL=1)"
+    GPU_STATUS="All available (OLLAMA_NUM_GPU=-1)"
+else
+    # Intel Mac: Disable Metal (not supported for GPU acceleration)
+    export OLLAMA_METAL=0
+    export OLLAMA_NUM_GPU=0
+    METAL_STATUS="Disabled (Intel Mac - CPU only)"
+    GPU_STATUS="N/A (CPU only mode)"
+fi
+
+# Set CPU thread optimization (if not already set)
+if [ -z "$OLLAMA_NUM_THREAD" ] && [ "$CPU_CORES" -gt 0 ]; then
+    export OLLAMA_NUM_THREAD="$CPU_CORES"
+fi
 
 # Optional: Set other optimizations (can be overridden by env vars)
 export OLLAMA_HOST="${OLLAMA_HOST:-0.0.0.0:11434}"
@@ -59,11 +115,18 @@ if [ -z "$OLLAMA_MAX_RAM" ]; then
     fi
 fi
 
-echo -e "${BLUE}Configuration:${NC}"
-echo "  ✓ Metal/MPS GPU: Enabled (OLLAMA_METAL=1)"
-echo "  ✓ GPU Cores: All available (OLLAMA_NUM_GPU=-1)"
+echo -e "${BLUE}Optimization Configuration:${NC}"
+echo "  ✓ System: ${CHIP_MODEL}"
+echo "  ✓ Metal/MPS GPU: ${METAL_STATUS}"
+echo "  ✓ GPU Cores: ${GPU_STATUS}"
+if [ -n "$OLLAMA_NUM_THREAD" ]; then
+    echo "  ✓ CPU Threads: ${OLLAMA_NUM_THREAD} (OLLAMA_NUM_THREAD=${OLLAMA_NUM_THREAD})"
+fi
 echo "  ✓ Host: ${OLLAMA_HOST}"
 echo "  ✓ Keep Alive: ${OLLAMA_KEEP_ALIVE}"
+if [ -n "$OLLAMA_MAX_RAM" ]; then
+    echo "  ✓ Max RAM: ${OLLAMA_MAX_RAM}"
+fi
 echo "  ✓ Logs: ${LOG_DIR}/"
 echo ""
 
@@ -155,7 +218,7 @@ while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
             echo "Available models: $MODELS"
         else
             echo "No models downloaded yet. Run: ollama pull qwen2.5vl:7b"
-            echo "Or pull all models: ollama pull qwen2.5vl:7b && ollama pull qwen2.5:7b && ollama pull qwen2.5:14b"
+            echo "Or pull all models: ollama pull qwen2.5vl:7b && ollama pull qwen2.5:7b && ollama pull qwen2.5:14b && ollama pull granite4:tiny-h"
         fi
         echo ""
         echo "=================================================="

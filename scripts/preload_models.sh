@@ -21,6 +21,7 @@ MODELS=(
     "qwen2.5vl:7b"
     "qwen2.5:7b"
     "qwen2.5:14b"
+    "granite4:tiny-h"
 )
 
 # Check if Ollama is installed

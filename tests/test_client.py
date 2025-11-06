@@ -84,10 +84,11 @@ class TestSharedOllamaClient:
 
         models = mock_client.list_models()
 
-        assert len(models) == 3
+        assert len(models) == 4
         assert models[0]["name"] == "qwen2.5vl:7b"
         assert models[1]["name"] == "qwen2.5:7b"
         assert models[2]["name"] == "qwen2.5:14b"
+        assert models[3]["name"] == "granite4:tiny-h"
         mock_client.session.get.assert_called_once_with(
             f"{mock_client.config.base_url}/api/tags", timeout=mock_client.config.timeout
         )
@@ -147,7 +148,10 @@ class TestSharedOllamaClient:
     def test_health_check_failure(self, mock_client):
         """Test failed health check."""
         import requests
-        mock_client.session.get.side_effect = requests.exceptions.RequestException("Connection failed")
+
+        mock_client.session.get.side_effect = requests.exceptions.RequestException(
+            "Connection failed"
+        )
 
         assert mock_client.health_check() is False
 

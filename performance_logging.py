@@ -11,7 +11,7 @@ Captures and logs Ollama's internal performance metrics including:
 Usage:
     from performance_logging import track_performance, get_performance_stats
 
-    # Track with detailed metrics (works with any model: qwen2.5vl:7b, qwen2.5:7b, qwen2.5:14b)
+    # Track with detailed metrics (works with any model: qwen2.5vl:7b, qwen2.5:7b, qwen2.5:14b, granite4:tiny-h)
     with track_performance("qwen2.5vl:7b", "generate"):
         response = client.generate("Hello!")
 

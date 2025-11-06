@@ -68,8 +68,9 @@ rm -rf ~/.ollama/models/*
 - **qwen2.5vl:7b**: ~6 GB
 - **qwen2.5:7b**: ~4.5 GB
 - **qwen2.5:14b**: ~9 GB
+- **granite4:tiny-h**: ~4.2 GB
 
-**Total if all loaded**: ~19.5 GB in `~/.ollama/models/`
+**Total if all loaded**: ~23.7 GB in `~/.ollama/models/`
 
 ### Finding Models on Your System
 

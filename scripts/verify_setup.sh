@@ -18,7 +18,7 @@ OLLAMA_URL="${OLLAMA_URL:-http://localhost:11434}"
 API_ENDPOINT="${OLLAMA_URL}/api"
 
 # Required models
-REQUIRED_MODELS=("qwen2.5vl:7b" "qwen2.5:7b" "qwen2.5:14b")
+REQUIRED_MODELS=("qwen2.5vl:7b" "qwen2.5:7b" "qwen2.5:14b" "granite4:tiny-h")
 
 # Status tracking
 STEPS_PASSED=0
@@ -59,7 +59,7 @@ else
     print_status 1 "Ollama is not installed"
     echo ""
     print_info "Attempting to install Ollama..."
-    
+
     # Try Homebrew first (macOS)
     if command -v brew &> /dev/null; then
         echo "Installing via Homebrew..."
@@ -90,7 +90,7 @@ else
     print_status 1 "Ollama service is not accessible"
     echo ""
     print_info "Attempting to start service with MPS/Metal optimization..."
-    
+
     # Try to start via Homebrew services (macOS)
     if command -v brew &> /dev/null && brew services list 2>/dev/null | grep -q ollama; then
         echo "Starting via Homebrew services..."
@@ -105,10 +105,10 @@ else
         export OLLAMA_NUM_GPU=-1
         ollama serve > /dev/null 2>&1 &
     fi
-    
+
     echo "Waiting 5 seconds for service to start..."
     sleep 5
-    
+
     if curl -f -s "${API_ENDPOINT}/tags" > /dev/null 2>&1; then
         print_status 0 "Ollama service started successfully"
         ((AUTO_FIXED++))
@@ -153,12 +153,12 @@ if [ ${#MISSING_MODELS[@]} -gt 0 ]; then
     echo ""
     echo -e "${BLUE}[4/6]${NC} Downloading missing models..."
     print_info "Found ${#MISSING_MODELS[@]} missing model(s)"
-    
+
     for model in "${MISSING_MODELS[@]}"; do
         echo ""
         print_info "Downloading ${model}..."
         echo "This may take several minutes depending on your connection..."
-        
+
         # Run the pull command and capture output
         if ollama pull "${model}" > /tmp/ollama_pull_${model//[:\/]/_}.log 2>&1; then
             # Download command completed, verify the model exists
@@ -229,11 +229,11 @@ echo -e "${BLUE}[6/6]${NC} Running health check (model generation test)..."
 if echo "$MODELS_LIST" | grep -q "qwen2.5vl:7b"; then
     print_info "Testing model generation with qwen2.5vl:7b..."
     TEST_PROMPT='{"model": "qwen2.5vl:7b", "prompt": "Say hello in one word", "stream": false}'
-    
+
     RESPONSE=$(curl -s -X POST "${API_ENDPOINT}/generate" \
         -H "Content-Type: application/json" \
         -d "$TEST_PROMPT" 2>/dev/null)
-    
+
     if echo "$RESPONSE" | jq -r '.response' > /dev/null 2>&1; then
         MODEL_RESPONSE=$(echo "$RESPONSE" | jq -r '.response' | head -c 50)
         print_status 0 "Model generation test passed"
@@ -275,7 +275,7 @@ if curl -f -s "${API_ENDPOINT}/tags" > /dev/null 2>&1; then
         echo "  (none)"
     fi
     echo ""
-    
+
     # Storage info
     if [ -d ~/.ollama/models ]; then
         STORAGE_SIZE=$(du -sh ~/.ollama/models 2>/dev/null | awk '{print $1}' || echo "unknown")

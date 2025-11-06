@@ -70,6 +70,23 @@ def example_using_qwen7b():
     print(f"Response: {response.text}")
 
 
+def example_using_granite():
+    """Example using Granite 4.0 H Tiny model."""
+    print("\nExample 2c: Using Granite 4.0 H Tiny Model")
+    print("-" * 40)
+
+    # Use Granite 4.0 for RAG and function calling
+    config = OllamaConfig(
+        base_url=get_ollama_base_url(),
+        default_model=Model.GRANITE_4_H_TINY,
+        timeout=120,
+    )
+
+    client = SharedOllamaClient(config)
+    response = client.generate("Explain RAG in one sentence.")
+    print(f"Response: {response.text}")
+
+
 def example_chat_format():
     """Example using chat format."""
     print("\nExample 3: Chat Format")
@@ -125,6 +142,7 @@ if __name__ == "__main__":
         example_basic_usage()
         example_custom_config()
         example_using_qwen7b()
+        example_using_granite()
         example_chat_format()
         example_with_options()
         example_error_handling()

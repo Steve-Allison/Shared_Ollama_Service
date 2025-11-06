@@ -341,6 +341,7 @@ class Model(str, Enum):
     QWEN25_VL_7B = "qwen2.5vl:7b"
     QWEN25_7B = "qwen2.5:7b"
     QWEN25_14B = "qwen2.5:14b"
+    GRANITE_4_H_TINY = "granite4:tiny-h"
 ```
 
 ## Error Handling

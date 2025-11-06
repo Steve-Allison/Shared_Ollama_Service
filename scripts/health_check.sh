@@ -16,7 +16,7 @@ OLLAMA_URL="${OLLAMA_URL:-http://localhost:11434}"
 API_ENDPOINT="${OLLAMA_URL}/api"
 
 # Required models
-REQUIRED_MODELS=("qwen2.5vl:7b" "qwen2.5:7b" "qwen2.5:14b")
+REQUIRED_MODELS=("qwen2.5vl:7b" "qwen2.5:7b" "qwen2.5:14b" "granite4:tiny-h")
 
 # Status tracking
 CHECK_PASSED=0
@@ -46,7 +46,7 @@ else
     print_status 1 "Ollama service is not accessible"
     echo ""
     echo "Attempting to start service with MPS/Metal optimization..."
-    
+
     # Start native Ollama service
     if command -v ollama &> /dev/null; then
         echo "Starting Ollama service with optimizations..."
@@ -55,7 +55,7 @@ else
         ollama serve > /dev/null 2>&1 &
         echo "Waiting 3 seconds for service to start..."
         sleep 3
-        
+
         if curl -f -s "${API_ENDPOINT}/tags" > /dev/null 2>&1; then
             print_status 0 "Ollama service started successfully"
         else
@@ -103,7 +103,7 @@ if echo "$MODELS_LIST" | grep -q "qwen2.5vl:7b"; then
     echo ""
     echo "Testing model generation with qwen2.5vl:7b..."
     TEST_PROMPT='{"model": "qwen2.5vl:7b", "prompt": "Say hello", "stream": false}'
-    
+
     if curl -s -X POST "${API_ENDPOINT}/generate" \
         -H "Content-Type: application/json" \
         -d "$TEST_PROMPT" | jq -r '.response' > /dev/null 2>&1; then

@@ -9,6 +9,7 @@ class Model(StrEnum):
     QWEN25_VL_7B: str
     QWEN25_7B: str
     QWEN25_14B: str
+    GRANITE_4_H_TINY: str
 
 class OllamaConfig:
     """Configuration for Ollama client."""

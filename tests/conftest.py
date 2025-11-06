@@ -90,6 +90,21 @@ def sample_models_response():
                     "quantization_level": "Q4_K_M",
                 },
             },
+            {
+                "name": "granite4:tiny-h",
+                "model": "granite4:tiny-h",
+                "modified_at": "2025-11-06T12:00:00.000000000Z",
+                "size": 4500000000,
+                "digest": "8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0",
+                "details": {
+                    "parent_model": "",
+                    "format": "gguf",
+                    "family": "granite4",
+                    "families": ["granite4"],
+                    "parameter_size": "7B",
+                    "quantization_level": "Q4_K_M",
+                },
+            },
         ]
     }
 

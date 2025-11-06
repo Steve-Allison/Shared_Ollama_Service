@@ -32,6 +32,7 @@ class Model(StrEnum):
     QWEN25_VL_7B = "qwen2.5vl:7b"  # Primary: 7B params, vision-language model
     QWEN25_7B = "qwen2.5:7b"  # Standard: 7B params, text-only model
     QWEN25_14B = "qwen2.5:14b"  # Secondary: 14.8B params
+    GRANITE_4_H_TINY = "granite4:tiny-h"  # Granite 4.0 H Tiny: 7B total (1B active), hybrid MoE, optimized for RAG and function calling
 
 
 @dataclass

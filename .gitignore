@@ -41,7 +41,12 @@ htmlcov/
 *.tar.gz
 
 # IDE
-.vscode/
+# Allow shared IDE settings (best practice: commit settings.json and extensions.json)
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+.cursor/*
+!.cursor/settings.json
 .idea/
 *.swp
 *.swo

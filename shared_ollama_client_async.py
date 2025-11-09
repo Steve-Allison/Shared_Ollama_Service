@@ -28,15 +28,15 @@ except ImportError as e:
     msg = "httpx is required for async support. Install with: pip install httpx"
     raise ImportError(msg) from e
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-from shared_ollama_client import (  # noqa: E402
+from shared_ollama_client import (
     GenerateOptions,
     GenerateResponse,
     Model,
 )
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 
 @dataclass

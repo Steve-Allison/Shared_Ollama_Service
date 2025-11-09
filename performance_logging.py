@@ -26,7 +26,7 @@ import time
 from collections import defaultdict
 from contextlib import contextmanager
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, ClassVar
 
@@ -131,7 +131,7 @@ class PerformanceCollector:
         metric = DetailedPerformanceMetrics(
             model=model,
             operation=operation,
-            timestamp=datetime.now(),
+            timestamp=datetime.now(UTC),
             total_latency_ms=total_latency_ms,
             success=success,
             error=error,
@@ -280,7 +280,7 @@ def track_performance(
         >>> with track_performance("qwen2.5vl:7b", "generate", response=response):
         ...     pass  # Already executed
     """
-    start_time = time.time()
+    start_time = time.perf_counter()
     success = False
     error = None
 
@@ -291,7 +291,7 @@ def track_performance(
         error = str(e)
         raise
     finally:
-        latency_ms = (time.time() - start_time) * 1000
+        latency_ms = (time.perf_counter() - start_time) * 1000
         PerformanceCollector.record_performance(
             model=model,
             operation=operation,

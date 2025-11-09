@@ -18,11 +18,12 @@ Usage:
 """
 
 import logging
+import statistics
 import time
 from collections import defaultdict
 from contextlib import contextmanager
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any, ClassVar
 
 logger = logging.getLogger(__name__)
@@ -37,7 +38,7 @@ class RequestMetrics:
     latency_ms: float
     success: bool
     error: str | None = None
-    timestamp: datetime = field(default_factory=datetime.now)
+    timestamp: datetime = field(default_factory=lambda: datetime.now(UTC))
 
 
 @dataclass
@@ -94,7 +95,7 @@ class MetricsCollector:
             latency_ms=latency_ms,
             success=success,
             error=error,
-            timestamp=datetime.now(),
+            timestamp=datetime.now(UTC),
         )
         cls._metrics.append(metric)
 
@@ -146,16 +147,14 @@ class MetricsCollector:
             if m.error:
                 errors_by_type[m.error] += 1
 
-        def percentile(data: list[float], p: float) -> float:
-            """Calculate percentile."""
-            if not data:
-                return 0.0
-            k = (len(data) - 1) * p
-            f = int(k)
-            c = k - f
-            if f + 1 < len(data):
-                return data[f] + c * (data[f + 1] - data[f])
-            return data[f]
+        # Calculate percentiles using statistics.quantiles (Python 3.8+)
+        if latencies_sorted:
+            quantiles = statistics.quantiles(latencies_sorted, n=100)
+            p50 = quantiles[49]  # 50th percentile (median)
+            p95 = quantiles[94]  # 95th percentile
+            p99 = quantiles[98]  # 99th percentile
+        else:
+            p50 = p95 = p99 = 0.0
 
         return ServiceMetrics(
             total_requests=total,
@@ -164,9 +163,9 @@ class MetricsCollector:
             requests_by_model=dict(requests_by_model),
             requests_by_operation=dict(requests_by_operation),
             average_latency_ms=sum(latencies) / len(latencies) if latencies else 0.0,
-            p50_latency_ms=percentile(latencies_sorted, 0.50),
-            p95_latency_ms=percentile(latencies_sorted, 0.95),
-            p99_latency_ms=percentile(latencies_sorted, 0.99),
+            p50_latency_ms=p50,
+            p95_latency_ms=p95,
+            p99_latency_ms=p99,
             errors_by_type=dict(errors_by_type),
             last_request_time=max(m.timestamp for m in metrics),
             first_request_time=min(m.timestamp for m in metrics),
@@ -227,7 +226,7 @@ def track_request(
 
     Note: For detailed metrics with GenerateResponse, use performance_logging.track_performance instead.
     """
-    start_time = time.time()
+    start_time = time.perf_counter()
     success = False
     error = None
 
@@ -238,7 +237,7 @@ def track_request(
         error = str(e)
         raise
     finally:
-        latency_ms = (time.time() - start_time) * 1000
+        latency_ms = (time.perf_counter() - start_time) * 1000
         MetricsCollector.record_request(
             model=model,
             operation=operation,

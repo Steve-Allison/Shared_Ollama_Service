@@ -20,10 +20,11 @@ Usage:
 import csv
 import json
 import logging
+import time
 from collections import defaultdict
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass, field
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, ClassVar
 
@@ -420,7 +421,7 @@ def track_request_with_project(
         ... ):
         ...     response = client.generate("Hello!")
     """
-    start_time = datetime.now().timestamp()
+    start_time = time.perf_counter()
     success = False
     error = None
 
@@ -431,7 +432,7 @@ def track_request_with_project(
         error = str(e)
         raise
     finally:
-        latency_ms = (datetime.now().timestamp() - start_time) * 1000
+        latency_ms = (time.perf_counter() - start_time) * 1000
         AnalyticsCollector.record_request_with_project(
             model=model,
             operation=operation,

@@ -147,7 +147,7 @@ class AsyncSharedOllamaClient:
                 response.raise_for_status()
                 logger.info("Connected to Ollama service")
                 self._needs_verification = False
-            except Exception as e:
+            except (httpx.RequestError, httpx.HTTPStatusError) as e:
                 if attempt < retries - 1:
                     logger.warning(
                         f"Connection attempt {attempt + 1} failed, retrying in {delay}s..."
@@ -332,7 +332,8 @@ class AsyncSharedOllamaClient:
             if self.client is None:
                 return False
             response = await self.client.get("/api/tags", timeout=5)
-        except Exception:
+        except (httpx.RequestError, httpx.HTTPStatusError) as e:
+            logger.debug(f"Health check failed: {e}")
             return False
         else:
             return response.status_code == HTTPStatus.OK

@@ -249,7 +249,7 @@ class ResilientOllamaClient:
                 config=self.retry_config,
             )
             self.circuit_breaker.record_success()
-        except Exception:
+        except (requests.RequestException, ConnectionError, TimeoutError):
             self.circuit_breaker.record_failure()
             raise
         else:
@@ -294,7 +294,8 @@ class ResilientOllamaClient:
         """
         try:
             return self._execute_with_resilience(self.client.health_check)
-        except Exception:
+        except (requests.RequestException, ConnectionError, TimeoutError) as e:
+            logger.debug(f"Health check failed: {e}")
             return False
 
     def list_models(self) -> list[dict[str, Any]]:

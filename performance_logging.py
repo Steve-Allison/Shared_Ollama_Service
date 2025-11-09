@@ -289,7 +289,7 @@ def track_performance(
         yield
         success = True
     except Exception as e:
-        error = str(e)
+        error = f"{type(e).__name__}: {str(e)}"
         raise
     finally:
         latency_ms = (time.perf_counter() - start_time) * 1000

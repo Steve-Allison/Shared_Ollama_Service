@@ -11,6 +11,7 @@ Usage:
     response = client.generate("Hello, world!")
 """
 
+import json
 import logging
 import time
 from dataclasses import dataclass
@@ -147,11 +148,34 @@ class SharedOllamaClient:
 
         Returns:
             List of model information dictionaries
+
+        Raises:
+            requests.exceptions.HTTPError: If HTTP request fails
+            json.JSONDecodeError: If response is not valid JSON
+            ValueError: If response structure is invalid
         """
-        response = self.session.get(f"{self.config.base_url}/api/tags", timeout=self.config.timeout)
-        response.raise_for_status()
-        data = response.json()
-        return data.get("models", [])
+        try:
+            response = self.session.get(
+                f"{self.config.base_url}/api/tags",
+                timeout=self.config.timeout,
+            )
+            response.raise_for_status()
+
+            data = response.json()
+
+            # Validate response structure
+            if not isinstance(data, dict):
+                msg = f"Expected dict response, got {type(data).__name__}"
+                raise ValueError(msg)
+
+            return data.get("models", [])
+
+        except json.JSONDecodeError as e:
+            logger.exception("Failed to decode JSON response from /api/tags")
+            raise
+        except requests.exceptions.HTTPError as e:
+            logger.exception(f"HTTP error listing models: {e.response.status_code}")
+            raise
 
     def generate(
         self,
@@ -207,24 +231,39 @@ class SharedOllamaClient:
 
         logger.info(f"Generating with model {model_str}")
 
-        response = self.session.post(
-            f"{self.config.base_url}/api/generate", json=payload, timeout=self.config.timeout
-        )
-        response.raise_for_status()
+        try:
+            response = self.session.post(
+                f"{self.config.base_url}/api/generate",
+                json=payload,
+                timeout=self.config.timeout,
+            )
+            response.raise_for_status()
 
-        data = response.json()
+            data = response.json()
 
-        return GenerateResponse(
-            text=data.get("response", ""),
-            model=data.get("model", model),
-            context=data.get("context"),
-            total_duration=data.get("total_duration", 0),
-            load_duration=data.get("load_duration", 0),
-            prompt_eval_count=data.get("prompt_eval_count", 0),
-            prompt_eval_duration=data.get("prompt_eval_duration", 0),
-            eval_count=data.get("eval_count", 0),
-            eval_duration=data.get("eval_duration", 0),
-        )
+            # Validate response structure
+            if not isinstance(data, dict):
+                msg = f"Expected dict response, got {type(data).__name__}"
+                raise ValueError(msg)
+
+            return GenerateResponse(
+                text=data.get("response", ""),
+                model=data.get("model", model),
+                context=data.get("context"),
+                total_duration=data.get("total_duration", 0),
+                load_duration=data.get("load_duration", 0),
+                prompt_eval_count=data.get("prompt_eval_count", 0),
+                prompt_eval_duration=data.get("prompt_eval_duration", 0),
+                eval_count=data.get("eval_count", 0),
+                eval_duration=data.get("eval_duration", 0),
+            )
+
+        except json.JSONDecodeError as e:
+            logger.exception(f"Failed to decode JSON response from /api/generate for {model_str}")
+            raise
+        except requests.exceptions.HTTPError as e:
+            logger.exception(f"HTTP error generating with {model_str}: {e.response.status_code}")
+            raise
 
     def chat(
         self, messages: list[dict[str, str]], model: str | None = None, stream: bool = False
@@ -249,12 +288,29 @@ class SharedOllamaClient:
 
         payload = {"model": model, "messages": messages, "stream": stream}
 
-        response = self.session.post(
-            f"{self.config.base_url}/api/chat", json=payload, timeout=self.config.timeout
-        )
-        response.raise_for_status()
+        try:
+            response = self.session.post(
+                f"{self.config.base_url}/api/chat",
+                json=payload,
+                timeout=self.config.timeout,
+            )
+            response.raise_for_status()
 
-        return response.json()
+            data = response.json()
+
+            # Validate response structure
+            if not isinstance(data, dict):
+                msg = f"Expected dict response, got {type(data).__name__}"
+                raise ValueError(msg)
+
+            return data
+
+        except json.JSONDecodeError as e:
+            logger.exception(f"Failed to decode JSON response from /api/chat for {model}")
+            raise
+        except requests.exceptions.HTTPError as e:
+            logger.exception(f"HTTP error in chat with {model}: {e.response.status_code}")
+            raise
 
     def pull_model(self, model: str) -> dict[str, Any]:
         """
@@ -270,13 +326,29 @@ class SharedOllamaClient:
 
         logger.info(f"Pulling model {model}")
 
-        response = self.session.post(
-            f"{self.config.base_url}/api/pull",
-            json=payload,
-            timeout=300,  # Pulling can take a while
-        )
+        try:
+            response = self.session.post(
+                f"{self.config.base_url}/api/pull",
+                json=payload,
+                timeout=300,  # Pulling can take a while
+            )
+            response.raise_for_status()
 
-        return response.json()
+            data = response.json()
+
+            # Validate response structure
+            if not isinstance(data, dict):
+                msg = f"Expected dict response, got {type(data).__name__}"
+                raise ValueError(msg)
+
+            return data
+
+        except json.JSONDecodeError as e:
+            logger.exception(f"Failed to decode JSON response from /api/pull for {model}")
+            raise
+        except requests.exceptions.HTTPError as e:
+            logger.exception(f"HTTP error pulling model {model}: {e.response.status_code}")
+            raise
 
     def health_check(self) -> bool:
         """
@@ -287,7 +359,8 @@ class SharedOllamaClient:
         """
         try:
             response = self.session.get(f"{self.config.base_url}/api/tags", timeout=5)
-        except requests.exceptions.RequestException:
+        except requests.exceptions.RequestException as e:
+            logger.debug(f"Health check failed: {e}")
             return False
         else:
             return response.status_code == HTTPStatus.OK

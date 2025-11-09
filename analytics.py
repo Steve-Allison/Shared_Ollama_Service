@@ -36,16 +36,19 @@ logger = logging.getLogger(__name__)
 
 def _convert_datetime_to_iso(obj: Any) -> Any:
     """
-    Recursively convert datetime objects to ISO format strings.
+    Recursively convert datetime objects to ISO format strings and defaultdicts to dicts.
 
     Args:
         obj: Object to convert (can be datetime, dict, list, or primitive)
 
     Returns:
-        Converted object with datetimes as ISO strings
+        Converted object with datetimes as ISO strings and defaultdicts as dicts
     """
     if isinstance(obj, datetime):
         return obj.isoformat()
+    if isinstance(obj, defaultdict):
+        # Convert defaultdict to regular dict
+        return {k: _convert_datetime_to_iso(v) for k, v in obj.items()}
     if isinstance(obj, dict):
         return {k: _convert_datetime_to_iso(v) for k, v in obj.items()}
     if isinstance(obj, list):
@@ -332,20 +335,86 @@ class AnalyticsCollector:
 
         Returns:
             Path to exported file
+
+        Raises:
+            OSError: If file cannot be created or written
+            PermissionError: If insufficient permissions
+            json.JSONEncodeError: If data cannot be serialized to JSON
         """
         analytics = cls.get_analytics(window_minutes, project)
 
-        # Convert to dict for JSON serialization
-        data = asdict(analytics)
+        # Manually convert to dict to handle defaultdicts properly
+        data = {
+            "total_requests": analytics.total_requests,
+            "successful_requests": analytics.successful_requests,
+            "failed_requests": analytics.failed_requests,
+            "success_rate": analytics.success_rate,
+            "average_latency_ms": analytics.average_latency_ms,
+            "p50_latency_ms": analytics.p50_latency_ms,
+            "p95_latency_ms": analytics.p95_latency_ms,
+            "p99_latency_ms": analytics.p99_latency_ms,
+            "requests_by_model": dict(analytics.requests_by_model),
+            "requests_by_operation": dict(analytics.requests_by_operation),
+            "requests_by_project": dict(analytics.requests_by_project),
+            "project_metrics": {
+                k: {
+                    "project_name": v.project_name,
+                    "total_requests": v.total_requests,
+                    "successful_requests": v.successful_requests,
+                    "failed_requests": v.failed_requests,
+                    "requests_by_model": dict(v.requests_by_model),
+                    "requests_by_operation": dict(v.requests_by_operation),
+                    "average_latency_ms": v.average_latency_ms,
+                    "total_latency_ms": v.total_latency_ms,
+                    "last_request_time": v.last_request_time,
+                    "first_request_time": v.first_request_time,
+                }
+                for k, v in analytics.project_metrics.items()
+            },
+            "hourly_metrics": [
+                {
+                    "timestamp": h.timestamp,
+                    "requests_count": h.requests_count,
+                    "successful_count": h.successful_count,
+                    "failed_count": h.failed_count,
+                    "average_latency_ms": h.average_latency_ms,
+                    "requests_by_model": dict(h.requests_by_model),
+                }
+                for h in analytics.hourly_metrics
+            ],
+            "start_time": analytics.start_time,
+            "end_time": analytics.end_time,
+        }
 
         # Convert datetime objects to ISO format strings
         data = _convert_datetime_to_iso(data)
 
         path = Path(filepath)
-        path.parent.mkdir(parents=True, exist_ok=True)
 
-        with path.open("w", encoding="utf-8") as f:
-            json.dump(data, f, indent=2)
+        try:
+            # Create parent directories
+            path.parent.mkdir(parents=True, exist_ok=True)
+        except PermissionError as e:
+            logger.exception(f"Permission denied creating directory: {path.parent}")
+            raise
+        except OSError as e:
+            logger.exception(f"Failed to create directory: {path.parent}")
+            raise
+
+        try:
+            # Write JSON file
+            with path.open("w", encoding="utf-8") as f:
+                json.dump(data, f, indent=2)
+        except PermissionError as e:
+            logger.exception(f"Permission denied writing to: {path}")
+            raise
+        except OSError as e:
+            logger.exception(f"Failed to write to file: {path}")
+            raise
+        except (TypeError, ValueError) as e:
+            # json.dump can raise TypeError or ValueError
+            logger.exception(f"Failed to serialize analytics data to JSON")
+            raise
 
         logger.info(f"Exported analytics to {path}")
         return path
@@ -367,46 +436,72 @@ class AnalyticsCollector:
 
         Returns:
             Path to exported file
+
+        Raises:
+            OSError: If file cannot be created or written
+            PermissionError: If insufficient permissions
+            csv.Error: If CSV writing fails
         """
         path = Path(filepath)
-        path.parent.mkdir(parents=True, exist_ok=True)
 
-        with path.open("w", encoding="utf-8", newline="") as f:
-            writer = csv.writer(f)
+        try:
+            # Create parent directories
+            path.parent.mkdir(parents=True, exist_ok=True)
+        except PermissionError as e:
+            logger.exception(f"Permission denied creating directory: {path.parent}")
+            raise
+        except OSError as e:
+            logger.exception(f"Failed to create directory: {path.parent}")
+            raise
 
-            # Write header
-            writer.writerow([
-                "Timestamp",
-                "Model",
-                "Operation",
-                "Latency (ms)",
-                "Success",
-                "Error",
-                "Project",
-            ])
+        try:
+            # Write CSV file
+            with path.open("w", encoding="utf-8", newline="") as f:
+                writer = csv.writer(f)
 
-            # Write data rows
-            metrics = getattr(MetricsCollector, "_metrics", [])
-            if window_minutes:
-                cutoff = datetime.now() - timedelta(minutes=window_minutes)
-                metrics = [m for m in metrics if m.timestamp >= cutoff]
-
-            metric_to_index = cls._build_metric_index_map()
-            for metric in metrics:
-                metric_index = metric_to_index.get(id(metric), -1)
-                proj = cls._project_metadata.get(metric_index, "unknown")
-                if project and proj != project:
-                    continue
-
+                # Write header
                 writer.writerow([
-                    metric.timestamp.isoformat(),
-                    metric.model,
-                    metric.operation,
-                    f"{metric.latency_ms:.2f}",
-                    "Yes" if metric.success else "No",
-                    metric.error or "",
-                    proj,
+                    "Timestamp",
+                    "Model",
+                    "Operation",
+                    "Latency (ms)",
+                    "Success",
+                    "Error",
+                    "Project",
                 ])
+
+                # Write data rows
+                metrics = getattr(MetricsCollector, "_metrics", [])
+                if window_minutes:
+                    cutoff = datetime.now() - timedelta(minutes=window_minutes)
+                    metrics = [m for m in metrics if m.timestamp >= cutoff]
+
+                metric_to_index = cls._build_metric_index_map()
+                for metric in metrics:
+                    metric_index = metric_to_index.get(id(metric), -1)
+                    proj = cls._project_metadata.get(metric_index, "unknown")
+                    if project and proj != project:
+                        continue
+
+                    writer.writerow([
+                        metric.timestamp.isoformat(),
+                        metric.model,
+                        metric.operation,
+                        f"{metric.latency_ms:.2f}",
+                        "Yes" if metric.success else "No",
+                        metric.error or "",
+                        proj,
+                    ])
+
+        except PermissionError as e:
+            logger.exception(f"Permission denied writing to: {path}")
+            raise
+        except OSError as e:
+            logger.exception(f"Failed to write to file: {path}")
+            raise
+        except csv.Error as e:
+            logger.exception(f"CSV writing error for file: {path}")
+            raise
 
         logger.info(f"Exported analytics to CSV: {path}")
         return path

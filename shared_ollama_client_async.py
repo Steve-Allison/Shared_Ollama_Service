@@ -17,6 +17,7 @@ Usage:
 """
 
 import asyncio
+import json
 import logging
 import types
 from dataclasses import dataclass
@@ -176,19 +177,39 @@ class AsyncSharedOllamaClient:
 
         Returns:
             List of model information dictionaries
+
+        Raises:
+            httpx.HTTPStatusError: If HTTP request fails
+            json.JSONDecodeError: If response is not valid JSON
+            ValueError: If response structure is invalid
         """
         await self._ensure_client()
         if self.client is None:
             raise RuntimeError("Client not initialized")
 
-        # Quick API call, use health_check_timeout
-        response = await self.client.get(
-            "/api/tags",
-            timeout=self.config.health_check_timeout,
-        )
-        response.raise_for_status()
-        data = response.json()
-        return data.get("models", [])
+        try:
+            # Quick API call, use health_check_timeout
+            response = await self.client.get(
+                "/api/tags",
+                timeout=self.config.health_check_timeout,
+            )
+            response.raise_for_status()
+
+            data = response.json()
+
+            # Validate response structure
+            if not isinstance(data, dict):
+                msg = f"Expected dict response, got {type(data).__name__}"
+                raise ValueError(msg)
+
+            return data.get("models", [])
+
+        except json.JSONDecodeError as e:
+            logger.exception("Failed to decode JSON response from /api/tags")
+            raise
+        except httpx.HTTPStatusError as e:
+            logger.exception(f"HTTP error listing models: {e.response.status_code}")
+            raise
 
     async def generate(
         self,
@@ -254,25 +275,38 @@ class AsyncSharedOllamaClient:
 
         logger.info(f"Generating with model {model_str}")
 
-        response = await self.client.post(
-            "/api/generate",
-            json=payload,
-        )  # Timeout configured in client initialization
-        response.raise_for_status()
+        try:
+            response = await self.client.post(
+                "/api/generate",
+                json=payload,
+            )  # Timeout configured in client initialization
+            response.raise_for_status()
 
-        data = response.json()
+            data = response.json()
 
-        return GenerateResponse(
-            text=data.get("response", ""),
-            model=data.get("model", model),
-            context=data.get("context"),
-            total_duration=data.get("total_duration", 0),
-            load_duration=data.get("load_duration", 0),
-            prompt_eval_count=data.get("prompt_eval_count", 0),
-            prompt_eval_duration=data.get("prompt_eval_duration", 0),
-            eval_count=data.get("eval_count", 0),
-            eval_duration=data.get("eval_duration", 0),
-        )
+            # Validate response structure
+            if not isinstance(data, dict):
+                msg = f"Expected dict response, got {type(data).__name__}"
+                raise ValueError(msg)
+
+            return GenerateResponse(
+                text=data.get("response", ""),
+                model=data.get("model", model),
+                context=data.get("context"),
+                total_duration=data.get("total_duration", 0),
+                load_duration=data.get("load_duration", 0),
+                prompt_eval_count=data.get("prompt_eval_count", 0),
+                prompt_eval_duration=data.get("prompt_eval_duration", 0),
+                eval_count=data.get("eval_count", 0),
+                eval_duration=data.get("eval_duration", 0),
+            )
+
+        except json.JSONDecodeError as e:
+            logger.exception(f"Failed to decode JSON response from /api/generate for {model_str}")
+            raise
+        except httpx.HTTPStatusError as e:
+            logger.exception(f"HTTP error generating with {model_str}: {e.response.status_code}")
+            raise
 
     async def chat(
         self,
@@ -311,14 +345,29 @@ class AsyncSharedOllamaClient:
             "stream": stream,
         }
 
-        response = await self.client.post(
-            "/api/chat",
-            json=payload,
-            timeout=self.config.timeout,
-        )
-        response.raise_for_status()
+        try:
+            response = await self.client.post(
+                "/api/chat",
+                json=payload,
+                timeout=self.config.timeout,
+            )
+            response.raise_for_status()
 
-        return response.json()
+            data = response.json()
+
+            # Validate response structure
+            if not isinstance(data, dict):
+                msg = f"Expected dict response, got {type(data).__name__}"
+                raise ValueError(msg)
+
+            return data
+
+        except json.JSONDecodeError as e:
+            logger.exception(f"Failed to decode JSON response from /api/chat for {model_str}")
+            raise
+        except httpx.HTTPStatusError as e:
+            logger.exception(f"HTTP error in chat with {model_str}: {e.response.status_code}")
+            raise
 
     async def health_check(self) -> bool:
         """
@@ -330,6 +379,7 @@ class AsyncSharedOllamaClient:
         try:
             await self._ensure_client()
             if self.client is None:
+                logger.debug("Health check failed: Client not initialized")
                 return False
             response = await self.client.get("/api/tags", timeout=5)
         except (httpx.RequestError, httpx.HTTPStatusError) as e:

@@ -148,7 +148,7 @@ def get_client_path() -> Path | None:
     return None
 
 
-def import_client():
+def import_client() -> type:
     """
     Dynamically import and return the SharedOllamaClient class.
 

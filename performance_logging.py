@@ -24,6 +24,7 @@ import json
 import logging
 import time
 from collections import defaultdict
+from collections.abc import Generator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -116,7 +117,7 @@ class PerformanceCollector:
         success: bool,
         response: GenerateResponse | None = None,
         error: str | None = None,
-    ):
+    ) -> None:
         """
         Record detailed performance metrics.
 
@@ -256,7 +257,7 @@ class PerformanceCollector:
         }
 
     @classmethod
-    def reset(cls):
+    def reset(cls) -> None:
         """Reset all metrics (for testing)."""
         cls._metrics = []
 
@@ -266,7 +267,7 @@ def track_performance(
     model: str,
     operation: str = "generate",
     response: GenerateResponse | None = None,
-):
+) -> Generator[None, None, None]:
     """
     Context manager to track request with detailed Ollama performance metrics.
 

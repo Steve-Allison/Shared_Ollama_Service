@@ -22,6 +22,7 @@ import json
 import logging
 import time
 from collections import defaultdict
+from collections.abc import Generator
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime, timedelta
@@ -31,6 +32,25 @@ from typing import Any, ClassVar
 from monitoring import MetricsCollector, RequestMetrics
 
 logger = logging.getLogger(__name__)
+
+
+def _convert_datetime_to_iso(obj: Any) -> Any:
+    """
+    Recursively convert datetime objects to ISO format strings.
+
+    Args:
+        obj: Object to convert (can be datetime, dict, list, or primitive)
+
+    Returns:
+        Converted object with datetimes as ISO strings
+    """
+    if isinstance(obj, datetime):
+        return obj.isoformat()
+    if isinstance(obj, dict):
+        return {k: _convert_datetime_to_iso(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_convert_datetime_to_iso(item) for item in obj]
+    return obj
 
 
 @dataclass
@@ -107,6 +127,12 @@ class AnalyticsCollector:
     _project_metadata: ClassVar[dict[int, str]] = {}  # Maps metric index to project
 
     @classmethod
+    def _build_metric_index_map(cls) -> dict[int, int]:
+        """Build mapping from metric object id to metric index for O(1) lookup."""
+        all_metrics_list = list(getattr(MetricsCollector, "_metrics", []))
+        return {id(m): i for i, m in enumerate(all_metrics_list)}
+
+    @classmethod
     def record_request_with_project(
         cls,
         model: str,
@@ -115,7 +141,7 @@ class AnalyticsCollector:
         success: bool,
         project: str | None = None,
         error: str | None = None,
-    ):
+    ) -> None:
         """
         Record a request metric with project identifier.
 
@@ -177,9 +203,7 @@ class AnalyticsCollector:
 
         # Filter by project if specified
         if project:
-            all_metrics_list = list(all_metrics)
-            # Create index mapping for O(1) lookup
-            metric_to_index = {id(m): i for i, m in enumerate(all_metrics_list)}
+            metric_to_index = cls._build_metric_index_map()
             metrics = [
                 m
                 for m in metrics
@@ -191,9 +215,7 @@ class AnalyticsCollector:
 
         # Calculate project-level metrics
         project_metrics_dict: dict[str, ProjectMetrics] = {}
-        all_metrics_list = list(all_metrics)
-        # Create index mapping for O(1) lookup
-        metric_to_index = {id(m): i for i, m in enumerate(all_metrics_list)}
+        metric_to_index = cls._build_metric_index_map()
 
         for metric in metrics:
             metric_index = metric_to_index.get(id(metric), -1)
@@ -317,16 +339,7 @@ class AnalyticsCollector:
         data = asdict(analytics)
 
         # Convert datetime objects to ISO format strings
-        def convert_datetime(obj):
-            if isinstance(obj, datetime):
-                return obj.isoformat()
-            if isinstance(obj, dict):
-                return {k: convert_datetime(v) for k, v in obj.items()}
-            if isinstance(obj, list):
-                return [convert_datetime(item) for item in obj]
-            return obj
-
-        data = convert_datetime(data)
+        data = _convert_datetime_to_iso(data)
 
         path = Path(filepath)
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -378,9 +391,7 @@ class AnalyticsCollector:
                 cutoff = datetime.now() - timedelta(minutes=window_minutes)
                 metrics = [m for m in metrics if m.timestamp >= cutoff]
 
-            all_metrics_list = list(getattr(MetricsCollector, "_metrics", []))
-            # Create index mapping for O(1) lookup
-            metric_to_index = {id(m): i for i, m in enumerate(all_metrics_list)}
+            metric_to_index = cls._build_metric_index_map()
             for metric in metrics:
                 metric_index = metric_to_index.get(id(metric), -1)
                 proj = cls._project_metadata.get(metric_index, "unknown")
@@ -406,7 +417,7 @@ def track_request_with_project(
     model: str,
     operation: str = "generate",
     project: str | None = None,
-):
+) -> Generator[None, None, None]:
     """
     Context manager to track a request with project identifier.
 
@@ -461,14 +472,4 @@ def get_analytics_json(
 
     # Convert to dict and handle datetime serialization
     data = asdict(analytics)
-
-    def convert_datetime(obj):
-        if isinstance(obj, datetime):
-            return obj.isoformat()
-        if isinstance(obj, dict):
-            return {k: convert_datetime(v) for k, v in obj.items()}
-        if isinstance(obj, list):
-            return [convert_datetime(item) for item in obj]
-        return obj
-
-    return convert_datetime(data)  # type: ignore[return-value]
+    return _convert_datetime_to_iso(data)  # type: ignore[return-value]

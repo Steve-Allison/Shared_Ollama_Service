@@ -21,6 +21,7 @@ import logging
 import statistics
 import time
 from collections import defaultdict
+from collections.abc import Generator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
@@ -78,7 +79,7 @@ class MetricsCollector:
         latency_ms: float,
         success: bool,
         error: str | None = None,
-    ):
+    ) -> None:
         """
         Record a request metric.
 
@@ -148,11 +149,15 @@ class MetricsCollector:
                 errors_by_type[m.error] += 1
 
         # Calculate percentiles using statistics.quantiles (Python 3.8+)
-        if latencies_sorted:
+        # Note: quantiles() requires at least 2 data points
+        if len(latencies_sorted) >= 2:
             quantiles = statistics.quantiles(latencies_sorted, n=100)
             p50 = quantiles[49]  # 50th percentile (median)
             p95 = quantiles[94]  # 95th percentile
             p99 = quantiles[98]  # 99th percentile
+        elif len(latencies_sorted) == 1:
+            # Single data point - all percentiles are the same
+            p50 = p95 = p99 = latencies_sorted[0]
         else:
             p50 = p95 = p99 = 0.0
 
@@ -203,7 +208,7 @@ class MetricsCollector:
         }
 
     @classmethod
-    def reset(cls):
+    def reset(cls) -> None:
         """Reset all metrics (useful for testing)."""
         cls._metrics = []
 
@@ -212,7 +217,7 @@ class MetricsCollector:
 def track_request(
     model: str,
     operation: str = "generate",
-):
+) -> Generator[None, None, None]:
     """
     Context manager to track a request with automatic timing.
 

@@ -23,13 +23,6 @@ sys.path.insert(0, str(project_root))
 from analytics import AnalyticsCollector, get_analytics_json  # noqa: E402
 
 
-def format_number(num: float, precision: int = 2) -> str:
-    """Format number with appropriate precision."""
-    if num >= 1000:
-        return f"{num / 1000:.{precision}f}K"
-    return f"{num:.{precision}f}"
-
-
 def format_duration(ms: float) -> str:
     """Format duration in milliseconds to human-readable format."""
     if ms < 1:

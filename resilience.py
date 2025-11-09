@@ -21,13 +21,15 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Any
+from typing import Any, TypeVar
 
 import requests
 
-from shared_ollama_client import OllamaConfig, SharedOllamaClient
+from shared_ollama_client import GenerateResponse, OllamaConfig, SharedOllamaClient
 
 logger = logging.getLogger(__name__)
+
+_T = TypeVar("_T")
 
 
 class CircuitState(StrEnum):
@@ -134,11 +136,11 @@ class CircuitBreaker:
                 pass
 
 
-def exponential_backoff_retry[T](
-    func: Callable[[], T],
+def exponential_backoff_retry(
+    func: Callable[[], _T],
     config: RetryConfig | None = None,
     exceptions: tuple[type[Exception], ...] = (requests.RequestException,),
-) -> T:
+) -> _T:
     """
     Execute function with exponential backoff retry.
 
@@ -222,8 +224,8 @@ class ResilientOllamaClient:
         self.client = SharedOllamaClient(OllamaConfig(base_url=base_url), verify_on_init=False)
 
     def _execute_with_resilience(
-        self, operation: Callable[..., Any], *args: Any, **kwargs: Any
-    ) -> Any:
+        self, operation: Callable[..., _T], *args: Any, **kwargs: Any
+    ) -> _T:
         """
         Execute operation with resilience features.
 
@@ -253,7 +255,7 @@ class ResilientOllamaClient:
         else:
             return result
 
-    def generate(self, prompt: str, model: str | None = None, **kwargs: Any) -> Any:
+    def generate(self, prompt: str, model: str | None = None, **kwargs: Any) -> GenerateResponse:
         """
         Generate text with resilience.
 
@@ -267,7 +269,9 @@ class ResilientOllamaClient:
         """
         return self._execute_with_resilience(self.client.generate, prompt, model=model, **kwargs)
 
-    def chat(self, messages: list[dict[str, str]], model: str | None = None, **kwargs: Any) -> Any:
+    def chat(
+        self, messages: list[dict[str, str]], model: str | None = None, **kwargs: Any
+    ) -> dict[str, Any]:
         """
         Chat with model with resilience.
 

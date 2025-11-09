@@ -18,6 +18,7 @@ Usage:
 
 import asyncio
 import logging
+import types
 from dataclasses import dataclass
 from http import HTTPStatus
 from typing import Any
@@ -84,18 +85,21 @@ class AsyncSharedOllamaClient:
         else:
             self._needs_verification = False
 
-    async def __aenter__(self):
+    async def __aenter__(self) -> "AsyncSharedOllamaClient":
         """Async context manager entry."""
         await self._ensure_client()
         return self
 
     async def __aexit__(
-        self, exc_type: type[BaseException] | None, exc_val: BaseException | None, exc_tb: Any
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: types.TracebackType | None,
     ) -> None:
         """Async context manager exit."""
         await self.close()
 
-    async def _ensure_client(self):
+    async def _ensure_client(self) -> None:
         """Ensure HTTP client is initialized."""
         if self.client is None:
             self.client = httpx.AsyncClient(
@@ -115,7 +119,9 @@ class AsyncSharedOllamaClient:
                 await self._verify_connection()
 
     async def _verify_connection(
-        self, retries: int | None = None, delay: float | None = None
+        self,
+        retries: int | None = None,
+        delay: float | None = None,
     ) -> None:
         """
         Verify connection to Ollama service with retry logic.
@@ -158,7 +164,7 @@ class AsyncSharedOllamaClient:
             else:
                 return
 
-    async def close(self):
+    async def close(self) -> None:
         """Close the HTTP client."""
         if self.client:
             await self.client.aclose()

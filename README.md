@@ -8,6 +8,8 @@ A centralized Ollama instance for all AI projects to reduce duplication and impr
 
 This service provides a single Ollama instance accessible on port `11434` that all projects can use:
 
+- **Architecture snapshot**: see `docs/ARCHITECTURE.md` for diagrams, request flow, and runtime environments.
+- **Scaling playbooks**: see `docs/SCALING_AND_LOAD_TESTING.md` for concurrency tuning and load-testing guidance.
 - **Knowledge Machine**
 - **Course Intelligence Compiler**
 - **Story Machine**
@@ -106,9 +108,9 @@ source .venv/bin/activate  # On macOS/Linux
 .venv\Scripts\activate  # On Windows
 
 # Install dependencies (choose one method):
-pip install -r requirements.txt
-# OR (modern approach):
-pip install -e .
+pip install -r requirements.txt -c constraints.txt
+# OR (modern approach, preferred during development):
+pip install -e .[dev] -c constraints.txt
 
 # Deactivate when done
 deactivate
@@ -124,7 +126,7 @@ deactivate
 
 ```bash
 # Install with development dependencies (Ruff, Pyright, pytest)
-pip install -e ".[dev]"
+pip install -e ".[dev]" -c constraints.txt
 ```
 
 **Modern Development Tools:**
@@ -150,6 +152,12 @@ pyright shared_ollama_client.py utils.py
 
 # Run tests
 pytest
+
+# Run async load test script (headless)
+python scripts/async_load_test.py --requests 200 --workers 20
+
+# Optional: run async load test (requires locust)
+locust -f load_test_locust.py --host http://localhost:11434
 
 # Or use Makefile (if available)
 make lint        # Run linter

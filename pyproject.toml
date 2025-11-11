@@ -9,18 +9,18 @@ description = "Unified Ollama client library for shared Ollama service"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
-    "requests>=2.31.0",
+    "requests>=2.31.0,<3.0.0",
 ]
 
 [project.optional-dependencies]
 async = [
-    "httpx>=0.27.0",
+    "httpx>=0.27.0,<0.28.0",
 ]
 dev = [
-    "ruff>=0.14.4",
-    "pyright>=1.1.407",
-    "pytest>=9.0.0",
-    "pytest-cov>=7.0.0",
+    "ruff>=0.14.4,<0.15.0",
+    "pyright>=1.1.407,<1.2.0",
+    "pytest>=9.0.0,<10.0.0",
+    "pytest-cov>=7.0.0,<8.0.0",
 ]
 
 [tool.setuptools]
@@ -181,7 +181,6 @@ reportUnusedClass = "warning"
 reportGeneralTypeIssues = "error"
 reportInvalidTypeForm = "error"
 reportMissingParameterType = "warning"
-reportMissingReturnType = "warning"
 
 # Type inference settings
 strictListInference = true

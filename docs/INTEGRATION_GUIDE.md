@@ -80,6 +80,35 @@ result = response.json()
 print(result["response"])
 ```
 
+#### Option D: TypeScript / JavaScript (Node)
+
+```ts
+import fetch from "node-fetch";
+
+const baseUrl = process.env.OLLAMA_BASE_URL ?? "http://localhost:11434";
+
+async function generate(prompt: string) {
+  const res = await fetch(`${baseUrl}/api/generate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model: "qwen2.5vl:7b",
+      prompt,
+      stream: false,
+    }),
+  });
+
+  if (!res.ok) {
+    throw new Error(`Ollama error: ${res.status} ${await res.text()}`);
+  }
+
+  const { response } = (await res.json()) as { response: string };
+  return response;
+}
+
+generate("Hello, world!").then(console.log).catch(console.error);
+```
+
 ## Project-Specific Integration
 
 ### Knowledge Machine
@@ -92,7 +121,7 @@ from pydantic_settings import BaseSettings
 class OllamaConfig(BaseSettings):
     base_url: str = "http://localhost:11434"
     default_model: str = "qwen2.5vl:7b"
-    
+
     class Config:
         env_prefix = "OLLAMA_"
 ```
@@ -157,7 +186,7 @@ from shared_ollama_client import SharedOllamaClient, OllamaConfig
 class StoryConfig(BaseModel):
     ollama_base_url: str = Field(default="http://localhost:11434")
     ollama_model: str = Field(default="qwen2.5vl:7b")
-    
+
     def get_ollama_client(self):
         return SharedOllamaClient(
             OllamaConfig(
@@ -296,6 +325,7 @@ client = SharedOllamaClient()
 ## Next Steps
 
 - See [MIGRATION_GUIDE.md](MIGRATION_GUIDE.md) for migrating from individual instances
+- Review the [Architecture Overview](ARCHITECTURE.md) for component responsibilities
 - See [README.md](../README.md) for complete documentation
 - Run examples: `python examples/quick_start.py`
 

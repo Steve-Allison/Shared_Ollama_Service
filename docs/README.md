@@ -11,6 +11,8 @@ This directory contains all documentation for the Shared Ollama Service.
 
 ### Technical Documentation
 - **[Model Storage](MODEL_STORAGE.md)** - Where models are stored and managed
+- **[Architecture Overview](ARCHITECTURE.md)** - Components, request flow, and runtime environments
+- **[Scaling & Load Testing](SCALING_AND_LOAD_TESTING.md)** - Async tuning, Locust walkthrough, performance playbooks
 - **[OpenAPI Specification](openapi.yaml)** - Complete API specification (OpenAPI 3.1.0)
 
 ### Implementation Details

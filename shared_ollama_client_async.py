@@ -20,7 +20,8 @@ import asyncio
 import json
 import logging
 import types
-from dataclasses import dataclass
+from contextlib import asynccontextmanager
+from dataclasses import dataclass, field
 from http import HTTPStatus
 from typing import Any
 
@@ -52,6 +53,11 @@ class AsyncOllamaConfig:
     verbose: bool = False
     max_retries: int = 3
     retry_delay: float = 1.0
+    max_connections: int = 50
+    max_keepalive_connections: int = 20
+    max_concurrent_requests: int | None = None
+    client_limits: httpx.Limits | None = field(default=None, repr=False)
+    client_timeout: httpx.Timeout | None = field(default=None, repr=False)
 
 
 class AsyncSharedOllamaClient:
@@ -79,6 +85,9 @@ class AsyncSharedOllamaClient:
         """
         self.config = config or AsyncOllamaConfig()
         self.client: httpx.AsyncClient | None = None
+        self._semaphore: asyncio.Semaphore | None = None
+        if self.config.max_concurrent_requests:
+            self._semaphore = asyncio.Semaphore(self.config.max_concurrent_requests)
         if verify_on_init:
             # Note: This will be async, but we can't await in __init__
             # So we'll verify on first use instead
@@ -103,21 +112,41 @@ class AsyncSharedOllamaClient:
     async def _ensure_client(self) -> None:
         """Ensure HTTP client is initialized."""
         if self.client is None:
+            timeout = self.config.client_timeout or httpx.Timeout(
+                connect=5.0,
+                read=self.config.timeout,
+                write=5.0,
+                pool=5.0,
+            )
+            limits = self.config.client_limits or httpx.Limits(
+                max_keepalive_connections=self.config.max_keepalive_connections,
+                max_connections=self.config.max_connections,
+            )
             self.client = httpx.AsyncClient(
                 base_url=self.config.base_url,
-                timeout=httpx.Timeout(
-                    connect=5.0,
-                    read=self.config.timeout,
-                    write=5.0,
-                    pool=5.0,
-                ),
-                limits=httpx.Limits(
-                    max_keepalive_connections=10,
-                    max_connections=20,
-                ),
+                timeout=timeout,
+                limits=limits,
             )
             if self._needs_verification:
                 await self._verify_connection()
+
+    @asynccontextmanager
+    async def _acquire_slot(self):
+        """
+        Optionally throttle concurrent requests with a semaphore.
+
+        Calling code should use this context manager around network requests
+        to avoid overwhelming the Ollama service when concurrency is high.
+        """
+        if self._semaphore is None:
+            yield
+            return
+
+        await self._semaphore.acquire()
+        try:
+            yield
+        finally:
+            self._semaphore.release()
 
     async def _verify_connection(
         self,
@@ -188,12 +217,13 @@ class AsyncSharedOllamaClient:
             raise RuntimeError("Client not initialized")
 
         try:
-            # Quick API call, use health_check_timeout
-            response = await self.client.get(
-                "/api/tags",
-                timeout=self.config.health_check_timeout,
-            )
-            response.raise_for_status()
+            async with self._acquire_slot():
+                # Quick API call, use health_check_timeout
+                response = await self.client.get(
+                    "/api/tags",
+                    timeout=self.config.health_check_timeout,
+                )
+                response.raise_for_status()
 
             data = response.json()
 
@@ -276,11 +306,12 @@ class AsyncSharedOllamaClient:
         logger.info(f"Generating with model {model_str}")
 
         try:
-            response = await self.client.post(
-                "/api/generate",
-                json=payload,
-            )  # Timeout configured in client initialization
-            response.raise_for_status()
+            async with self._acquire_slot():
+                response = await self.client.post(
+                    "/api/generate",
+                    json=payload,
+                )  # Timeout configured in client initialization
+                response.raise_for_status()
 
             data = response.json()
 
@@ -346,12 +377,13 @@ class AsyncSharedOllamaClient:
         }
 
         try:
-            response = await self.client.post(
-                "/api/chat",
-                json=payload,
-                timeout=self.config.timeout,
-            )
-            response.raise_for_status()
+            async with self._acquire_slot():
+                response = await self.client.post(
+                    "/api/chat",
+                    json=payload,
+                    timeout=self.config.timeout,
+                )
+                response.raise_for_status()
 
             data = response.json()
 
@@ -381,7 +413,8 @@ class AsyncSharedOllamaClient:
             if self.client is None:
                 logger.debug("Health check failed: Client not initialized")
                 return False
-            response = await self.client.get("/api/tags", timeout=5)
+            async with self._acquire_slot():
+                response = await self.client.get("/api/tags", timeout=5)
         except (httpx.RequestError, httpx.HTTPStatusError) as e:
             logger.debug(f"Health check failed: {e}")
             return False

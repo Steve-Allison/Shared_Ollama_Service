@@ -129,9 +129,9 @@ pip install -e ".[dev]"
 
 **Modern Development Tools:**
 
-- **Ruff** (v0.14.3+) - Fast linter and formatter (replaces Black, isort, flake8, etc.)
+- **Ruff** (v0.14.4+) - Fast linter and formatter (replaces Black, isort, flake8, etc.)
 - **Pyright** (v1.1.407+) - Type checker (Microsoft's static type checker)
-- **pytest** (v8.0.0+) - Modern testing framework
+- **pytest** (v9.0.0+) - Modern testing framework
 
 **Quick Commands:**
 

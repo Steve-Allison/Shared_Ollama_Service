@@ -5,8 +5,8 @@ requests>=2.31.0
 
 # Development dependencies (install with: pip install -e ".[dev]")
 # See pyproject.toml for full dev dependencies including:
-# - ruff>=0.8.0 (linter & formatter)
+# - ruff>=0.14.4 (linter & formatter)
 # - pyright>=1.1.0 (type checker)
-# - pytest>=8.0.0 (testing)
-# - pytest-cov>=5.0.0 (coverage)
+# - pytest>=9.0.0 (testing)
+# - pytest-cov>=7.0.0 (coverage)
 

@@ -14,7 +14,7 @@ import uuid
 from contextlib import asynccontextmanager
 
 import httpx
-from fastapi import FastAPI, HTTPException, Request, status
+from fastapi import FastAPI, HTTPException, Request, Response, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
@@ -462,7 +462,7 @@ async def list_models(request: Request) -> ModelsResponse:
 
 @app.post("/api/v1/generate", tags=["Generation"])
 @limiter.limit("60/minute")
-async def generate(request: Request) -> GenerateResponse | StreamingResponse:
+async def generate(request: Request) -> Response:
     """
     Generate text from a prompt.
 
@@ -778,7 +778,7 @@ async def generate(request: Request) -> GenerateResponse | StreamingResponse:
 
 @app.post("/api/v1/chat", tags=["Chat"])
 @limiter.limit("60/minute")
-async def chat(request: Request) -> ChatResponse | StreamingResponse:
+async def chat(request: Request) -> Response:
     """
     Chat completion endpoint.
 

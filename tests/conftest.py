@@ -2,7 +2,12 @@
 Pytest configuration and fixtures for Shared Ollama Service tests.
 """
 
+import json
+import socketserver
+import threading
+from http.server import BaseHTTPRequestHandler
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 import pytest
@@ -14,6 +19,137 @@ if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
 from shared_ollama import OllamaConfig, SharedOllamaClient
+
+
+class ThreadedTCPServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
+    allow_reuse_address = True
+
+
+class OllamaRequestHandler(BaseHTTPRequestHandler):
+    def _json_response(self, data: dict, status: int = 200):
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json")
+        self.end_headers()
+        payload = json.dumps(data).encode("utf-8")
+        self.wfile.write(payload)
+
+    def do_GET(self):  # noqa: N802
+        state = self.server.server_state  # type: ignore[attr-defined]
+        if self.path == "/api/tags":
+            status = state.get("tags_status", 200)
+            if status != 200:
+                self._json_response({"error": "tags unavailable"}, status=status)
+                return
+            self._json_response({"models": state["models"]})
+            return
+
+        if self.path == "/api/version":
+            self._json_response({"version": "0.0-test"})
+            return
+
+        self._json_response({"error": "not found"}, status=404)
+
+    def do_POST(self):  # noqa: N802
+        state = self.server.server_state  # type: ignore[attr-defined]
+        length = int(self.headers.get("Content-Length", "0"))
+        raw = self.rfile.read(length) if length else b"{}"
+        try:
+            payload = json.loads(raw.decode("utf-8"))
+        except json.JSONDecodeError:
+            payload = {}
+
+        if self.path == "/api/generate":
+            failures = state.get("generate_failures", 0)
+            if failures > 0:
+                state["generate_failures"] = failures - 1
+                self._json_response({"error": "temporary failure"}, status=500)
+                return
+
+            prompt = payload.get("prompt", "")
+            model = payload.get("model", "qwen2.5vl:7b")
+            state.setdefault("generate_calls", []).append(payload)
+            response = {
+                "model": model,
+                "response": f"ECHO: {prompt}",
+                "context": [1, 2, 3],
+                "total_duration": state.get("total_duration_ns", 500_000_000),
+                "load_duration": state.get("load_duration_ns", 200_000_000),
+                "prompt_eval_count": len(prompt),
+                "prompt_eval_duration": 100_000_000,
+                "eval_count": max(len(prompt) // 2, 1),
+                "eval_duration": 300_000_000,
+            }
+            self._json_response(response)
+            return
+
+        if self.path == "/api/chat":
+            failures = state.get("chat_failures", 0)
+            if failures > 0:
+                state["chat_failures"] = failures - 1
+                self._json_response({"error": "chat failure"}, status=500)
+                return
+
+            messages = payload.get("messages", [])
+            last = messages[-1]["content"] if messages else ""
+            model = payload.get("model", "qwen2.5vl:7b")
+            state.setdefault("chat_calls", []).append(payload)
+            self._json_response(
+                {
+                    "model": model,
+                    "message": {"role": "assistant", "content": f"Echo: {last}"},
+                    "done": True,
+                }
+            )
+            return
+
+        if self.path == "/api/pull":
+            failures = state.get("pull_failures", 0)
+            if failures > 0:
+                state["pull_failures"] = failures - 1
+                self._json_response({"status": "error"}, status=500)
+                return
+
+            state.setdefault("pull_calls", []).append(payload)
+            self._json_response({"status": "success"})
+            return
+
+        self._json_response({"error": "not found"}, status=404)
+
+    def log_message(self, format, *args):  # noqa: A003
+        # Suppress default HTTP server logging to keep test output clean.
+        return
+
+
+@pytest.fixture
+def ollama_server():
+    """Start a lightweight HTTP server that mimics essential Ollama endpoints."""
+    state = {
+        "models": [
+            {"name": "qwen2.5vl:7b"},
+            {"name": "qwen2.5:7b"},
+        ],
+        "generate_failures": 0,
+        "chat_failures": 0,
+        "pull_failures": 0,
+        "tags_status": 200,
+        "load_duration_ns": 200_000_000,
+        "total_duration_ns": 500_000_000,
+    }
+
+    handler = OllamaRequestHandler
+    server = ThreadedTCPServer(("127.0.0.1", 0), handler)
+    server.server_state = state  # type: ignore[attr-defined]
+
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+
+    base_url = f"http://127.0.0.1:{server.server_address[1]}"
+
+    try:
+        yield SimpleNamespace(base_url=base_url, state=state)
+    finally:
+        server.shutdown()
+        server.server_close()
 
 
 @pytest.fixture

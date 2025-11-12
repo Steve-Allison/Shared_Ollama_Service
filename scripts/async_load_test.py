@@ -15,7 +15,7 @@ import math
 import sys
 import time
 from collections import Counter
-from datetime import datetime
+from datetime import UTC, datetime
 from itertools import count
 from pathlib import Path
 from typing import Any
@@ -191,7 +191,7 @@ async def run_load_test(args: argparse.Namespace) -> dict[str, Any]:
     }
 
     report = {
-        "timestamp": datetime.utcnow().isoformat(timespec="seconds") + "Z",
+        "timestamp": datetime.now(UTC).isoformat(timespec="seconds").replace("+00:00", "Z"),
         "config": {
             "base_url": args.base_url,
             "model": args.model,

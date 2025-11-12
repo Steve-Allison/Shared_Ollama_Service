@@ -19,7 +19,9 @@ Usage:
 import asyncio
 import json
 import logging
+import time
 import types
+import uuid
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from http import HTTPStatus
@@ -36,6 +38,9 @@ from shared_ollama_client import (
     GenerateResponse,
     Model,
 )
+
+from monitoring import MetricsCollector
+from structured_logging import log_request_event
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -284,8 +289,9 @@ class AsyncSharedOllamaClient:
         if system:
             payload["system"] = system
 
+        options_dict: dict[str, Any] | None = None
         if options:
-            options_dict: dict[str, Any] = {
+            options_dict = {
                 "temperature": options.temperature,
                 "top_p": options.top_p,
                 "top_k": options.top_k,
@@ -303,7 +309,8 @@ class AsyncSharedOllamaClient:
 
             payload["options"] = options_dict
 
-        logger.info(f"Generating with model {model_str}")
+        request_id = str(uuid.uuid4())
+        start_time = time.perf_counter()
 
         try:
             async with self._acquire_slot():
@@ -320,7 +327,9 @@ class AsyncSharedOllamaClient:
                 msg = f"Expected dict response, got {type(data).__name__}"
                 raise ValueError(msg)
 
-            return GenerateResponse(
+            latency_ms = (time.perf_counter() - start_time) * 1000
+
+            result = GenerateResponse(
                 text=data.get("response", ""),
                 model=data.get("model", model),
                 context=data.get("context"),
@@ -332,11 +341,114 @@ class AsyncSharedOllamaClient:
                 eval_duration=data.get("eval_duration", 0),
             )
 
+            MetricsCollector.record_request(
+                model=model_str,
+                operation="generate",
+                latency_ms=latency_ms,
+                success=True,
+            )
+
+            load_ms = result.load_duration / 1_000_000 if result.load_duration else 0.0
+            total_ms = result.total_duration / 1_000_000 if result.total_duration else 0.0
+
+            log_request_event(
+                {
+                    "event": "ollama_request",
+                    "client_type": "async",
+                    "operation": "generate",
+                    "status": "success",
+                    "model": model_str,
+                    "stream": stream,
+                    "request_id": request_id,
+                    "latency_ms": round(latency_ms, 3),
+                    "total_duration_ms": round(total_ms, 3) if total_ms else None,
+                    "model_load_ms": round(load_ms, 3) if load_ms else 0.0,
+                    "model_warm_start": load_ms == 0.0,
+                    "prompt_chars": len(prompt),
+                    "prompt_eval_count": result.prompt_eval_count,
+                    "generation_eval_count": result.eval_count,
+                    "options": options_dict,
+                }
+            )
+
+            return result
+
         except json.JSONDecodeError as e:
+            latency_ms = (time.perf_counter() - start_time) * 1000
+            MetricsCollector.record_request(
+                model=model_str,
+                operation="generate",
+                latency_ms=latency_ms,
+                success=False,
+                error="JSONDecodeError",
+            )
+            log_request_event(
+                {
+                    "event": "ollama_request",
+                    "client_type": "async",
+                    "operation": "generate",
+                    "status": "error",
+                    "model": model_str,
+                    "stream": stream,
+                    "request_id": request_id,
+                    "latency_ms": round(latency_ms, 3),
+                    "error_type": "JSONDecodeError",
+                    "error_message": str(e),
+                }
+            )
             logger.exception(f"Failed to decode JSON response from /api/generate for {model_str}")
             raise
         except httpx.HTTPStatusError as e:
-            logger.exception(f"HTTP error generating with {model_str}: {e.response.status_code}")
+            latency_ms = (time.perf_counter() - start_time) * 1000
+            status_code = e.response.status_code if e.response is not None else None
+            MetricsCollector.record_request(
+                model=model_str,
+                operation="generate",
+                latency_ms=latency_ms,
+                success=False,
+                error=f"HTTPError:{status_code}",
+            )
+            log_request_event(
+                {
+                    "event": "ollama_request",
+                    "client_type": "async",
+                    "operation": "generate",
+                    "status": "error",
+                    "model": model_str,
+                    "stream": stream,
+                    "request_id": request_id,
+                    "latency_ms": round(latency_ms, 3),
+                    "error_type": "HTTPError",
+                    "http_status": status_code,
+                    "error_message": str(e),
+                }
+            )
+            logger.exception(f"HTTP error generating with {model_str}: {status_code}")
+            raise
+        except httpx.RequestError as e:
+            latency_ms = (time.perf_counter() - start_time) * 1000
+            MetricsCollector.record_request(
+                model=model_str,
+                operation="generate",
+                latency_ms=latency_ms,
+                success=False,
+                error=e.__class__.__name__,
+            )
+            log_request_event(
+                {
+                    "event": "ollama_request",
+                    "client_type": "async",
+                    "operation": "generate",
+                    "status": "error",
+                    "model": model_str,
+                    "stream": stream,
+                    "request_id": request_id,
+                    "latency_ms": round(latency_ms, 3),
+                    "error_type": e.__class__.__name__,
+                    "error_message": str(e),
+                }
+            )
+            logger.exception(f"Request error generating with {model_str}: {e}")
             raise
 
     async def chat(
@@ -376,6 +488,9 @@ class AsyncSharedOllamaClient:
             "stream": stream,
         }
 
+        request_id = str(uuid.uuid4())
+        start_time = time.perf_counter()
+
         try:
             async with self._acquire_slot():
                 response = await self.client.post(
@@ -392,13 +507,105 @@ class AsyncSharedOllamaClient:
                 msg = f"Expected dict response, got {type(data).__name__}"
                 raise ValueError(msg)
 
+            latency_ms = (time.perf_counter() - start_time) * 1000
+            MetricsCollector.record_request(
+                model=model_str,
+                operation="chat",
+                latency_ms=latency_ms,
+                success=True,
+            )
+            log_request_event(
+                {
+                    "event": "ollama_request",
+                    "client_type": "async",
+                    "operation": "chat",
+                    "status": "success",
+                    "model": model_str,
+                    "stream": stream,
+                    "request_id": request_id,
+                    "latency_ms": round(latency_ms, 3),
+                    "messages_count": len(messages),
+                }
+            )
+
             return data
 
         except json.JSONDecodeError as e:
+            latency_ms = (time.perf_counter() - start_time) * 1000
+            MetricsCollector.record_request(
+                model=model_str,
+                operation="chat",
+                latency_ms=latency_ms,
+                success=False,
+                error="JSONDecodeError",
+            )
+            log_request_event(
+                {
+                    "event": "ollama_request",
+                    "client_type": "async",
+                    "operation": "chat",
+                    "status": "error",
+                    "model": model_str,
+                    "stream": stream,
+                    "request_id": request_id,
+                    "latency_ms": round(latency_ms, 3),
+                    "error_type": "JSONDecodeError",
+                    "error_message": str(e),
+                }
+            )
             logger.exception(f"Failed to decode JSON response from /api/chat for {model_str}")
             raise
         except httpx.HTTPStatusError as e:
-            logger.exception(f"HTTP error in chat with {model_str}: {e.response.status_code}")
+            latency_ms = (time.perf_counter() - start_time) * 1000
+            status_code = e.response.status_code if e.response is not None else None
+            MetricsCollector.record_request(
+                model=model_str,
+                operation="chat",
+                latency_ms=latency_ms,
+                success=False,
+                error=f"HTTPError:{status_code}",
+            )
+            log_request_event(
+                {
+                    "event": "ollama_request",
+                    "client_type": "async",
+                    "operation": "chat",
+                    "status": "error",
+                    "model": model_str,
+                    "stream": stream,
+                    "request_id": request_id,
+                    "latency_ms": round(latency_ms, 3),
+                    "error_type": "HTTPError",
+                    "http_status": status_code,
+                    "error_message": str(e),
+                }
+            )
+            logger.exception(f"HTTP error in chat with {model_str}: {status_code}")
+            raise
+        except httpx.RequestError as e:
+            latency_ms = (time.perf_counter() - start_time) * 1000
+            MetricsCollector.record_request(
+                model=model_str,
+                operation="chat",
+                latency_ms=latency_ms,
+                success=False,
+                error=e.__class__.__name__,
+            )
+            log_request_event(
+                {
+                    "event": "ollama_request",
+                    "client_type": "async",
+                    "operation": "chat",
+                    "status": "error",
+                    "model": model_str,
+                    "stream": stream,
+                    "request_id": request_id,
+                    "latency_ms": round(latency_ms, 3),
+                    "error_type": e.__class__.__name__,
+                    "error_message": str(e),
+                }
+            )
+            logger.exception(f"Request error in chat with {model_str}: {e}")
             raise
 
     async def health_check(self) -> bool:

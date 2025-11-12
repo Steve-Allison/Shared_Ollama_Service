@@ -601,6 +601,9 @@ tail -f ./logs/ollama.log
 # View error logs
 tail -f ./logs/ollama.error.log
 
+# View structured request log (JSON lines)
+tail -f ./logs/requests.jsonl
+
 # If running manually, logs output to terminal
 ollama serve
 ```
@@ -618,6 +621,7 @@ ollama serve
 - HTTP request logs: `logs/ollama.log`
 - Error logs: `logs/ollama.error.log`
 - Performance logs: `logs/performance.jsonl` (if using performance tracking)
+- Structured request events (model timings, load durations): `logs/requests.jsonl`
 
 **Performance Analysis**:
 
@@ -878,13 +882,14 @@ GitHub Actions workflows for automated testing and releases:
 This codebase has been fully modernized to leverage Python 3.13+ native features:
 
 **Native Features:**
-- ✅ `statistics.quantiles()` for accurate percentile calculations
+§s
 - ✅ `datetime.now(UTC)` for timezone-aware timestamps
 - ✅ `time.perf_counter()` for precise performance measurements
 - ✅ Modern type hints with `|` union syntax
 - ✅ `collections.abc.Generator` for context managers
 
 **Code Quality:**
+
 - ✅ 90%+ type hint coverage across all modules
 - ✅ Comprehensive error handling with specific exception types
 - ✅ JSON validation and response structure checking
@@ -892,6 +897,7 @@ This codebase has been fully modernized to leverage Python 3.13+ native features
 - ✅ DRY principles with extracted helper functions
 
 **Testing:**
+
 - ✅ 54 comprehensive tests (all passing)
 - ✅ Edge case handling and validation
 - ✅ Error scenario testing

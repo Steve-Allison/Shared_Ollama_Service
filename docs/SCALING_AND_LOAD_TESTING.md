@@ -85,6 +85,8 @@ Optional flags:
 
 The script records success rate, RPS, latency percentiles, and error breakdowns. Reports default to `logs/perf_reports/async_load_test_<timestamp>.json`.
 
+Structured per-request events (model load times, latency, errors) are also written to `logs/requests.jsonl` whenever the sync or async clients run, making it easy to correlate load tests with individual model load durations.
+
 ## scripts/performance_report.py
 
 The repo already includes `scripts/performance_report.py` for repeatable benchmarking. Suggested cadence:

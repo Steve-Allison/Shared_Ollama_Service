@@ -282,10 +282,12 @@ All errors follow this format:
 
 **HTTP Status Codes:**
 - `200`: Success
-- `400`: Bad Request (invalid parameters)
-- `429`: Too Many Requests (rate limit exceeded)
-- `500`: Internal Server Error
-- `503`: Service Unavailable (Ollama service not available)
+- `400`: Bad Request (invalid parameters, empty prompts, invalid message roles)
+- `422`: Unprocessable Entity (validation errors in request body)
+- `429`: Too Many Requests (rate limit exceeded, includes `Retry-After` header)
+- `500`: Internal Server Error (unexpected errors)
+- `503`: Service Unavailable (Ollama service connection errors)
+- `504`: Gateway Timeout (request timeout, model taking too long)
 
 **Example Error Response:**
 ```json
@@ -348,9 +350,18 @@ All API requests are automatically logged to `logs/requests.jsonl` with:
 1. **Use Project Headers**: Always include `X-Project-Name` header for better tracking
 2. **Handle Rate Limits**: Check `X-RateLimit-Remaining` header and implement backoff
 3. **Error Handling**: Always check response status codes and handle errors gracefully
+   - `400`: Check request parameters (empty prompts, invalid roles)
+   - `422`: Fix validation errors in request body
+   - `429`: Implement exponential backoff using `Retry-After` header
+   - `503`: Service is down, retry after checking Ollama service status
+   - `504`: Request timed out, consider using a faster model or shorter prompts
 4. **Request IDs**: Use the `request_id` from responses for debugging and support
 5. **Model Selection**: Specify the model explicitly if you need a specific one
 6. **Warm Models**: First request to a model may be slower (cold start)
+7. **Input Validation**: The API validates inputs automatically, but ensure:
+   - Prompts are not empty
+   - Message roles are valid (`user`, `assistant`, `system`)
+   - Content length is reasonable (< 1M characters)
 
 ---
 

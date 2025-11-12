@@ -189,6 +189,9 @@ pyright src/shared_ollama
 # Run tests
 pytest
 
+# Run API server tests
+pytest tests/test_api_server.py -v
+
 # Run async load test script (headless)
 python scripts/async_load_test.py --requests 200 --workers 20
 
@@ -281,6 +284,9 @@ The REST API provides centralized logging, metrics, and rate limiting for all pr
 - ✅ **Rate Limiting**: Protects service from overload (60 req/min for generate/chat)
 - ✅ **Request Tracking**: Unique request IDs for debugging
 - ✅ **Project Identification**: Track usage by project via `X-Project-Name` header
+- ✅ **Input Validation**: Automatic validation of prompts, messages, and parameters
+- ✅ **Enhanced Error Handling**: Specific HTTP status codes (400, 422, 429, 500, 503, 504) with actionable error messages
+- ✅ **Comprehensive Testing**: Full test suite with 20+ test cases covering all endpoints and error scenarios
 
 **Python Example:**
 ```python
@@ -330,6 +336,9 @@ resp, err := http.Post(
 - ✅ **Request Tracking**: Unique request IDs for debugging and support
 - ✅ **Project Identification**: Track usage by project via `X-Project-Name` header
 - ✅ **High Performance**: Async implementation handles concurrent requests efficiently
+- ✅ **Input Validation**: Automatic validation prevents invalid requests (empty prompts, invalid roles, length limits)
+- ✅ **Robust Error Handling**: Specific error responses for validation errors (422), rate limits (429), service unavailable (503), timeouts (504), and more
+- ✅ **Production Ready**: Comprehensive error handling, input validation, and test coverage
 
 ### Alternative: Using the Shared Client Library (Python Only)
 

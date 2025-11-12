@@ -81,6 +81,47 @@ class ChatResponse(BaseModel):
     )
 
 
+class GenerateStreamChunk(BaseModel):
+    """Streaming chunk for generate endpoint."""
+
+    chunk: str = Field(..., description="Incremental text chunk")
+    done: bool = Field(..., description="Whether generation is complete")
+    model: str | None = Field(None, description="Model name")
+    request_id: str | None = Field(None, description="Request ID")
+    # Metrics only in final chunk (when done=True)
+    latency_ms: float | None = Field(None, description="Request latency in milliseconds")
+    model_load_ms: float | None = Field(None, description="Model load time in milliseconds")
+    model_warm_start: bool | None = Field(None, description="Whether model was already loaded")
+    prompt_eval_count: int | None = Field(None, description="Number of prompt tokens evaluated")
+    generation_eval_count: int | None = Field(
+        None, description="Number of generation tokens evaluated"
+    )
+    total_duration_ms: float | None = Field(
+        None, description="Total generation duration in milliseconds"
+    )
+
+
+class ChatStreamChunk(BaseModel):
+    """Streaming chunk for chat endpoint."""
+
+    chunk: str = Field(..., description="Incremental message content")
+    role: str = Field(default="assistant", description="Message role")
+    done: bool = Field(..., description="Whether response is complete")
+    model: str | None = Field(None, description="Model name")
+    request_id: str | None = Field(None, description="Request ID")
+    # Metrics only in final chunk (when done=True)
+    latency_ms: float | None = Field(None, description="Request latency in milliseconds")
+    model_load_ms: float | None = Field(None, description="Model load time in milliseconds")
+    model_warm_start: bool | None = Field(None, description="Whether model was already loaded")
+    prompt_eval_count: int | None = Field(None, description="Number of prompt tokens evaluated")
+    generation_eval_count: int | None = Field(
+        None, description="Number of generation tokens evaluated"
+    )
+    total_duration_ms: float | None = Field(
+        None, description="Total generation duration in milliseconds"
+    )
+
+
 class ModelInfo(BaseModel):
     """Information about an available model."""
 
@@ -109,6 +150,23 @@ class ErrorResponse(BaseModel):
     error: str = Field(..., description="Error message")
     error_type: str | None = Field(None, description="Error type")
     request_id: str | None = Field(None, description="Request identifier if available")
+
+
+class QueueStatsResponse(BaseModel):
+    """Response model for queue statistics."""
+
+    queued: int = Field(..., description="Number of requests currently waiting in queue")
+    in_progress: int = Field(..., description="Number of requests currently being processed")
+    completed: int = Field(..., description="Total requests completed since startup")
+    failed: int = Field(..., description="Total requests failed since startup")
+    rejected: int = Field(..., description="Total requests rejected (queue full) since startup")
+    timeout: int = Field(..., description="Total requests timed out waiting in queue since startup")
+    total_wait_time_ms: float = Field(..., description="Total time all requests spent waiting (ms)")
+    max_wait_time_ms: float = Field(..., description="Maximum wait time observed (ms)")
+    avg_wait_time_ms: float = Field(..., description="Average wait time per request (ms)")
+    max_concurrent: int = Field(..., description="Maximum concurrent requests allowed")
+    max_queue_size: int = Field(..., description="Maximum queue size")
+    default_timeout: float = Field(..., description="Default queue timeout (seconds)")
 
 
 @dataclass

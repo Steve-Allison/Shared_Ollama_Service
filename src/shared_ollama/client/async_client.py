@@ -10,6 +10,7 @@ import logging
 import time
 import types
 import uuid
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from http import HTTPStatus
@@ -512,6 +513,351 @@ class AsyncSharedOllamaClient:
                 }
             )
             logger.exception("Request error in chat with %s: %s", model_str, exc)
+            raise
+
+    async def generate_stream(
+        self,
+        prompt: str,
+        model: str | None = None,
+        system: str | None = None,
+        options: GenerateOptions | None = None,
+    ) -> AsyncIterator[dict[str, Any]]:
+        """
+        Stream text generation from Ollama.
+
+        Yields GenerateStreamChunk objects with incremental text and metrics.
+        Final chunk (done=True) includes complete metrics.
+        """
+        await self._ensure_client()
+        if self.client is None:
+            raise RuntimeError("Client not initialized")
+
+        model_str = str(model or self.config.default_model)
+        request_id = str(uuid.uuid4())
+
+        payload: dict[str, Any] = {
+            "model": model_str,
+            "prompt": prompt,
+            "stream": True,
+        }
+
+        if system:
+            payload["system"] = system
+
+        options_dict: dict[str, Any] | None = None
+        if options:
+            options_dict = {
+                "temperature": options.temperature,
+                "top_p": options.top_p,
+                "top_k": options.top_k,
+                "repeat_penalty": options.repeat_penalty,
+            }
+
+            if options.max_tokens:
+                options_dict["num_predict"] = options.max_tokens
+
+            if options.seed:
+                options_dict["seed"] = options.seed
+
+            if options.stop:
+                options_dict["stop"] = options.stop
+
+            payload["options"] = options_dict
+
+        start_time = time.perf_counter()
+
+        try:
+            async with self._acquire_slot():
+                async with self.client.stream(
+                    "POST",
+                    "/api/generate",
+                    json=payload,
+                    timeout=self.config.timeout,
+                ) as response:
+                    response.raise_for_status()
+
+                    async for line in response.aiter_lines():
+                        if not line.strip():
+                            continue
+
+                        try:
+                            chunk_data = json.loads(line)
+                        except json.JSONDecodeError:
+                            logger.warning("Failed to parse streaming chunk: %s", line)
+                            continue
+
+                        done = chunk_data.get("done", False)
+                        text_chunk = chunk_data.get("response", "")
+
+                        # Prepare chunk with basic info
+                        chunk_dict = {
+                            "chunk": text_chunk,
+                            "done": done,
+                            "model": chunk_data.get("model", model_str),
+                            "request_id": request_id,
+                        }
+
+                        # Add metrics to final chunk
+                        if done:
+                            latency_ms = (time.perf_counter() - start_time) * 1000
+                            load_duration = chunk_data.get("load_duration", 0)
+                            total_duration = chunk_data.get("total_duration", 0)
+
+                            chunk_dict.update({
+                                "latency_ms": round(latency_ms, 3),
+                                "model_load_ms": round(load_duration / 1_000_000, 3) if load_duration else 0.0,
+                                "model_warm_start": load_duration == 0,
+                                "prompt_eval_count": chunk_data.get("prompt_eval_count"),
+                                "generation_eval_count": chunk_data.get("eval_count"),
+                                "total_duration_ms": round(total_duration / 1_000_000, 3) if total_duration else None,
+                            })
+
+                            MetricsCollector.record_request(
+                                model=model_str,
+                                operation="generate_stream",
+                                latency_ms=latency_ms,
+                                success=True,
+                            )
+
+                            log_request_event({
+                                "event": "ollama_request",
+                                "client_type": "async",
+                                "operation": "generate_stream",
+                                "status": "success",
+                                "model": model_str,
+                                "stream": True,
+                                "request_id": request_id,
+                                "latency_ms": round(latency_ms, 3),
+                                "total_duration_ms": chunk_dict.get("total_duration_ms"),
+                                "model_load_ms": chunk_dict.get("model_load_ms"),
+                                "model_warm_start": chunk_dict.get("model_warm_start"),
+                                "prompt_chars": len(prompt),
+                                "prompt_eval_count": chunk_dict.get("prompt_eval_count"),
+                                "generation_eval_count": chunk_dict.get("generation_eval_count"),
+                                "options": options_dict,
+                            })
+
+                        yield chunk_dict
+
+        except httpx.HTTPStatusError as exc:
+            latency_ms = (time.perf_counter() - start_time) * 1000
+            status_code = exc.response.status_code if exc.response is not None else None
+            MetricsCollector.record_request(
+                model=model_str,
+                operation="generate_stream",
+                latency_ms=latency_ms,
+                success=False,
+                error=f"HTTPError:{status_code}",
+            )
+            log_request_event({
+                "event": "ollama_request",
+                "client_type": "async",
+                "operation": "generate_stream",
+                "status": "error",
+                "model": model_str,
+                "stream": True,
+                "request_id": request_id,
+                "latency_ms": round(latency_ms, 3),
+                "error_type": "HTTPError",
+                "http_status": status_code,
+                "error_message": str(exc),
+            })
+            logger.exception("HTTP error streaming generate with %s: %s", model_str, status_code)
+            raise
+        except httpx.RequestError as exc:
+            latency_ms = (time.perf_counter() - start_time) * 1000
+            MetricsCollector.record_request(
+                model=model_str,
+                operation="generate_stream",
+                latency_ms=latency_ms,
+                success=False,
+                error=exc.__class__.__name__,
+            )
+            log_request_event({
+                "event": "ollama_request",
+                "client_type": "async",
+                "operation": "generate_stream",
+                "status": "error",
+                "model": model_str,
+                "stream": True,
+                "request_id": request_id,
+                "latency_ms": round(latency_ms, 3),
+                "error_type": exc.__class__.__name__,
+                "error_message": str(exc),
+            })
+            logger.exception("Request error streaming generate with %s: %s", model_str, exc)
+            raise
+
+    async def chat_stream(
+        self,
+        messages: list[dict[str, str]],
+        model: str | None = None,
+        options: GenerateOptions | None = None,
+    ) -> AsyncIterator[dict[str, Any]]:
+        """
+        Stream chat completion from Ollama.
+
+        Yields ChatStreamChunk objects with incremental message content and metrics.
+        Final chunk (done=True) includes complete metrics.
+        """
+        await self._ensure_client()
+        if self.client is None:
+            raise RuntimeError("Client not initialized")
+
+        model_str = str(model or self.config.default_model)
+        request_id = str(uuid.uuid4())
+
+        payload: dict[str, Any] = {
+            "model": model_str,
+            "messages": messages,
+            "stream": True,
+        }
+
+        options_dict: dict[str, Any] | None = None
+        if options is not None:
+            options_dict = {
+                "temperature": options.temperature,
+                "top_p": options.top_p,
+                "top_k": options.top_k,
+                "repeat_penalty": options.repeat_penalty,
+            }
+
+            if options.max_tokens:
+                options_dict["num_predict"] = options.max_tokens
+
+            if options.seed:
+                options_dict["seed"] = options.seed
+
+            if options.stop:
+                options_dict["stop"] = options.stop
+
+            payload["options"] = options_dict
+
+        start_time = time.perf_counter()
+
+        try:
+            async with self._acquire_slot():
+                async with self.client.stream(
+                    "POST",
+                    "/api/chat",
+                    json=payload,
+                    timeout=self.config.timeout,
+                ) as response:
+                    response.raise_for_status()
+
+                    async for line in response.aiter_lines():
+                        if not line.strip():
+                            continue
+
+                        try:
+                            chunk_data = json.loads(line)
+                        except json.JSONDecodeError:
+                            logger.warning("Failed to parse streaming chunk: %s", line)
+                            continue
+
+                        done = chunk_data.get("done", False)
+                        message = chunk_data.get("message", {})
+                        text_chunk = message.get("content", "")
+                        role = message.get("role", "assistant")
+
+                        # Prepare chunk with basic info
+                        chunk_dict = {
+                            "chunk": text_chunk,
+                            "role": role,
+                            "done": done,
+                            "model": chunk_data.get("model", model_str),
+                            "request_id": request_id,
+                        }
+
+                        # Add metrics to final chunk
+                        if done:
+                            latency_ms = (time.perf_counter() - start_time) * 1000
+                            load_duration = chunk_data.get("load_duration", 0)
+                            total_duration = chunk_data.get("total_duration", 0)
+
+                            chunk_dict.update({
+                                "latency_ms": round(latency_ms, 3),
+                                "model_load_ms": round(load_duration / 1_000_000, 3) if load_duration else 0.0,
+                                "model_warm_start": load_duration == 0,
+                                "prompt_eval_count": chunk_data.get("prompt_eval_count"),
+                                "generation_eval_count": chunk_data.get("eval_count"),
+                                "total_duration_ms": round(total_duration / 1_000_000, 3) if total_duration else None,
+                            })
+
+                            MetricsCollector.record_request(
+                                model=model_str,
+                                operation="chat_stream",
+                                latency_ms=latency_ms,
+                                success=True,
+                            )
+
+                            log_request_event({
+                                "event": "ollama_request",
+                                "client_type": "async",
+                                "operation": "chat_stream",
+                                "status": "success",
+                                "model": model_str,
+                                "stream": True,
+                                "request_id": request_id,
+                                "latency_ms": round(latency_ms, 3),
+                                "total_duration_ms": chunk_dict.get("total_duration_ms"),
+                                "model_load_ms": chunk_dict.get("model_load_ms"),
+                                "model_warm_start": chunk_dict.get("model_warm_start"),
+                                "messages_count": len(messages),
+                                "prompt_eval_count": chunk_dict.get("prompt_eval_count"),
+                                "generation_eval_count": chunk_dict.get("generation_eval_count"),
+                                "options": options_dict,
+                            })
+
+                        yield chunk_dict
+
+        except httpx.HTTPStatusError as exc:
+            latency_ms = (time.perf_counter() - start_time) * 1000
+            status_code = exc.response.status_code if exc.response is not None else None
+            MetricsCollector.record_request(
+                model=model_str,
+                operation="chat_stream",
+                latency_ms=latency_ms,
+                success=False,
+                error=f"HTTPError:{status_code}",
+            )
+            log_request_event({
+                "event": "ollama_request",
+                "client_type": "async",
+                "operation": "chat_stream",
+                "status": "error",
+                "model": model_str,
+                "stream": True,
+                "request_id": request_id,
+                "latency_ms": round(latency_ms, 3),
+                "error_type": "HTTPError",
+                "http_status": status_code,
+                "error_message": str(exc),
+            })
+            logger.exception("HTTP error streaming chat with %s: %s", model_str, status_code)
+            raise
+        except httpx.RequestError as exc:
+            latency_ms = (time.perf_counter() - start_time) * 1000
+            MetricsCollector.record_request(
+                model=model_str,
+                operation="chat_stream",
+                latency_ms=latency_ms,
+                success=False,
+                error=exc.__class__.__name__,
+            )
+            log_request_event({
+                "event": "ollama_request",
+                "client_type": "async",
+                "operation": "chat_stream",
+                "status": "error",
+                "model": model_str,
+                "stream": True,
+                "request_id": request_id,
+                "latency_ms": round(latency_ms, 3),
+                "error_type": exc.__class__.__name__,
+                "error_message": str(exc),
+            })
+            logger.exception("Request error streaming chat with %s: %s", model_str, exc)
             raise
 
     async def health_check(self) -> bool:

@@ -1,5 +1,6 @@
 "\"\"\"Core helpers for the Shared Ollama Service.\"\"\""
 
+from shared_ollama.core.queue import QueueStats, RequestQueue
 from shared_ollama.core.resilience import (
     CircuitBreaker,
     CircuitBreakerConfig,
@@ -21,6 +22,8 @@ __all__ = [
     "CircuitBreaker",
     "CircuitBreakerConfig",
     "CircuitState",
+    "QueueStats",
+    "RequestQueue",
     "ResilientOllamaClient",
     "RetryConfig",
     "check_service_health",

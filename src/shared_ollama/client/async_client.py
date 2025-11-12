@@ -360,6 +360,7 @@ class AsyncSharedOllamaClient:
         self,
         messages: list[dict[str, str]],
         model: str | None = None,
+        options: GenerateOptions | None = None,
         stream: bool = False,
     ) -> dict[str, Any]:
         await self._ensure_client()
@@ -373,6 +374,26 @@ class AsyncSharedOllamaClient:
             "messages": messages,
             "stream": stream,
         }
+
+        # Add options if provided (same pattern as generate())
+        if options is not None:
+            options_dict = {
+                "temperature": options.temperature,
+                "top_p": options.top_p,
+                "top_k": options.top_k,
+                "repeat_penalty": options.repeat_penalty,
+            }
+
+            if options.max_tokens:
+                options_dict["num_predict"] = options.max_tokens
+
+            if options.seed:
+                options_dict["seed"] = options.seed
+
+            if options.stop:
+                options_dict["stop"] = options.stop
+
+            payload["options"] = options_dict
 
         request_id = str(uuid.uuid4())
         start_time = time.perf_counter()

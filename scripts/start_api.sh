@@ -62,10 +62,9 @@ echo ""
 
 cd "$PROJECT_ROOT"
 
-# Start uvicorn server
+# Start uvicorn server (auto-reload disabled for production stability)
 exec uvicorn shared_ollama.api.server:app \
     --host "$API_HOST" \
     --port "$API_PORT" \
-    --reload \
     --log-level info
 

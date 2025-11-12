@@ -12,6 +12,7 @@ import time
 import uuid
 from contextlib import asynccontextmanager
 
+import httpx
 from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
@@ -53,17 +54,31 @@ async def lifespan_context(app: FastAPI):
     """Manage application lifespan."""
     global _client
 
+    # Debug: Log that lifespan is starting
+    print("LIFESPAN: Starting Shared Ollama Service API", flush=True)
+    logger.info("LIFESPAN: Starting Shared Ollama Service API")
+
     # Startup
-    logger.info("Starting Shared Ollama Service API")
     try:
         config = AsyncOllamaConfig()
-        _client = AsyncSharedOllamaClient(config=config, verify_on_init=True)
-        # Ensure client is initialized (async)
+        logger.info("LIFESPAN: Creating AsyncSharedOllamaClient")
+        # Don't verify on init - we'll do it manually to ensure it completes
+        _client = AsyncSharedOllamaClient(config=config, verify_on_init=False)
+        logger.info("LIFESPAN: Client created, ensuring initialization")
+        # Ensure client is initialized and verified (async)
         await _client._ensure_client()
-        logger.info("Ollama async client initialized successfully")
+        logger.info("LIFESPAN: Client ensured, verifying connection")
+        await _client._verify_connection()
+        logger.info("LIFESPAN: Ollama async client initialized successfully")
+        print("LIFESPAN: Client initialized successfully", flush=True)
     except Exception as exc:
-        logger.error("Failed to initialize Ollama async client: %s", exc)
-        raise
+        logger.error("LIFESPAN: Failed to initialize Ollama async client: %s", exc, exc_info=True)
+        print(f"LIFESPAN ERROR: {exc}", flush=True)
+        import traceback
+        traceback.print_exc()
+        _client = None
+        # Don't raise - allow server to start but client will be None
+        # This way we can see the error in logs
 
     yield
 
@@ -192,7 +207,7 @@ async def list_models(request: Request) -> ModelsResponse:
 
     except ConnectionError as exc:
         latency_ms = (time.perf_counter() - start_time) * 1000
-        logger.error("connection_error", request_id=ctx.request_id, error=str(exc))
+        logger.error("connection_error: request_id=%s, error=%s", ctx.request_id, str(exc))
 
         log_request_event({
             "event": "api_request",
@@ -219,9 +234,80 @@ async def list_models(request: Request) -> ModelsResponse:
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Ollama service is unavailable. Please check if the service is running.",
         ) from exc
+    except httpx.HTTPStatusError as exc:
+        latency_ms = (time.perf_counter() - start_time) * 1000
+        status_code = exc.response.status_code if exc.response else None
+
+        if status_code and 400 <= status_code < 500:
+            http_status = status.HTTP_400_BAD_REQUEST
+            error_msg = f"Invalid request to Ollama service (status {status_code})"
+        elif status_code and status_code >= 500:
+            http_status = status.HTTP_502_BAD_GATEWAY
+            error_msg = "Ollama service returned an error. Please try again later."
+        else:
+            http_status = status.HTTP_503_SERVICE_UNAVAILABLE
+            error_msg = "Ollama service is unavailable."
+
+        logger.error("http_status_error: request_id=%s, status_code=%s, error=%s", ctx.request_id, status_code, str(exc))
+
+        log_request_event({
+            "event": "api_request",
+            "client_type": "rest_api",
+            "operation": "list_models",
+            "status": "error",
+            "request_id": ctx.request_id,
+            "client_ip": ctx.client_ip,
+            "project_name": ctx.project_name,
+            "latency_ms": round(latency_ms, 3),
+            "error_type": "HTTPStatusError",
+            "error_message": str(exc),
+            "ollama_status_code": status_code,
+        })
+
+        MetricsCollector.record_request(
+            model="system",
+            operation="list_models",
+            latency_ms=latency_ms,
+            success=False,
+            error=f"HTTPStatusError:{status_code}",
+        )
+
+        raise HTTPException(
+            status_code=http_status,
+            detail=error_msg,
+        ) from exc
+    except httpx.RequestError as exc:
+        latency_ms = (time.perf_counter() - start_time) * 1000
+        logger.error("request_error: request_id=%s, error=%s", ctx.request_id, str(exc))
+
+        log_request_event({
+            "event": "api_request",
+            "client_type": "rest_api",
+            "operation": "list_models",
+            "status": "error",
+            "request_id": ctx.request_id,
+            "client_ip": ctx.client_ip,
+            "project_name": ctx.project_name,
+            "latency_ms": round(latency_ms, 3),
+            "error_type": "RequestError",
+            "error_message": str(exc),
+        })
+
+        MetricsCollector.record_request(
+            model="system",
+            operation="list_models",
+            latency_ms=latency_ms,
+            success=False,
+            error="RequestError",
+        )
+
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Unable to connect to Ollama service. Please check if the service is running.",
+        ) from exc
     except Exception as exc:
         latency_ms = (time.perf_counter() - start_time) * 1000
-        logger.exception("error_listing_models", request_id=ctx.request_id, error_type=type(exc).__name__)
+        logger.exception("unexpected_error_listing_models: request_id=%s, error_type=%s", ctx.request_id, type(exc).__name__)
 
         log_request_event({
             "event": "api_request",
@@ -244,15 +330,16 @@ async def list_models(request: Request) -> ModelsResponse:
             error=type(exc).__name__,
         )
 
+        # Don't expose internal error details - log them but return generic message
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to list models: {exc!s}",
+            detail="An internal error occurred. Please try again later or contact support.",
         ) from exc
 
 
 @app.post("/api/v1/generate", response_model=GenerateResponse, tags=["Generation"])
 @limiter.limit("60/minute")
-async def generate(request: Request, generate_req: GenerateRequest) -> GenerateResponse:
+async def generate(request: Request) -> GenerateResponse:
     """
     Generate text from a prompt.
 
@@ -260,6 +347,21 @@ async def generate(request: Request, generate_req: GenerateRequest) -> GenerateR
     """
     ctx = get_request_context(request)
     start_time = time.perf_counter()
+
+    # Manually parse request body to avoid slowapi decorator interference
+    try:
+        body = await request.json()
+        generate_req = GenerateRequest(**body)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Invalid JSON in request body: {str(e)}",
+        ) from e
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Request validation failed: {str(e)}",
+        ) from e
 
     try:
         client = get_client()
@@ -294,7 +396,7 @@ async def generate(request: Request, generate_req: GenerateRequest) -> GenerateR
         # Note: Streaming is not yet supported in the API response
         # For now, we always use stream=False
         if generate_req.stream:
-            logger.warning("streaming_requested_but_not_supported", request_id=ctx.request_id)
+            logger.warning("streaming_requested_but_not_supported: request_id=%s", ctx.request_id)
 
         # Generate (async)
         result = await client.generate(
@@ -341,16 +443,19 @@ async def generate(request: Request, generate_req: GenerateRequest) -> GenerateR
             total_duration_ms=round(total_ms, 3) if total_ms else None,
         )
 
+    except HTTPException:
+        # Re-raise HTTPException (from parsing or other validation) - FastAPI will handle it
+        raise
     except ValueError as exc:
         latency_ms = (time.perf_counter() - start_time) * 1000
-        logger.warning("validation_error", request_id=ctx.request_id, error=str(exc))
+        logger.warning("validation_error: request_id=%s, error=%s", ctx.request_id, str(exc))
 
         log_request_event({
             "event": "api_request",
             "client_type": "rest_api",
             "operation": "generate",
             "status": "error",
-            "model": generate_req.model or "unknown",
+            "model": generate_req.model or "unknown" if 'generate_req' in locals() else "unknown",
             "request_id": ctx.request_id,
             "client_ip": ctx.client_ip,
             "project_name": ctx.project_name,
@@ -373,7 +478,7 @@ async def generate(request: Request, generate_req: GenerateRequest) -> GenerateR
         ) from exc
     except ConnectionError as exc:
         latency_ms = (time.perf_counter() - start_time) * 1000
-        logger.error("connection_error", request_id=ctx.request_id, error=str(exc))
+        logger.error("connection_error: request_id=%s, error=%s", ctx.request_id, str(exc))
 
         log_request_event({
             "event": "api_request",
@@ -403,7 +508,7 @@ async def generate(request: Request, generate_req: GenerateRequest) -> GenerateR
         ) from exc
     except TimeoutError as exc:
         latency_ms = (time.perf_counter() - start_time) * 1000
-        logger.error("timeout_error", request_id=ctx.request_id, error=str(exc))
+        logger.error("timeout_error: request_id=%s, error=%s", ctx.request_id, str(exc))
 
         log_request_event({
             "event": "api_request",
@@ -431,9 +536,86 @@ async def generate(request: Request, generate_req: GenerateRequest) -> GenerateR
             status_code=status.HTTP_504_GATEWAY_TIMEOUT,
             detail="Request timed out. The model may be taking longer than expected to respond.",
         ) from exc
+    except httpx.HTTPStatusError as exc:
+        latency_ms = (time.perf_counter() - start_time) * 1000
+        status_code = exc.response.status_code if exc.response else None
+
+        # Map HTTP status codes appropriately
+        if status_code and 400 <= status_code < 500:
+            # Client error from Ollama - return 400 Bad Request
+            http_status = status.HTTP_400_BAD_REQUEST
+            error_msg = f"Invalid request to Ollama service (status {status_code})"
+        elif status_code and status_code >= 500:
+            # Server error from Ollama - return 502 Bad Gateway
+            http_status = status.HTTP_502_BAD_GATEWAY
+            error_msg = "Ollama service returned an error. Please try again later."
+        else:
+            # Unknown status - treat as service unavailable
+            http_status = status.HTTP_503_SERVICE_UNAVAILABLE
+            error_msg = "Ollama service is unavailable."
+
+        logger.error("http_status_error: request_id=%s, status_code=%s, error=%s", ctx.request_id, status_code, str(exc))
+
+        log_request_event({
+            "event": "api_request",
+            "client_type": "rest_api",
+            "operation": "generate",
+            "status": "error",
+            "model": generate_req.model or "unknown",
+            "request_id": ctx.request_id,
+            "client_ip": ctx.client_ip,
+            "project_name": ctx.project_name,
+            "latency_ms": round(latency_ms, 3),
+            "error_type": "HTTPStatusError",
+            "error_message": str(exc),
+            "ollama_status_code": status_code,
+        })
+
+        MetricsCollector.record_request(
+            model=generate_req.model or "unknown",
+            operation="generate",
+            latency_ms=latency_ms,
+            success=False,
+            error=f"HTTPStatusError:{status_code}",
+        )
+
+        raise HTTPException(
+            status_code=http_status,
+            detail=error_msg,
+        ) from exc
+    except httpx.RequestError as exc:
+        latency_ms = (time.perf_counter() - start_time) * 1000
+        logger.error("request_error: request_id=%s, error=%s", ctx.request_id, str(exc))
+
+        log_request_event({
+            "event": "api_request",
+            "client_type": "rest_api",
+            "operation": "generate",
+            "status": "error",
+            "model": generate_req.model or "unknown",
+            "request_id": ctx.request_id,
+            "client_ip": ctx.client_ip,
+            "project_name": ctx.project_name,
+            "latency_ms": round(latency_ms, 3),
+            "error_type": "RequestError",
+            "error_message": str(exc),
+        })
+
+        MetricsCollector.record_request(
+            model=generate_req.model or "unknown",
+            operation="generate",
+            latency_ms=latency_ms,
+            success=False,
+            error="RequestError",
+        )
+
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Unable to connect to Ollama service. Please check if the service is running.",
+        ) from exc
     except Exception as exc:
         latency_ms = (time.perf_counter() - start_time) * 1000
-        logger.exception("error_generating_text", request_id=ctx.request_id, error_type=type(exc).__name__)
+        logger.exception("unexpected_error_generating_text: request_id=%s, error_type=%s", ctx.request_id, type(exc).__name__)
 
         log_request_event({
             "event": "api_request",
@@ -457,15 +639,16 @@ async def generate(request: Request, generate_req: GenerateRequest) -> GenerateR
             error=type(exc).__name__,
         )
 
+        # Don't expose internal error details - log them but return generic message
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Generation failed: {exc!s}",
+            detail="An internal error occurred. Please try again later or contact support.",
         ) from exc
 
 
 @app.post("/api/v1/chat", response_model=ChatResponse, tags=["Chat"])
 @limiter.limit("60/minute")
-async def chat(request: Request, chat_req: ChatRequest) -> ChatResponse:
+async def chat(request: Request) -> ChatResponse:
     """
     Chat completion endpoint.
 
@@ -475,6 +658,21 @@ async def chat(request: Request, chat_req: ChatRequest) -> ChatResponse:
     start_time = time.perf_counter()
 
     try:
+        # Manually parse request body to avoid slowapi decorator interference
+        try:
+            body = await request.json()
+            chat_req = ChatRequest(**body)
+        except ValueError as e:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Invalid JSON in request body: {str(e)}",
+            ) from e
+        except Exception as e:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Request validation failed: {str(e)}",
+            ) from e
+
         client = get_client()
 
         # Validate messages
@@ -518,7 +716,7 @@ async def chat(request: Request, chat_req: ChatRequest) -> ChatResponse:
         # Note: Streaming is not yet supported in the API response
         # For now, we always use stream=False
         if chat_req.stream:
-            logger.warning("streaming_requested_but_not_supported", request_id=ctx.request_id)
+            logger.warning("streaming_requested_but_not_supported: request_id=%s", ctx.request_id)
 
         # Chat (async)
         result = await client.chat(
@@ -573,7 +771,7 @@ async def chat(request: Request, chat_req: ChatRequest) -> ChatResponse:
 
     except ValueError as exc:
         latency_ms = (time.perf_counter() - start_time) * 1000
-        logger.warning("validation_error", request_id=ctx.request_id, error=str(exc))
+        logger.warning("validation_error: request_id=%s, error=%s", ctx.request_id, str(exc))
 
         log_request_event({
             "event": "api_request",
@@ -603,7 +801,7 @@ async def chat(request: Request, chat_req: ChatRequest) -> ChatResponse:
         ) from exc
     except ConnectionError as exc:
         latency_ms = (time.perf_counter() - start_time) * 1000
-        logger.error("connection_error", request_id=ctx.request_id, error=str(exc))
+        logger.error("connection_error: request_id=%s, error=%s", ctx.request_id, str(exc))
 
         log_request_event({
             "event": "api_request",
@@ -633,7 +831,7 @@ async def chat(request: Request, chat_req: ChatRequest) -> ChatResponse:
         ) from exc
     except TimeoutError as exc:
         latency_ms = (time.perf_counter() - start_time) * 1000
-        logger.error("timeout_error", request_id=ctx.request_id, error=str(exc))
+        logger.error("timeout_error: request_id=%s, error=%s", ctx.request_id, str(exc))
 
         log_request_event({
             "event": "api_request",
@@ -661,9 +859,83 @@ async def chat(request: Request, chat_req: ChatRequest) -> ChatResponse:
             status_code=status.HTTP_504_GATEWAY_TIMEOUT,
             detail="Request timed out. The model may be taking longer than expected to respond.",
         ) from exc
+    except httpx.HTTPStatusError as exc:
+        latency_ms = (time.perf_counter() - start_time) * 1000
+        status_code = exc.response.status_code if exc.response else None
+
+        # Map HTTP status codes appropriately
+        if status_code and 400 <= status_code < 500:
+            http_status = status.HTTP_400_BAD_REQUEST
+            error_msg = f"Invalid request to Ollama service (status {status_code})"
+        elif status_code and status_code >= 500:
+            http_status = status.HTTP_502_BAD_GATEWAY
+            error_msg = "Ollama service returned an error. Please try again later."
+        else:
+            http_status = status.HTTP_503_SERVICE_UNAVAILABLE
+            error_msg = "Ollama service is unavailable."
+
+        logger.error("http_status_error: request_id=%s, status_code=%s, error=%s", ctx.request_id, status_code, str(exc))
+
+        log_request_event({
+            "event": "api_request",
+            "client_type": "rest_api",
+            "operation": "chat",
+            "status": "error",
+            "model": chat_req.model or "unknown",
+            "request_id": ctx.request_id,
+            "client_ip": ctx.client_ip,
+            "project_name": ctx.project_name,
+            "latency_ms": round(latency_ms, 3),
+            "error_type": "HTTPStatusError",
+            "error_message": str(exc),
+            "ollama_status_code": status_code,
+        })
+
+        MetricsCollector.record_request(
+            model=chat_req.model or "unknown",
+            operation="chat",
+            latency_ms=latency_ms,
+            success=False,
+            error=f"HTTPStatusError:{status_code}",
+        )
+
+        raise HTTPException(
+            status_code=http_status,
+            detail=error_msg,
+        ) from exc
+    except httpx.RequestError as exc:
+        latency_ms = (time.perf_counter() - start_time) * 1000
+        logger.error("request_error: request_id=%s, error=%s", ctx.request_id, str(exc))
+
+        log_request_event({
+            "event": "api_request",
+            "client_type": "rest_api",
+            "operation": "chat",
+            "status": "error",
+            "model": chat_req.model or "unknown",
+            "request_id": ctx.request_id,
+            "client_ip": ctx.client_ip,
+            "project_name": ctx.project_name,
+            "latency_ms": round(latency_ms, 3),
+            "error_type": "RequestError",
+            "error_message": str(exc),
+        })
+
+        MetricsCollector.record_request(
+            model=chat_req.model or "unknown",
+            operation="chat",
+            latency_ms=latency_ms,
+            success=False,
+            error="RequestError",
+        )
+
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Unable to connect to Ollama service. Please check if the service is running.",
+        ) from exc
     except Exception as exc:
         latency_ms = (time.perf_counter() - start_time) * 1000
-        logger.exception("error_chat_completion", request_id=ctx.request_id, error_type=type(exc).__name__)
+        logger.exception("unexpected_error_chat_completion: request_id=%s, error_type=%s", ctx.request_id, type(exc).__name__)
 
         log_request_event({
             "event": "api_request",
@@ -687,9 +959,10 @@ async def chat(request: Request, chat_req: ChatRequest) -> ChatResponse:
             error=type(exc).__name__,
         )
 
+        # Don't expose internal error details - log them but return generic message
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Chat completion failed: {exc!s}",
+            detail="An internal error occurred. Please try again later or contact support.",
         ) from exc
 
 
@@ -697,11 +970,18 @@ async def chat(request: Request, chat_req: ChatRequest) -> ChatResponse:
 async def validation_exception_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
     """Handle request validation errors."""
     ctx = get_request_context(request)
-    logger.warning("validation_error", request_id=ctx.request_id, errors=exc.errors())
+    error_details = exc.errors()
+    logger.warning("validation_error: request_id=%s, errors=%s", ctx.request_id, error_details)
+    # Include full error details in response for debugging
+    if error_details:
+        first_error = error_details[0]
+        error_msg = f"Validation error: {first_error.get('msg', 'Invalid request')} at {first_error.get('loc', [])}"
+    else:
+        error_msg = "Invalid request parameters"
     return JSONResponse(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
         content=ErrorResponse(
-            error="Validation error: Invalid request parameters",
+            error=error_msg,
             error_type="ValidationError",
             request_id=ctx.request_id,
         ).model_dump(),
@@ -712,7 +992,7 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 async def rate_limit_exception_handler(request: Request, exc: RateLimitExceeded) -> JSONResponse:
     """Handle rate limit exceeded errors."""
     ctx = get_request_context(request)
-    logger.warning("rate_limit_exceeded", request_id=ctx.request_id, client_ip=ctx.client_ip)
+    logger.warning("rate_limit_exceeded: request_id=%s, client_ip=%s", ctx.request_id, ctx.client_ip)
     return JSONResponse(
         status_code=status.HTTP_429_TOO_MANY_REQUESTS,
         content=ErrorResponse(
@@ -728,7 +1008,7 @@ async def rate_limit_exception_handler(request: Request, exc: RateLimitExceeded)
 async def global_exception_handler(request: Request, exc: Exception) -> JSONResponse:
     """Global exception handler for unexpected errors."""
     ctx = get_request_context(request)
-    logger.exception("unhandled_exception", request_id=ctx.request_id, error_type=type(exc).__name__, error=str(exc))
+    logger.exception("unhandled_exception: request_id=%s, error_type=%s, error=%s", ctx.request_id, type(exc).__name__, str(exc))
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         content=ErrorResponse(

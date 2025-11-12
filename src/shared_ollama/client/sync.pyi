@@ -1,22 +1,19 @@
-"""Type stubs for shared_ollama_client module."""
+"""Type stubs for shared_ollama.client.sync module."""
 
 from enum import StrEnum
 from typing import Any
 
 class Model(StrEnum):
-    """Available Ollama models."""
-
     QWEN25_VL_7B: str
     QWEN25_7B: str
     QWEN25_14B: str
     GRANITE_4_H_TINY: str
 
 class OllamaConfig:
-    """Configuration for Ollama client."""
-
     base_url: str
     default_model: str
     timeout: int
+    health_check_timeout: int
     verbose: bool
 
     def __init__(
@@ -24,12 +21,11 @@ class OllamaConfig:
         base_url: str = ...,
         default_model: str = ...,
         timeout: int = ...,
+        health_check_timeout: int = ...,
         verbose: bool = ...,
     ) -> None: ...
 
 class GenerateOptions:
-    """Options for text generation."""
-
     temperature: float
     top_p: float
     top_k: int
@@ -50,8 +46,6 @@ class GenerateOptions:
     ) -> None: ...
 
 class GenerateResponse:
-    """Response from Ollama generate API."""
-
     text: str
     model: str
     context: list[int] | None
@@ -76,8 +70,6 @@ class GenerateResponse:
     ) -> None: ...
 
 class SharedOllamaClient:
-    """Unified Ollama client for all projects."""
-
     def __init__(
         self,
         config: OllamaConfig | None = ...,
@@ -102,5 +94,3 @@ class SharedOllamaClient:
     def health_check(self) -> bool: ...
     def get_model_info(self, model: str) -> dict[str, Any] | None: ...
 
-def create_client(base_url: str = ...) -> SharedOllamaClient: ...
-def quick_generate(prompt: str, model: str | None = ...) -> str: ...

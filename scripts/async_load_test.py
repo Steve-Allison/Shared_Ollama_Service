@@ -21,10 +21,11 @@ from pathlib import Path
 from typing import Any
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
+SRC_ROOT = PROJECT_ROOT / "src"
+if str(SRC_ROOT) not in sys.path:
+    sys.path.insert(0, str(SRC_ROOT))
 
-from shared_ollama_client_async import AsyncOllamaConfig, AsyncSharedOllamaClient  # noqa: E402
+from shared_ollama.client import AsyncOllamaConfig, AsyncSharedOllamaClient  # noqa: E402
 
 
 def percentile(values: list[float], pct: float) -> float:

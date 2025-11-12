@@ -8,8 +8,8 @@ from unittest.mock import Mock, patch
 import pytest
 import requests
 
-from shared_ollama_client import SharedOllamaClient
-from utils import (
+from shared_ollama import SharedOllamaClient
+from shared_ollama.core.utils import (
     check_service_health,
     ensure_service_running,
     get_client_path,
@@ -50,7 +50,7 @@ class TestGetOllamaBaseUrl:
 class TestCheckServiceHealth:
     """Tests for check_service_health()."""
 
-    @patch("utils.requests.get")
+    @patch("shared_ollama.core.utils.requests.get")
     def test_healthy_service(self, mock_get):
         """Test healthy service check."""
         mock_response = Mock()
@@ -62,7 +62,7 @@ class TestCheckServiceHealth:
         assert is_healthy is True
         assert error is None
 
-    @patch("utils.requests.get")
+    @patch("shared_ollama.core.utils.requests.get")
     def test_unhealthy_service(self, mock_get):
         """Test unhealthy service check."""
         mock_response = Mock()
@@ -74,7 +74,7 @@ class TestCheckServiceHealth:
         assert is_healthy is False
         assert error is not None and "status code 500" in error
 
-    @patch("utils.requests.get")
+    @patch("shared_ollama.core.utils.requests.get")
     def test_connection_error(self, mock_get):
         """Test connection error."""
         mock_get.side_effect = requests.exceptions.ConnectionError("Connection failed")
@@ -84,7 +84,7 @@ class TestCheckServiceHealth:
         assert is_healthy is False
         assert error is not None and "Cannot connect" in error
 
-    @patch("utils.requests.get")
+    @patch("shared_ollama.core.utils.requests.get")
     def test_timeout_error(self, mock_get):
         """Test timeout error."""
         mock_get.side_effect = requests.exceptions.Timeout("Request timed out")
@@ -98,7 +98,7 @@ class TestCheckServiceHealth:
 class TestEnsureServiceRunning:
     """Tests for ensure_service_running()."""
 
-    @patch("utils.check_service_health")
+    @patch("shared_ollama.core.utils.check_service_health")
     def test_service_running(self, mock_check):
         """Test when service is running."""
         mock_check.return_value = (True, None)
@@ -107,7 +107,7 @@ class TestEnsureServiceRunning:
 
         assert result is True
 
-    @patch("utils.check_service_health")
+    @patch("shared_ollama.core.utils.check_service_health")
     def test_service_not_running_no_raise(self, mock_check):
         """Test when service is not running without raising."""
         mock_check.return_value = (False, "Service unavailable")
@@ -116,7 +116,7 @@ class TestEnsureServiceRunning:
 
         assert result is False
 
-    @patch("utils.check_service_health")
+    @patch("shared_ollama.core.utils.check_service_health")
     def test_service_not_running_with_raise(self, mock_check):
         """Test when service is not running with raising."""
         mock_check.return_value = (False, "Service unavailable")
@@ -133,7 +133,7 @@ class TestProjectRoot:
         root = get_project_root()
         assert root is not None
         assert root.exists()
-        assert (root / "shared_ollama_client.py").exists()
+        assert (root / "src" / "shared_ollama" / "client" / "sync.py").exists()
 
 
 class TestGetClientPath:
@@ -144,7 +144,7 @@ class TestGetClientPath:
         path = get_client_path()
         assert path is not None
         assert path.exists()
-        assert path.name == "shared_ollama_client.py"
+        assert path.name == "sync.py"
 
 
 class TestImportClient:

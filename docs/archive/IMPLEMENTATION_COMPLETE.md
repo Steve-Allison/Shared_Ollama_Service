@@ -9,12 +9,12 @@ All four enhancements have been successfully implemented with world-class, produ
 **Status**: Complete
 
 **Files Created**:
-- `shared_ollama_client.pyi` - Type stubs for main client
-- `shared_ollama_client_async.pyi` - Type stubs for async client
-- `utils.pyi` - Type stubs for utilities
-- `monitoring.pyi` - Type stubs for monitoring
-- `resilience.pyi` - Type stubs for resilience features
-- `analytics.pyi` - Type stubs for analytics
+- `src/shared_ollama/client/sync.pyi` - Type stubs for main client
+- `src/shared_ollama/client/async_client.pyi` - Type stubs for async client
+- `src/shared_ollama/core/utils.pyi` - Type stubs for utilities
+- `src/shared_ollama/telemetry/metrics.pyi` - Type stubs for monitoring
+- `src/shared_ollama/core/resilience.pyi` - Type stubs for resilience features
+- `src/shared_ollama/telemetry/analytics.pyi` - Type stubs for analytics
 
 **Features**:
 - Complete type annotations for all modules
@@ -93,7 +93,7 @@ python -m swagger_ui --spec docs/openapi.yaml
 **Status**: Complete
 
 **Files Created**:
-- `analytics.py` - Enhanced analytics collector
+- `src/shared_ollama/telemetry/analytics.py` - Enhanced analytics collector
 - `scripts/view_analytics.py` - Interactive CLI dashboard
 
 **Features**:
@@ -111,7 +111,7 @@ python -m swagger_ui --spec docs/openapi.yaml
 
 **Usage**:
 ```python
-from analytics import track_request_with_project, AnalyticsCollector
+from shared_ollama import AnalyticsCollector, track_request_with_project
 
 # Track with project
 with track_request_with_project("qwen2.5vl:7b", "generate", project="knowledge_machine"):

@@ -90,9 +90,9 @@ generation:
 
 ```python
 # Instead of Course_Intelligence_Compiler/src/common/llm/ollama_client.py
-# Use Shared_Ollama_Service/shared_ollama_client.py
+# Use the `shared_ollama` package
 
-from shared_ollama_client import SharedOllamaClient
+from shared_ollama import SharedOllamaClient, OllamaConfig
 
 client = SharedOllamaClient(
     OllamaConfig(base_url="http://localhost:11434")

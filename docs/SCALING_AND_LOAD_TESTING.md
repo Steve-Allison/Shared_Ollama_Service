@@ -18,7 +18,7 @@ This guide covers best practices for exercising the shared Ollama service under 
 Example:
 
 ```python
-from shared_ollama_client_async import AsyncSharedOllamaClient, AsyncOllamaConfig
+from shared_ollama import AsyncOllamaConfig, AsyncSharedOllamaClient
 
 config = AsyncOllamaConfig(
     base_url="http://ollama.internal:11434",
@@ -100,7 +100,7 @@ Output artifacts can be archived (e.g. in `logs/perf_reports/`) for trend analys
 ## Observability Checklist
 
 - Enable structured logging (`logger.setLevel(logging.INFO)` in calling projects) and ship to your aggregation stack.
-- Expose Prometheus metrics via `monitoring.py` to visualize RPS, latency, and error rates.
+- Expose Prometheus metrics via `shared_ollama.telemetry.metrics` to visualize RPS, latency, and error rates.
 - Alert on:
   - Sustained 5xx responses from `/api/generate`
   - Connection timeout spikes

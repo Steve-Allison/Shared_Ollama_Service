@@ -1,15 +1,8 @@
 """
-Unified Ollama Client Library
-=============================
-
-A common Ollama client that all projects can use to interact with the shared Ollama service.
-
-Usage:
-    from shared_ollama_client import SharedOllamaClient
-
-    client = SharedOllamaClient()
-    response = client.generate("Hello, world!")
+Synchronous client for interacting with the shared Ollama service.
 """
+
+from __future__ import annotations
 
 import json
 import logging
@@ -23,11 +16,9 @@ from typing import Any
 import requests
 from requests.adapters import HTTPAdapter
 
-from monitoring import MetricsCollector
-from structured_logging import log_request_event
+from shared_ollama.telemetry.metrics import MetricsCollector
+from shared_ollama.telemetry.structured_logging import log_request_event
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
@@ -37,12 +28,14 @@ class Model(StrEnum):
     QWEN25_VL_7B = "qwen2.5vl:7b"  # Primary: 7B params, vision-language model
     QWEN25_7B = "qwen2.5:7b"  # Standard: 7B params, text-only model
     QWEN25_14B = "qwen2.5:14b"  # Secondary: 14.8B params
-    GRANITE_4_H_TINY = "granite4:tiny-h"  # Granite 4.0 H Tiny: 7B total (1B active), hybrid MoE, optimized for RAG and function calling
+    GRANITE_4_H_TINY = (
+        "granite4:tiny-h"  # Granite 4.0 H Tiny: 7B total (1B active), hybrid MoE, optimized for RAG and function calling
+    )
 
 
 @dataclass
 class OllamaConfig:
-    """Configuration for Ollama client."""
+    """Configuration for the synchronous Ollama client."""
 
     base_url: str = "http://localhost:11434"
     default_model: str = Model.QWEN25_VL_7B
@@ -81,28 +74,12 @@ class GenerateResponse:
 
 class SharedOllamaClient:
     """
-    Unified Ollama client for all projects.
-
-    This client provides a common interface to the shared Ollama service
-    running on port 11434. It supports all standard Ollama operations.
-
-    Example:
-        >>> client = SharedOllamaClient()
-        >>> response = client.generate("Hello!")
-        >>> print(response.text)
+    Unified Ollama client for all projects (synchronous version).
     """
 
     def __init__(self, config: OllamaConfig | None = None, verify_on_init: bool = True):
-        """
-        Initialize the Ollama client.
-
-        Args:
-            config: Optional configuration (uses defaults if not provided)
-            verify_on_init: If True, verify connection immediately (default: True)
-        """
         self.config = config or OllamaConfig()
         self.session = requests.Session()
-        # Configure connection pooling for better performance
         adapter = HTTPAdapter(
             pool_connections=10,
             pool_maxsize=10,
@@ -114,13 +91,6 @@ class SharedOllamaClient:
             self._verify_connection()
 
     def _verify_connection(self, retries: int = 3, delay: float = 1.0) -> None:
-        """
-        Verify connection to Ollama service with retry logic.
-
-        Args:
-            retries: Number of retry attempts
-            delay: Delay between retries in seconds
-        """
         for attempt in range(retries):
             try:
                 response = self.session.get(
@@ -129,35 +99,22 @@ class SharedOllamaClient:
                 )
                 response.raise_for_status()
                 logger.info("Connected to Ollama service")
-            except requests.exceptions.RequestException as e:
+            except requests.exceptions.RequestException as exc:
                 if attempt < retries - 1:
-                    logger.warning(
-                        f"Connection attempt {attempt + 1} failed, retrying in {delay}s..."
-                    )
+                    logger.warning("Connection attempt %s failed, retrying in %ss...", attempt + 1, delay)
                     time.sleep(delay)
                 else:
-                    logger.exception(f"Failed to connect to Ollama after {retries} attempts")
+                    logger.exception("Failed to connect to Ollama after %s attempts", retries)
                     msg = (
                         f"Cannot connect to Ollama at {self.config.base_url}. "
                         "Make sure the service is running.\n"
                         "Start with: ./scripts/setup_launchd.sh or 'ollama serve'"
                     )
-                    raise ConnectionError(msg) from e
+                    raise ConnectionError(msg) from exc
             else:
                 return
 
     def list_models(self) -> list[dict[str, Any]]:
-        """
-        List all available models.
-
-        Returns:
-            List of model information dictionaries
-
-        Raises:
-            requests.exceptions.HTTPError: If HTTP request fails
-            json.JSONDecodeError: If response is not valid JSON
-            ValueError: If response structure is invalid
-        """
         try:
             response = self.session.get(
                 f"{self.config.base_url}/api/tags",
@@ -166,19 +123,17 @@ class SharedOllamaClient:
             response.raise_for_status()
 
             data = response.json()
-
-            # Validate response structure
             if not isinstance(data, dict):
                 msg = f"Expected dict response, got {type(data).__name__}"
                 raise ValueError(msg)
 
             return data.get("models", [])
 
-        except json.JSONDecodeError as e:
+        except json.JSONDecodeError as exc:
             logger.exception("Failed to decode JSON response from /api/tags")
             raise
-        except requests.exceptions.HTTPError as e:
-            logger.exception(f"HTTP error listing models: {e.response.status_code}")
+        except requests.exceptions.HTTPError as exc:
+            logger.exception("HTTP error listing models: %s", exc.response.status_code if exc.response else "unknown")
             raise
 
     def generate(
@@ -189,24 +144,6 @@ class SharedOllamaClient:
         options: GenerateOptions | None = None,
         stream: bool = False,
     ) -> GenerateResponse:
-        """
-        Generate text using Ollama.
-
-        Args:
-            prompt: The prompt to generate from
-            model: Model to use (uses default if not provided)
-            system: Optional system prompt
-            options: Generation options
-            stream: Whether to stream the response
-
-        Returns:
-            GenerateResponse with generated text and metadata
-
-        Example:
-            >>> client = SharedOllamaClient()
-            >>> response = client.generate("Why is the sky blue?", model=Model.QWEN25_VL_7B)
-            >>> print(response.text)
-        """
         model_str = str(model or self.config.default_model)
 
         payload: dict[str, Any] = {"model": model_str, "prompt": prompt, "stream": stream}
@@ -291,7 +228,7 @@ class SharedOllamaClient:
 
             return result
 
-        except json.JSONDecodeError as e:
+        except json.JSONDecodeError as exc:
             latency_ms = (time.perf_counter() - start_time) * 1000
             MetricsCollector.record_request(
                 model=model_str,
@@ -311,14 +248,14 @@ class SharedOllamaClient:
                     "request_id": request_id,
                     "latency_ms": round(latency_ms, 3),
                     "error_type": "JSONDecodeError",
-                    "error_message": str(e),
+                    "error_message": str(exc),
                 }
             )
-            logger.exception(f"Failed to decode JSON response from /api/generate for {model_str}")
+            logger.exception("Failed to decode JSON response from /api/generate for %s", model_str)
             raise
-        except requests.exceptions.HTTPError as e:
+        except requests.exceptions.HTTPError as exc:
             latency_ms = (time.perf_counter() - start_time) * 1000
-            status_code = e.response.status_code if e.response is not None else None
+            status_code = exc.response.status_code if exc.response is not None else None
             MetricsCollector.record_request(
                 model=model_str,
                 operation="generate",
@@ -338,19 +275,19 @@ class SharedOllamaClient:
                     "latency_ms": round(latency_ms, 3),
                     "error_type": "HTTPError",
                     "http_status": status_code,
-                    "error_message": str(e),
+                    "error_message": str(exc),
                 }
             )
-            logger.exception(f"HTTP error generating with {model_str}: {status_code}")
+            logger.exception("HTTP error generating with %s: %s", model_str, status_code)
             raise
-        except requests.exceptions.RequestException as e:
+        except requests.exceptions.RequestException as exc:
             latency_ms = (time.perf_counter() - start_time) * 1000
             MetricsCollector.record_request(
                 model=model_str,
                 operation="generate",
                 latency_ms=latency_ms,
                 success=False,
-                error=e.__class__.__name__,
+                error=exc.__class__.__name__,
             )
             log_request_event(
                 {
@@ -362,32 +299,19 @@ class SharedOllamaClient:
                     "stream": stream,
                     "request_id": request_id,
                     "latency_ms": round(latency_ms, 3),
-                    "error_type": e.__class__.__name__,
-                    "error_message": str(e),
+                    "error_type": exc.__class__.__name__,
+                    "error_message": str(exc),
                 }
             )
-            logger.exception(f"Request error generating with {model_str}: {e}")
+            logger.exception("Request error generating with %s: %s", model_str, exc)
             raise
 
     def chat(
-        self, messages: list[dict[str, str]], model: str | None = None, stream: bool = False
+        self,
+        messages: list[dict[str, str]],
+        model: str | None = None,
+        stream: bool = False,
     ) -> dict[str, Any]:
-        """
-        Chat with the model using chat format.
-
-        Args:
-            messages: List of message dicts with "role" and "content"
-            model: Model to use (uses default if not provided)
-            stream: Whether to stream the response
-
-        Returns:
-            Chat response dictionary
-
-        Example:
-            >>> messages = [{"role": "user", "content": "Hello!"}]
-            >>> response = client.chat(messages)
-            >>> print(response["message"]["content"])
-        """
         model_str = str(model or self.config.default_model)
 
         payload = {"model": model_str, "messages": messages, "stream": stream}
@@ -430,7 +354,7 @@ class SharedOllamaClient:
 
             return data
 
-        except json.JSONDecodeError as e:
+        except json.JSONDecodeError as exc:
             latency_ms = (time.perf_counter() - start_time) * 1000
             MetricsCollector.record_request(
                 model=model_str,
@@ -450,14 +374,14 @@ class SharedOllamaClient:
                     "request_id": request_id,
                     "latency_ms": round(latency_ms, 3),
                     "error_type": "JSONDecodeError",
-                    "error_message": str(e),
+                    "error_message": str(exc),
                 }
             )
-            logger.exception(f"Failed to decode JSON response from /api/chat for {model_str}")
+            logger.exception("Failed to decode JSON response from /api/chat for %s", model_str)
             raise
-        except requests.exceptions.HTTPError as e:
+        except requests.exceptions.HTTPError as exc:
             latency_ms = (time.perf_counter() - start_time) * 1000
-            status_code = e.response.status_code if e.response is not None else None
+            status_code = exc.response.status_code if exc.response is not None else None
             MetricsCollector.record_request(
                 model=model_str,
                 operation="chat",
@@ -477,19 +401,19 @@ class SharedOllamaClient:
                     "latency_ms": round(latency_ms, 3),
                     "error_type": "HTTPError",
                     "http_status": status_code,
-                    "error_message": str(e),
+                    "error_message": str(exc),
                 }
             )
-            logger.exception(f"HTTP error in chat with {model_str}: {status_code}")
+            logger.exception("HTTP error in chat with %s: %s", model_str, status_code)
             raise
-        except requests.exceptions.RequestException as e:
+        except requests.exceptions.RequestException as exc:
             latency_ms = (time.perf_counter() - start_time) * 1000
             MetricsCollector.record_request(
                 model=model_str,
                 operation="chat",
                 latency_ms=latency_ms,
                 success=False,
-                error=e.__class__.__name__,
+                error=exc.__class__.__name__,
             )
             log_request_event(
                 {
@@ -501,23 +425,14 @@ class SharedOllamaClient:
                     "stream": stream,
                     "request_id": request_id,
                     "latency_ms": round(latency_ms, 3),
-                    "error_type": e.__class__.__name__,
-                    "error_message": str(e),
+                    "error_type": exc.__class__.__name__,
+                    "error_message": str(exc),
                 }
             )
-            logger.exception(f"Request error in chat with {model_str}: {e}")
+            logger.exception("Request error in chat with %s: %s", model_str, exc)
             raise
 
     def pull_model(self, model: str) -> dict[str, Any]:
-        """
-        Pull a model from Ollama.
-
-        Args:
-            model: Model name to pull
-
-        Returns:
-            Status dictionary
-        """
         payload = {"name": model}
 
         request_id = str(uuid.uuid4())
@@ -527,7 +442,7 @@ class SharedOllamaClient:
             response = self.session.post(
                 f"{self.config.base_url}/api/pull",
                 json=payload,
-                timeout=300,  # Pulling can take a while
+                timeout=300,
             )
             response.raise_for_status()
 
@@ -552,7 +467,7 @@ class SharedOllamaClient:
 
             return data
 
-        except json.JSONDecodeError as e:
+        except json.JSONDecodeError as exc:
             latency_ms = (time.perf_counter() - start_time) * 1000
             log_request_event(
                 {
@@ -564,14 +479,14 @@ class SharedOllamaClient:
                     "request_id": request_id,
                     "latency_ms": round(latency_ms, 3),
                     "error_type": "JSONDecodeError",
-                    "error_message": str(e),
+                    "error_message": str(exc),
                 }
             )
-            logger.exception(f"Failed to decode JSON response from /api/pull for {model}")
+            logger.exception("Failed to decode JSON response from /api/pull for %s", model)
             raise
-        except requests.exceptions.HTTPError as e:
+        except requests.exceptions.HTTPError as exc:
             latency_ms = (time.perf_counter() - start_time) * 1000
-            status_code = e.response.status_code if e.response is not None else None
+            status_code = exc.response.status_code if exc.response is not None else None
             log_request_event(
                 {
                     "event": "ollama_request",
@@ -583,12 +498,12 @@ class SharedOllamaClient:
                     "latency_ms": round(latency_ms, 3),
                     "error_type": "HTTPError",
                     "http_status": status_code,
-                    "error_message": str(e),
+                    "error_message": str(exc),
                 }
             )
-            logger.exception(f"HTTP error pulling model {model}: {status_code}")
+            logger.exception("HTTP error pulling model %s: %s", model, status_code)
             raise
-        except requests.exceptions.RequestException as e:
+        except requests.exceptions.RequestException as exc:
             latency_ms = (time.perf_counter() - start_time) * 1000
             log_request_event(
                 {
@@ -599,65 +514,29 @@ class SharedOllamaClient:
                     "model": model,
                     "request_id": request_id,
                     "latency_ms": round(latency_ms, 3),
-                    "error_type": e.__class__.__name__,
-                    "error_message": str(e),
+                    "error_type": exc.__class__.__name__,
+                    "error_message": str(exc),
                 }
             )
-            logger.exception(f"Request error pulling model {model}: {e}")
+            logger.exception("Request error pulling model %s: %s", model, exc)
             raise
 
     def health_check(self) -> bool:
-        """
-        Perform health check on Ollama service.
-
-        Returns:
-            True if service is healthy, False otherwise
-        """
         try:
             response = self.session.get(f"{self.config.base_url}/api/tags", timeout=5)
-        except requests.exceptions.RequestException as e:
-            logger.debug(f"Health check failed: {e}")
+        except requests.exceptions.RequestException as exc:
+            logger.debug("Health check failed: %s", exc)
             return False
         else:
             return response.status_code == HTTPStatus.OK
 
     def get_model_info(self, model: str) -> dict[str, Any] | None:
-        """
-        Get information about a specific model.
-
-        Args:
-            model: Model name
-
-        Returns:
-            Model information dictionary or None if not found
-        """
         models = self.list_models()
-        for m in models:
-            if m.get("name") == model:
-                return m
+        for item in models:
+            if item.get("name") == model:
+                return item
         return None
 
 
-# Convenience functions for easy usage
-def create_client(base_url: str = "http://localhost:11434") -> SharedOllamaClient:
-    """Create a shared Ollama client with default config."""
-    return SharedOllamaClient(OllamaConfig(base_url=base_url))
+__all__ = ["SharedOllamaClient", "OllamaConfig", "GenerateOptions", "GenerateResponse", "Model"]
 
-
-def quick_generate(prompt: str, model: str | None = None) -> str:
-    """
-    Quick generate function for simple use cases.
-
-    Args:
-        prompt: The prompt to generate from
-        model: Model to use (optional)
-
-    Returns:
-        Generated text
-
-    Example:
-        >>> text = quick_generate("Hello!")
-    """
-    client = SharedOllamaClient()
-    response = client.generate(prompt, model=model)
-    return response.text

@@ -1,20 +1,8 @@
 """
-Async Unified Ollama Client Library
-===================================
-
-Modern async/await client for the shared Ollama service.
-
-Usage:
-    import asyncio
-    from shared_ollama_client_async import AsyncSharedOllamaClient
-
-    async def main():
-        client = AsyncSharedOllamaClient()
-        response = await client.generate("Hello, world!")
-        print(response.text)
-
-    asyncio.run(main())
+Asynchronous client for interacting with the shared Ollama service.
 """
+
+from __future__ import annotations
 
 import asyncio
 import json
@@ -29,27 +17,20 @@ from typing import Any
 
 try:
     import httpx
-except ImportError as e:
+except ImportError as exc:  # pragma: no cover
     msg = "httpx is required for async support. Install with: pip install httpx"
-    raise ImportError(msg) from e
+    raise ImportError(msg) from exc
 
-from shared_ollama_client import (
-    GenerateOptions,
-    GenerateResponse,
-    Model,
-)
+from shared_ollama.client.sync import GenerateOptions, GenerateResponse, Model
+from shared_ollama.telemetry.metrics import MetricsCollector
+from shared_ollama.telemetry.structured_logging import log_request_event
 
-from monitoring import MetricsCollector
-from structured_logging import log_request_event
-
-# Configure logging
-logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
 @dataclass
 class AsyncOllamaConfig:
-    """Configuration for Async Ollama client."""
+    """Configuration for the asynchronous Ollama client."""
 
     base_url: str = "http://localhost:11434"
     default_model: str = Model.QWEN25_VL_7B
@@ -66,42 +47,17 @@ class AsyncOllamaConfig:
 
 
 class AsyncSharedOllamaClient:
-    """
-    Async Unified Ollama client for all projects.
-
-    This client provides an async interface to the shared Ollama service
-    running on port 11434. It supports all standard Ollama operations.
-
-    Example:
-        >>> async def main():
-        ...     client = AsyncSharedOllamaClient()
-        ...     response = await client.generate("Hello!")
-        ...     print(response.text)
-        >>> asyncio.run(main())
-    """
+    """Async unified Ollama client for all projects."""
 
     def __init__(self, config: AsyncOllamaConfig | None = None, verify_on_init: bool = True):
-        """
-        Initialize the async Ollama client.
-
-        Args:
-            config: Optional configuration (uses defaults if not provided)
-            verify_on_init: If True, verify connection immediately (default: True)
-        """
         self.config = config or AsyncOllamaConfig()
         self.client: httpx.AsyncClient | None = None
         self._semaphore: asyncio.Semaphore | None = None
         if self.config.max_concurrent_requests:
             self._semaphore = asyncio.Semaphore(self.config.max_concurrent_requests)
-        if verify_on_init:
-            # Note: This will be async, but we can't await in __init__
-            # So we'll verify on first use instead
-            self._needs_verification = True
-        else:
-            self._needs_verification = False
+        self._needs_verification = verify_on_init
 
     async def __aenter__(self) -> "AsyncSharedOllamaClient":
-        """Async context manager entry."""
         await self._ensure_client()
         return self
 
@@ -111,11 +67,9 @@ class AsyncSharedOllamaClient:
         exc_val: BaseException | None,
         exc_tb: types.TracebackType | None,
     ) -> None:
-        """Async context manager exit."""
         await self.close()
 
     async def _ensure_client(self) -> None:
-        """Ensure HTTP client is initialized."""
         if self.client is None:
             timeout = self.config.client_timeout or httpx.Timeout(
                 connect=5.0,
@@ -137,12 +91,6 @@ class AsyncSharedOllamaClient:
 
     @asynccontextmanager
     async def _acquire_slot(self):
-        """
-        Optionally throttle concurrent requests with a semaphore.
-
-        Calling code should use this context manager around network requests
-        to avoid overwhelming the Ollama service when concurrency is high.
-        """
         if self._semaphore is None:
             yield
             return
@@ -158,13 +106,6 @@ class AsyncSharedOllamaClient:
         retries: int | None = None,
         delay: float | None = None,
     ) -> None:
-        """
-        Verify connection to Ollama service with retry logic.
-
-        Args:
-            retries: Number of retry attempts (uses config default if None)
-            delay: Delay between retries in seconds (uses config default if None)
-        """
         retries = retries or self.config.max_retries
         delay = delay or self.config.retry_delay
 
@@ -175,75 +116,60 @@ class AsyncSharedOllamaClient:
 
         for attempt in range(retries):
             try:
-                response = await self.client.get(
-                    "/api/tags",
-                    timeout=self.config.health_check_timeout,
-                )
+                async with self._acquire_slot():
+                    response = await self.client.get(
+                        "/api/tags",
+                        timeout=self.config.health_check_timeout,
+                    )
                 response.raise_for_status()
                 logger.info("Connected to Ollama service")
                 self._needs_verification = False
-            except (httpx.RequestError, httpx.HTTPStatusError) as e:
+            except (httpx.RequestError, httpx.HTTPStatusError) as exc:
                 if attempt < retries - 1:
-                    logger.warning(
-                        f"Connection attempt {attempt + 1} failed, retrying in {delay}s..."
-                    )
+                    logger.warning("Connection attempt %s failed, retrying in %ss...", attempt + 1, delay)
                     await asyncio.sleep(delay)
                 else:
-                    logger.exception(f"Failed to connect to Ollama after {retries} attempts")
+                    logger.exception("Failed to connect to Ollama after %s attempts", retries)
                     msg = (
                         f"Cannot connect to Ollama at {self.config.base_url}. "
                         "Make sure the service is running.\n"
                         "Start with: ./scripts/setup_launchd.sh or 'ollama serve'"
                     )
-                    raise ConnectionError(msg) from e
+                    raise ConnectionError(msg) from exc
             else:
                 return
 
     async def close(self) -> None:
-        """Close the HTTP client."""
         if self.client:
             await self.client.aclose()
             self.client = None
 
     async def list_models(self) -> list[dict[str, Any]]:
-        """
-        List all available models.
-
-        Returns:
-            List of model information dictionaries
-
-        Raises:
-            httpx.HTTPStatusError: If HTTP request fails
-            json.JSONDecodeError: If response is not valid JSON
-            ValueError: If response structure is invalid
-        """
         await self._ensure_client()
         if self.client is None:
             raise RuntimeError("Client not initialized")
 
         try:
             async with self._acquire_slot():
-                # Quick API call, use health_check_timeout
                 response = await self.client.get(
                     "/api/tags",
                     timeout=self.config.health_check_timeout,
                 )
-                response.raise_for_status()
+            response.raise_for_status()
 
             data = response.json()
 
-            # Validate response structure
             if not isinstance(data, dict):
                 msg = f"Expected dict response, got {type(data).__name__}"
                 raise ValueError(msg)
 
             return data.get("models", [])
 
-        except json.JSONDecodeError as e:
+        except json.JSONDecodeError as exc:
             logger.exception("Failed to decode JSON response from /api/tags")
             raise
-        except httpx.HTTPStatusError as e:
-            logger.exception(f"HTTP error listing models: {e.response.status_code}")
+        except httpx.HTTPStatusError as exc:
+            logger.exception("HTTP error listing models: %s", exc.response.status_code)
             raise
 
     async def generate(
@@ -254,26 +180,6 @@ class AsyncSharedOllamaClient:
         options: GenerateOptions | None = None,
         stream: bool = False,
     ) -> GenerateResponse:
-        """
-        Generate text using Ollama (async).
-
-        Args:
-            prompt: The prompt to generate from
-            model: Model to use (uses default if not provided)
-            system: Optional system prompt
-            options: Generation options
-            stream: Whether to stream the response
-
-        Returns:
-            GenerateResponse with generated text and metadata
-
-        Example:
-            >>> async def main():
-            ...     client = AsyncSharedOllamaClient()
-            ...     response = await client.generate("Why is the sky blue?")
-            ...     print(response.text)
-            >>> asyncio.run(main())
-        """
         await self._ensure_client()
         if self.client is None:
             raise RuntimeError("Client not initialized")
@@ -317,12 +223,11 @@ class AsyncSharedOllamaClient:
                 response = await self.client.post(
                     "/api/generate",
                     json=payload,
-                )  # Timeout configured in client initialization
+                )
                 response.raise_for_status()
 
             data = response.json()
 
-            # Validate response structure
             if not isinstance(data, dict):
                 msg = f"Expected dict response, got {type(data).__name__}"
                 raise ValueError(msg)
@@ -373,7 +278,7 @@ class AsyncSharedOllamaClient:
 
             return result
 
-        except json.JSONDecodeError as e:
+        except json.JSONDecodeError as exc:
             latency_ms = (time.perf_counter() - start_time) * 1000
             MetricsCollector.record_request(
                 model=model_str,
@@ -393,14 +298,14 @@ class AsyncSharedOllamaClient:
                     "request_id": request_id,
                     "latency_ms": round(latency_ms, 3),
                     "error_type": "JSONDecodeError",
-                    "error_message": str(e),
+                    "error_message": str(exc),
                 }
             )
-            logger.exception(f"Failed to decode JSON response from /api/generate for {model_str}")
+            logger.exception("Failed to decode JSON response from /api/generate for %s", model_str)
             raise
-        except httpx.HTTPStatusError as e:
+        except httpx.HTTPStatusError as exc:
             latency_ms = (time.perf_counter() - start_time) * 1000
-            status_code = e.response.status_code if e.response is not None else None
+            status_code = exc.response.status_code if exc.response is not None else None
             MetricsCollector.record_request(
                 model=model_str,
                 operation="generate",
@@ -420,19 +325,19 @@ class AsyncSharedOllamaClient:
                     "latency_ms": round(latency_ms, 3),
                     "error_type": "HTTPError",
                     "http_status": status_code,
-                    "error_message": str(e),
+                    "error_message": str(exc),
                 }
             )
-            logger.exception(f"HTTP error generating with {model_str}: {status_code}")
+            logger.exception("HTTP error generating with %s: %s", model_str, status_code)
             raise
-        except httpx.RequestError as e:
+        except httpx.RequestError as exc:
             latency_ms = (time.perf_counter() - start_time) * 1000
             MetricsCollector.record_request(
                 model=model_str,
                 operation="generate",
                 latency_ms=latency_ms,
                 success=False,
-                error=e.__class__.__name__,
+                error=exc.__class__.__name__,
             )
             log_request_event(
                 {
@@ -444,11 +349,11 @@ class AsyncSharedOllamaClient:
                     "stream": stream,
                     "request_id": request_id,
                     "latency_ms": round(latency_ms, 3),
-                    "error_type": e.__class__.__name__,
-                    "error_message": str(e),
+                    "error_type": exc.__class__.__name__,
+                    "error_message": str(exc),
                 }
             )
-            logger.exception(f"Request error generating with {model_str}: {e}")
+            logger.exception("Request error generating with %s: %s", model_str, exc)
             raise
 
     async def chat(
@@ -457,25 +362,6 @@ class AsyncSharedOllamaClient:
         model: str | None = None,
         stream: bool = False,
     ) -> dict[str, Any]:
-        """
-        Chat with the model using chat format (async).
-
-        Args:
-            messages: List of message dicts with "role" and "content"
-            model: Model to use (uses default if not provided)
-            stream: Whether to stream the response
-
-        Returns:
-            Chat response dictionary
-
-        Example:
-            >>> async def main():
-            ...     client = AsyncSharedOllamaClient()
-            ...     messages = [{"role": "user", "content": "Hello!"}]
-            ...     response = await client.chat(messages)
-            ...     print(response["message"]["content"])
-            >>> asyncio.run(main())
-        """
         await self._ensure_client()
         if self.client is None:
             raise RuntimeError("Client not initialized")
@@ -502,7 +388,6 @@ class AsyncSharedOllamaClient:
 
             data = response.json()
 
-            # Validate response structure
             if not isinstance(data, dict):
                 msg = f"Expected dict response, got {type(data).__name__}"
                 raise ValueError(msg)
@@ -530,7 +415,7 @@ class AsyncSharedOllamaClient:
 
             return data
 
-        except json.JSONDecodeError as e:
+        except json.JSONDecodeError as exc:
             latency_ms = (time.perf_counter() - start_time) * 1000
             MetricsCollector.record_request(
                 model=model_str,
@@ -550,14 +435,14 @@ class AsyncSharedOllamaClient:
                     "request_id": request_id,
                     "latency_ms": round(latency_ms, 3),
                     "error_type": "JSONDecodeError",
-                    "error_message": str(e),
+                    "error_message": str(exc),
                 }
             )
-            logger.exception(f"Failed to decode JSON response from /api/chat for {model_str}")
+            logger.exception("Failed to decode JSON response from /api/chat for %s", model_str)
             raise
-        except httpx.HTTPStatusError as e:
+        except httpx.HTTPStatusError as exc:
             latency_ms = (time.perf_counter() - start_time) * 1000
-            status_code = e.response.status_code if e.response is not None else None
+            status_code = exc.response.status_code if exc.response is not None else None
             MetricsCollector.record_request(
                 model=model_str,
                 operation="chat",
@@ -577,19 +462,19 @@ class AsyncSharedOllamaClient:
                     "latency_ms": round(latency_ms, 3),
                     "error_type": "HTTPError",
                     "http_status": status_code,
-                    "error_message": str(e),
+                    "error_message": str(exc),
                 }
             )
-            logger.exception(f"HTTP error in chat with {model_str}: {status_code}")
+            logger.exception("HTTP error in chat with %s: %s", model_str, status_code)
             raise
-        except httpx.RequestError as e:
+        except httpx.RequestError as exc:
             latency_ms = (time.perf_counter() - start_time) * 1000
             MetricsCollector.record_request(
                 model=model_str,
                 operation="chat",
                 latency_ms=latency_ms,
                 success=False,
-                error=e.__class__.__name__,
+                error=exc.__class__.__name__,
             )
             log_request_event(
                 {
@@ -601,20 +486,14 @@ class AsyncSharedOllamaClient:
                     "stream": stream,
                     "request_id": request_id,
                     "latency_ms": round(latency_ms, 3),
-                    "error_type": e.__class__.__name__,
-                    "error_message": str(e),
+                    "error_type": exc.__class__.__name__,
+                    "error_message": str(exc),
                 }
             )
-            logger.exception(f"Request error in chat with {model_str}: {e}")
+            logger.exception("Request error in chat with %s: %s", model_str, exc)
             raise
 
     async def health_check(self) -> bool:
-        """
-        Perform health check on Ollama service (async).
-
-        Returns:
-            True if service is healthy, False otherwise
-        """
         try:
             await self._ensure_client()
             if self.client is None:
@@ -622,49 +501,19 @@ class AsyncSharedOllamaClient:
                 return False
             async with self._acquire_slot():
                 response = await self.client.get("/api/tags", timeout=5)
-        except (httpx.RequestError, httpx.HTTPStatusError) as e:
-            logger.debug(f"Health check failed: {e}")
+        except (httpx.RequestError, httpx.HTTPStatusError) as exc:
+            logger.debug("Health check failed: %s", exc)
             return False
         else:
             return response.status_code == HTTPStatus.OK
 
     async def get_model_info(self, model: str) -> dict[str, Any] | None:
-        """
-        Get information about a specific model (async).
-
-        Args:
-            model: Model name
-
-        Returns:
-            Model information dictionary or None if not found
-        """
         models = await self.list_models()
-        for m in models:
-            if m.get("name") == model:
-                return m
+        for item in models:
+            if item.get("name") == model:
+                return item
         return None
 
 
-# Convenience functions for easy usage
-def create_async_client(base_url: str = "http://localhost:11434") -> AsyncSharedOllamaClient:
-    """Create an async shared Ollama client with default config."""
-    return AsyncSharedOllamaClient(AsyncOllamaConfig(base_url=base_url))
+__all__ = ["AsyncSharedOllamaClient", "AsyncOllamaConfig"]
 
-
-async def quick_generate_async(prompt: str, model: str | None = None) -> str:
-    """
-    Quick generate function for simple use cases (async).
-
-    Args:
-        prompt: The prompt to generate from
-        model: Model to use (optional)
-
-    Returns:
-        Generated text
-
-    Example:
-        >>> text = await quick_generate_async("Hello!")
-    """
-    async with AsyncSharedOllamaClient() as client:
-        response = await client.generate(prompt, model=model)
-        return response.text

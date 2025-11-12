@@ -1,21 +1,8 @@
 """
-Monitoring and Metrics for Shared Ollama Service
-================================================
-
-Provides usage tracking, metrics collection, and observability for the central
-model infrastructure service.
-
-Usage:
-    from monitoring import MetricsCollector, track_request
-
-    # Track a request (works with any model: qwen2.5vl:7b, qwen2.5:7b, qwen2.5:14b, granite4:tiny-h)
-    with track_request("generate", model="qwen2.5vl:7b"):
-        response = client.generate("Hello!")
-
-    # Get metrics
-    metrics = MetricsCollector.get_metrics()
-    print(f"Total requests: {metrics['total_requests']}")
+Metrics collection and monitoring utilities for the Shared Ollama Service.
 """
+
+from __future__ import annotations
 
 import logging
 import statistics
@@ -61,15 +48,10 @@ class ServiceMetrics:
 
 
 class MetricsCollector:
-    """
-    Collects and aggregates metrics for the Ollama service.
-
-    This is a simple in-memory metrics collector. For production,
-    consider integrating with Prometheus, StatsD, or similar.
-    """
+    """Collects and aggregates metrics for the Ollama service."""
 
     _metrics: ClassVar[list[RequestMetrics]] = []
-    _max_metrics: ClassVar[int] = 10000  # Keep last 10k requests
+    _max_metrics: ClassVar[int] = 10_000
 
     @classmethod
     def record_request(
@@ -80,16 +62,6 @@ class MetricsCollector:
         success: bool,
         error: str | None = None,
     ) -> None:
-        """
-        Record a request metric.
-
-        Args:
-            model: Model name used
-            operation: Operation type (generate, chat, etc.)
-            latency_ms: Request latency in milliseconds
-            success: Whether request was successful
-            error: Error message if request failed
-        """
         metric = RequestMetrics(
             model=model,
             operation=operation,
@@ -100,29 +72,18 @@ class MetricsCollector:
         )
         cls._metrics.append(metric)
 
-        # Prune old metrics if we exceed max
         if len(cls._metrics) > cls._max_metrics:
             cls._metrics = cls._metrics[-cls._max_metrics :]
 
-        logger.debug(f"Recorded metric: {operation} on {model} - {latency_ms:.2f}ms")
+        logger.debug("Recorded metric: %s on %s - %.2fms", operation, model, latency_ms)
 
     @classmethod
     def get_metrics(cls, window_minutes: int | None = None) -> ServiceMetrics:
-        """
-        Get aggregated metrics.
-
-        Args:
-            window_minutes: Only include metrics from last N minutes (None = all)
-
-        Returns:
-            ServiceMetrics with aggregated statistics
-        """
         if not cls._metrics:
             return ServiceMetrics()
 
-        # Filter by time window if specified
         if window_minutes:
-            cutoff = datetime.now() - timedelta(minutes=window_minutes)
+            cutoff = datetime.now(UTC) - timedelta(minutes=window_minutes)
             metrics = [m for m in cls._metrics if m.timestamp >= cutoff]
         else:
             metrics = cls._metrics
@@ -130,7 +91,6 @@ class MetricsCollector:
         if not metrics:
             return ServiceMetrics()
 
-        # Calculate statistics
         latencies = [m.latency_ms for m in metrics]
         latencies_sorted = sorted(latencies)
 
@@ -142,21 +102,18 @@ class MetricsCollector:
         requests_by_operation = defaultdict(int)
         errors_by_type = defaultdict(int)
 
-        for m in metrics:
-            requests_by_model[m.model] += 1
-            requests_by_operation[m.operation] += 1
-            if m.error:
-                errors_by_type[m.error] += 1
+        for metric in metrics:
+            requests_by_model[metric.model] += 1
+            requests_by_operation[metric.operation] += 1
+            if metric.error:
+                errors_by_type[metric.error] += 1
 
-        # Calculate percentiles using statistics.quantiles (Python 3.8+)
-        # Note: quantiles() requires at least 2 data points
         if len(latencies_sorted) >= 2:
             quantiles = statistics.quantiles(latencies_sorted, n=100)
-            p50 = quantiles[49]  # 50th percentile (median)
-            p95 = quantiles[94]  # 95th percentile
-            p99 = quantiles[98]  # 99th percentile
+            p50 = quantiles[49]
+            p95 = quantiles[94]
+            p99 = quantiles[98]
         elif len(latencies_sorted) == 1:
-            # Single data point - all percentiles are the same
             p50 = p95 = p99 = latencies_sorted[0]
         else:
             p50 = p95 = p99 = 0.0
@@ -178,15 +135,6 @@ class MetricsCollector:
 
     @classmethod
     def get_metrics_json(cls, window_minutes: int | None = None) -> dict[str, Any]:
-        """
-        Get metrics as JSON-serializable dictionary.
-
-        Args:
-            window_minutes: Only include metrics from last N minutes (None = all)
-
-        Returns:
-            Dictionary with metrics
-        """
         metrics = cls.get_metrics(window_minutes)
         return {
             "total_requests": metrics.total_requests,
@@ -199,64 +147,46 @@ class MetricsCollector:
             "p95_latency_ms": round(metrics.p95_latency_ms, 2),
             "p99_latency_ms": round(metrics.p99_latency_ms, 2),
             "errors_by_type": metrics.errors_by_type,
-            "last_request_time": (
-                metrics.last_request_time.isoformat() if metrics.last_request_time else None
-            ),
-            "first_request_time": (
-                metrics.first_request_time.isoformat() if metrics.first_request_time else None
-            ),
+            "last_request_time": metrics.last_request_time.isoformat() if metrics.last_request_time else None,
+            "first_request_time": metrics.first_request_time.isoformat() if metrics.first_request_time else None,
         }
 
     @classmethod
     def reset(cls) -> None:
-        """Reset all metrics (useful for testing)."""
         cls._metrics = []
 
 
 @contextmanager
-def track_request(
-    model: str,
-    operation: str = "generate",
-) -> Generator[None, None, None]:
+def track_request(model: str, operation: str) -> Generator[None, None, None]:
     """
-    Context manager to track a request with automatic timing.
-
-    Args:
-        model: Model name
-        operation: Operation type (generate, chat, etc.)
-
-    Example:
-        >>> with track_request("qwen2.5vl:7b", "generate"):
-        ...     response = client.generate("Hello!")
-
-    Note: For detailed metrics with GenerateResponse, use performance_logging.track_performance instead.
+    Context manager to track a request's latency.
     """
-    start_time = time.perf_counter()
-    success = False
-    error = None
 
+    start = time.perf_counter()
+    error: str | None = None
     try:
         yield
-        success = True
-    except Exception as e:
-        error = f"{type(e).__name__}: {str(e)}"
+    except Exception as exc:  # noqa: BLE001
+        error = f"{exc.__class__.__name__}: {exc}"
         raise
     finally:
-        latency_ms = (time.perf_counter() - start_time) * 1000
+        duration_ms = (time.perf_counter() - start) * 1000
         MetricsCollector.record_request(
             model=model,
             operation=operation,
-            latency_ms=latency_ms,
-            success=success,
+            latency_ms=duration_ms,
+            success=error is None,
             error=error,
         )
 
 
 def get_metrics_endpoint() -> dict[str, Any]:
     """
-    Get metrics for HTTP endpoint (e.g., /metrics).
-
-    Returns:
-        JSON-serializable dictionary with current metrics
+    Convenience helper for exposing metrics via an HTTP endpoint.
     """
+
     return MetricsCollector.get_metrics_json()
+
+
+__all__ = ["MetricsCollector", "ServiceMetrics", "get_metrics_endpoint", "track_request"]
+

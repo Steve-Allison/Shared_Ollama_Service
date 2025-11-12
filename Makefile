@@ -20,7 +20,7 @@ format-check: ## Check formatting without making changes
 	ruff format --check .
 
 type-check: ## Run Pyright type checker
-	pyright shared_ollama_client.py utils.py examples/
+	pyright src/shared_ollama examples/
 
 check: lint format-check type-check ## Run all checks (lint, format, type-check)
 
@@ -31,7 +31,7 @@ test: ## Run tests with pytest
 	pytest
 
 test-cov: ## Run tests with coverage
-	pytest --cov=shared_ollama_client --cov=utils --cov-report=html --cov-report=term
+	pytest --cov=shared_ollama --cov-report=html --cov-report=term
 
 clean: ## Clean up generated files
 	rm -rf .ruff_cache .pyright_cache .pytest_cache .mypy_cache

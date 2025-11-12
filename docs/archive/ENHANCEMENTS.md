@@ -70,8 +70,8 @@ This document outlines recommended enhancements for a central model infrastructu
 **Why**: Better IDE support for consuming projects.
 
 **What to add**:
-- `shared_ollama_client.pyi` - Type stubs for better IDE support
-- `utils.pyi` - Type stubs for utilities
+- `src/shared_ollama/client/sync.pyi` - Type stubs for better IDE support
+- `src/shared_ollama/core/utils.pyi` - Type stubs for utilities
 - Published type stubs for pip install
 
 **Benefits**:

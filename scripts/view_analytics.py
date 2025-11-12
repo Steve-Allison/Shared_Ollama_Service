@@ -16,11 +16,12 @@ import json
 import sys
 from pathlib import Path
 
-# Add project root to path
-project_root = Path(__file__).parent.parent
-sys.path.insert(0, str(project_root))
+# Add src directory to path
+project_root = Path(__file__).resolve().parents[1]
+src_root = project_root / "src"
+sys.path.insert(0, str(src_root))
 
-from analytics import AnalyticsCollector, get_analytics_json  # noqa: E402
+from shared_ollama import AnalyticsCollector, get_analytics_json  # noqa: E402
 
 
 def format_duration(ms: float) -> str:

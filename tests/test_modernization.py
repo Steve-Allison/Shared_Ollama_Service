@@ -20,11 +20,19 @@ from unittest.mock import Mock, patch
 import pytest
 import requests
 
-from analytics import AnalyticsCollector, track_request_with_project
-from monitoring import MetricsCollector, track_request
-from performance_logging import PerformanceCollector, track_performance
-from resilience import CircuitBreaker, CircuitState, exponential_backoff_retry
-from shared_ollama_client import GenerateResponse, SharedOllamaClient
+from shared_ollama import (
+    AnalyticsCollector,
+    CircuitBreaker,
+    CircuitState,
+    GenerateResponse,
+    MetricsCollector,
+    PerformanceCollector,
+    SharedOllamaClient,
+    exponential_backoff_retry,
+    track_performance,
+    track_request,
+    track_request_with_project,
+)
 
 
 class TestNativeFeatures:
@@ -160,7 +168,7 @@ class TestErrorHandling:
             "Connection failed"
         )
 
-        with patch("shared_ollama_client.logger") as mock_logger:
+        with patch("shared_ollama.client.sync.logger") as mock_logger:
             result = mock_client.health_check()
             assert result is False
             mock_logger.debug.assert_called_once()

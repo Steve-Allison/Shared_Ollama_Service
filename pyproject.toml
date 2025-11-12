@@ -24,10 +24,13 @@ dev = [
 ]
 
 [tool.setuptools]
-py-modules = ["shared_ollama_client", "utils", "monitoring", "resilience", "shared_ollama_client_async", "analytics"]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
 
 [tool.setuptools.package-data]
-"*" = ["*.pyi"]
+"shared_ollama" = ["**/*.pyi"]
 
 # Ruff Configuration - Modern Python Linter & Formatter
 [tool.ruff]
@@ -122,7 +125,7 @@ unfixable = []
 
 [tool.ruff.lint.isort]
 # Configure import sorting
-known-first-party = ["shared_ollama_client", "utils"]
+known-first-party = ["shared_ollama"]
 combine-as-imports = true
 split-on-trailing-comma = true
 force-single-line = false
@@ -160,7 +163,7 @@ typeCheckingMode = "standard"
 pythonVersion = "3.13"
 
 # Include/exclude paths
-include = ["shared_ollama_client.py", "utils.py", "examples"]
+include = ["src/shared_ollama", "examples"]
 exclude = [
     "**/node_modules",
     "**/__pycache__",

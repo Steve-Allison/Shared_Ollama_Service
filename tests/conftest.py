@@ -2,11 +2,18 @@
 Pytest configuration and fixtures for Shared Ollama Service tests.
 """
 
+from pathlib import Path
 from unittest.mock import Mock, patch
 
 import pytest
 
-from shared_ollama_client import OllamaConfig, SharedOllamaClient
+import sys
+
+SRC_ROOT = Path(__file__).resolve().parents[1] / "src"
+if str(SRC_ROOT) not in sys.path:
+    sys.path.insert(0, str(SRC_ROOT))
+
+from shared_ollama import OllamaConfig, SharedOllamaClient
 
 
 @pytest.fixture
@@ -24,7 +31,7 @@ def ollama_config(mock_ollama_url):
 @pytest.fixture
 def mock_client(ollama_config):
     """Create a SharedOllamaClient with mocked connection verification."""
-    with patch("shared_ollama_client.SharedOllamaClient._verify_connection"):
+    with patch("shared_ollama.client.sync.SharedOllamaClient._verify_connection"):
         client = SharedOllamaClient(config=ollama_config, verify_on_init=False)
         # Ensure session is a Mock for testing
         client.session = Mock()
@@ -34,7 +41,7 @@ def mock_client(ollama_config):
 @pytest.fixture
 def mock_requests_session():
     """Mock requests session for testing."""
-    with patch("shared_ollama_client.requests.Session") as mock_session:
+    with patch("shared_ollama.client.sync.requests.Session") as mock_session:
         session = Mock()
         mock_session.return_value = session
         yield session

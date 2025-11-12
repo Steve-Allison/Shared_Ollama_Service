@@ -20,7 +20,7 @@ Main synchronous client for interacting with the Ollama service.
 #### Initialization
 
 ```python
-from shared_ollama_client import SharedOllamaClient, OllamaConfig
+from shared_ollama import OllamaConfig, SharedOllamaClient
 
 # With default configuration
 client = SharedOllamaClient()
@@ -62,7 +62,7 @@ Generate text using a model.
 
 **Example:**
 ```python
-from shared_ollama_client import GenerateOptions
+from shared_ollama import GenerateOptions
 
 options = GenerateOptions(
     temperature=0.7,
@@ -128,7 +128,7 @@ Async/await client for modern Python applications.
 
 ```python
 import asyncio
-from shared_ollama_client_async import AsyncSharedOllamaClient
+from shared_ollama import AsyncSharedOllamaClient
 
 async def main():
     async with AsyncSharedOllamaClient() as client:
@@ -185,7 +185,7 @@ response = client.generate("Hello!")
 Track request metrics and performance.
 
 ```python
-from monitoring import MetricsCollector, track_request
+from shared_ollama import MetricsCollector, track_request
 
 # Track a request
 with track_request("qwen2.5vl:7b", "generate"):
@@ -224,7 +224,7 @@ class ServiceMetrics:
 Enhanced analytics with project-level tracking and time-series analysis.
 
 ```python
-from analytics import AnalyticsCollector, track_request_with_project
+from shared_ollama import AnalyticsCollector, track_request_with_project
 
 # Track with project identifier
 with track_request_with_project(

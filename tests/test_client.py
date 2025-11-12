@@ -4,12 +4,7 @@ Unit tests for SharedOllamaClient.
 
 from unittest.mock import Mock
 
-from shared_ollama_client import (
-    GenerateOptions,
-    GenerateResponse,
-    Model,
-    OllamaConfig,
-)
+from shared_ollama import GenerateOptions, GenerateResponse, Model, OllamaConfig
 
 
 class TestOllamaConfig:

@@ -12,7 +12,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-LOGS_DIR = Path(__file__).parent / "logs"
+LOGS_DIR = Path(__file__).resolve().parents[3] / "logs"
 LOGS_DIR.mkdir(exist_ok=True)
 
 REQUEST_LOGGER = logging.getLogger("ollama.requests")
@@ -43,4 +43,7 @@ def log_request_event(event: dict[str, Any]) -> None:
     if "timestamp" not in event:
         event["timestamp"] = datetime.now(UTC).isoformat()
     REQUEST_LOGGER.info(json.dumps(event, default=_json_default))
+
+
+__all__ = ["log_request_event"]
 

@@ -39,7 +39,7 @@ from pathlib import Path
 # Add Shared_Ollama_Service to path
 sys.path.insert(0, str(Path.home() / "AI_Projects+Code" / "Shared_Ollama_Service"))
 
-from shared_ollama_client import SharedOllamaClient
+from shared_ollama import SharedOllamaClient
 
 # Use it!
 client = SharedOllamaClient()
@@ -51,7 +51,7 @@ print(response.text)
 
 ```python
 from utils import get_ollama_base_url, ensure_service_running
-from shared_ollama_client import SharedOllamaClient, OllamaConfig
+from shared_ollama import OllamaConfig, SharedOllamaClient
 
 # Automatically get URL from environment
 base_url = get_ollama_base_url()
@@ -131,7 +131,7 @@ class OllamaConfig(BaseSettings):
 from config.main import OllamaConfig
 import sys
 sys.path.insert(0, "/path/to/Shared_Ollama_Service")
-from shared_ollama_client import SharedOllamaClient
+from shared_ollama import SharedOllamaClient
 
 config = OllamaConfig()
 client = SharedOllamaClient(
@@ -154,7 +154,7 @@ generation:
 **Python usage**:
 ```python
 import yaml
-from shared_ollama_client import SharedOllamaClient, OllamaConfig
+from shared_ollama import OllamaConfig, SharedOllamaClient
 
 with open("config/rag_config.yaml") as f:
     config = yaml.safe_load(f)
@@ -181,7 +181,7 @@ from pathlib import Path
 # Add Shared_Ollama_Service to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent.parent / "Shared_Ollama_Service"))
 
-from shared_ollama_client import SharedOllamaClient, OllamaConfig
+from shared_ollama import OllamaConfig, SharedOllamaClient
 
 class StoryConfig(BaseModel):
     ollama_base_url: str = Field(default="http://localhost:11434")
@@ -244,7 +244,7 @@ cd Shared_Ollama_Service
 ### Graceful Degradation
 
 ```python
-from shared_ollama_client import SharedOllamaClient
+from shared_ollama import SharedOllamaClient
 from utils import check_service_health
 
 is_healthy, error = check_service_health()
@@ -262,7 +262,7 @@ else:
 The client includes automatic retry on connection. For additional retries:
 
 ```python
-from shared_ollama_client import SharedOllamaClient
+from shared_ollama import SharedOllamaClient
 import time
 
 client = SharedOllamaClient(verify_on_init=False)  # Skip initial verification

@@ -8,16 +8,17 @@ from any project with minimal setup.
 import sys
 from pathlib import Path
 
-# Add parent directory to path to import shared client
-sys.path.insert(0, str(Path(__file__).parent.parent))
+ROOT = Path(__file__).resolve().parents[1]
+SRC_ROOT = ROOT / "src"
+if str(SRC_ROOT) not in sys.path:
+    sys.path.insert(0, str(SRC_ROOT))
 
-from shared_ollama_client import (
-    GenerateOptions,
-    Model,
-    OllamaConfig,
-    SharedOllamaClient,
+from shared_ollama.client import GenerateOptions, Model, OllamaConfig, SharedOllamaClient
+from shared_ollama.core.utils import (
+    check_service_health,
+    ensure_service_running,
+    get_ollama_base_url,
 )
-from utils import check_service_health, ensure_service_running, get_ollama_base_url
 
 
 def example_basic_usage():

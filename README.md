@@ -41,6 +41,32 @@ This service provides a single Ollama instance accessible on port `11434` that a
 
 Models remain in memory for 5 minutes after last use (OLLAMA_KEEP_ALIVE), then are automatically unloaded to free memory. Switching between models requires a brief load time (~2-3 seconds).
 
+## Project Structure
+
+```
+shared_ollama_service/
+├── src/shared_ollama/
+│   ├── __init__.py                 # Public SDK exports
+│   ├── client/
+│   │   ├── __init__.py
+│   │   ├── sync.py                 # Synchronous client implementation
+│   │   └── async_client.py         # Async client (httpx-based)
+│   ├── core/
+│   │   ├── __init__.py
+│   │   ├── utils.py                # Service discovery & helpers
+│   │   └── resilience.py           # Circuit breaker, retries, resilient client
+│   └── telemetry/
+│       ├── __init__.py
+│       ├── metrics.py              # Request telemetry & Prometheus-ready helpers
+│       ├── analytics.py            # Project-level analytics & exports
+│       ├── performance.py          # Structured performance logging
+│       └── structured_logging.py   # JSONL request logging
+├── tests/                          # Unit tests for the SDK
+└── scripts/                        # Operational CLI utilities (load tests, analytics, etc.)
+```
+
+All modules are shipped as a package (installable via `pip install -e .`) with type stubs co-located under `src/shared_ollama/**/*.pyi`.
+
 ## Installation
 
 ### ⚡ Native Installation (Apple Silicon MPS Optimized)
@@ -148,7 +174,7 @@ ruff check .
 ruff check --fix .
 
 # Type checking
-pyright shared_ollama_client.py utils.py
+pyright src/shared_ollama
 
 # Run tests
 pytest
@@ -200,7 +226,7 @@ The easiest way to use the shared service from any project:
 import sys
 sys.path.insert(0, "/path/to/Shared_Ollama_Service")
 
-from shared_ollama_client import SharedOllamaClient
+from shared_ollama import SharedOllamaClient
 from utils import ensure_service_running
 
 # Ensure service is running (with helpful error messages)
@@ -230,7 +256,7 @@ See [INTEGRATION_GUIDE.md](docs/INTEGRATION_GUIDE.md) for complete integration i
 import sys
 sys.path.insert(0, "/path/to/Shared_Ollama_Service")
 
-from shared_ollama_client import SharedOllamaClient
+from shared_ollama import SharedOllamaClient
 from utils import get_ollama_base_url, ensure_service_running
 
 # Automatic service discovery from environment
@@ -249,7 +275,7 @@ Update `Knowledge_Machine/config/main.py`:
 ```python
 import sys
 sys.path.insert(0, "/path/to/Shared_Ollama_Service")
-from shared_ollama_client import SharedOllamaClient, OllamaConfig
+from shared_ollama import OllamaConfig, SharedOllamaClient
 
 # Or configure via environment
 import os
@@ -280,8 +306,8 @@ Update `Story_Machine/src/story_machine/core/config.py`:
 ```python
 import sys
 sys.path.insert(0, "/path/to/Shared_Ollama_Service")
-from shared_ollama_client import SharedOllamaClient
-from utils import get_ollama_base_url
+from shared_ollama import SharedOllamaClient
+from shared_ollama.core.utils import get_ollama_base_url
 
 # Auto-discover from environment
 base_url = get_ollama_base_url()
@@ -296,7 +322,7 @@ See [INTEGRATION_GUIDE.md](docs/INTEGRATION_GUIDE.md) for detailed project-speci
 
 ### Environment Variables
 
-**For Client Projects** (detected automatically by `utils.py`):
+**For Client Projects** (detected automatically by `shared_ollama.core.utils`):
 
 ```bash
 export OLLAMA_BASE_URL="http://localhost:11434"  # Preferred
@@ -778,7 +804,7 @@ Modern async/await client for asynchronous Python applications:
 
 ```python
 import asyncio
-from shared_ollama_client_async import AsyncSharedOllamaClient
+from shared_ollama import AsyncSharedOllamaClient
 
 async def main():
     async with AsyncSharedOllamaClient() as client:
@@ -795,7 +821,7 @@ asyncio.run(main())
 Track usage, latency, and errors across all projects:
 
 ```python
-from monitoring import track_request, MetricsCollector
+from shared_ollama import MetricsCollector, track_request
 
 # Track a request
 with track_request("qwen2.5vl:7b", "generate"):
@@ -837,7 +863,7 @@ See `IMPLEMENTED_ENHANCEMENTS.md` for full details.
 Advanced analytics with project-level tracking and time-series analysis:
 
 ```python
-from analytics import AnalyticsCollector, track_request_with_project
+from shared_ollama import AnalyticsCollector, track_request_with_project
 
 # Track with project identifier
 with track_request_with_project("qwen2.5vl:7b", "generate", project="knowledge_machine"):
@@ -930,7 +956,7 @@ pip install -e ".[dev]"
 
 **Pyright** - Static type checker (Microsoft's type checker)
 
-- **Type check**: `pyright shared_ollama_client.py utils.py`
+- **Type check**: `pyright src/shared_ollama`
 
 **Testing** - pytest with coverage
 

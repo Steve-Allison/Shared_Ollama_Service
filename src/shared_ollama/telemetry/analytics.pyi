@@ -1,4 +1,4 @@
-"""Type stubs for analytics module."""
+"""Type stubs for shared_ollama.telemetry.analytics module."""
 
 from contextlib import AbstractContextManager
 from datetime import datetime
@@ -6,8 +6,6 @@ from pathlib import Path
 from typing import Any
 
 class ProjectMetrics:
-    """Metrics aggregated by project."""
-
     project_name: str
     total_requests: int
     successful_requests: int
@@ -20,8 +18,6 @@ class ProjectMetrics:
     first_request_time: datetime | None
 
 class TimeSeriesMetrics:
-    """Time-series aggregated metrics."""
-
     timestamp: datetime
     requests_count: int
     successful_count: int
@@ -30,8 +26,6 @@ class TimeSeriesMetrics:
     requests_by_model: dict[str, int]
 
 class AnalyticsReport:
-    """Comprehensive analytics report."""
-
     total_requests: int
     successful_requests: int
     failed_requests: int
@@ -49,8 +43,6 @@ class AnalyticsReport:
     end_time: datetime | None
 
 class AnalyticsCollector:
-    """Enhanced analytics collector with project tracking and time-series analysis."""
-
     @classmethod
     def record_request_with_project(
         cls,
@@ -87,7 +79,9 @@ def track_request_with_project(
     operation: str = ...,
     project: str | None = ...,
 ) -> AbstractContextManager[None]: ...
+
 def get_analytics_json(
     window_minutes: int | None = ...,
     project: str | None = ...,
 ) -> dict[str, Any]: ...
+

@@ -34,7 +34,7 @@ pytest tests/test_client.py
 
 ### 2. **Async/Await Support** ✅
 
-**Location**: `shared_ollama_client_async.py`
+**Location**: `src/shared_ollama/client/async_client.py`
 
 **Features**:
 - `AsyncSharedOllamaClient` - Full async client
@@ -46,7 +46,7 @@ pytest tests/test_client.py
 **Usage**:
 ```python
 import asyncio
-from shared_ollama_client_async import AsyncSharedOllamaClient
+from shared_ollama import AsyncSharedOllamaClient
 
 async def main():
     async with AsyncSharedOllamaClient() as client:
@@ -63,7 +63,7 @@ pip install -e ".[async]"
 
 ### 3. **Monitoring & Metrics** ✅
 
-**Location**: `monitoring.py`
+**Location**: `src/shared_ollama/telemetry/metrics.py`
 
 **Features**:
 - `MetricsCollector` - Tracks request metrics
@@ -75,7 +75,7 @@ pip install -e ".[async]"
 
 **Usage**:
 ```python
-from monitoring import track_request, MetricsCollector
+from shared_ollama import MetricsCollector, track_request
 
 # Track a request
 with track_request("qwen2.5vl:7b", "generate"):
@@ -90,14 +90,14 @@ print(f"P95 latency: {metrics.p95_latency_ms:.2f}ms")
 
 **Metrics Endpoint**:
 ```python
-from monitoring import get_metrics_endpoint
+from shared_ollama import get_metrics_endpoint
 
 metrics = get_metrics_endpoint()  # Returns JSON-serializable dict
 ```
 
 ### 4. **Enhanced Resilience** ✅
 
-**Location**: `resilience.py`
+**Location**: `src/shared_ollama/core/resilience.py`
 
 **Features**:
 - `ResilientOllamaClient` - Wrapper with resilience features
@@ -108,7 +108,7 @@ metrics = get_metrics_endpoint()  # Returns JSON-serializable dict
 
 **Usage**:
 ```python
-from resilience import ResilientOllamaClient
+from shared_ollama import ResilientOllamaClient
 
 client = ResilientOllamaClient()
 
@@ -118,7 +118,7 @@ response = client.generate("Hello!")
 
 **Configuration**:
 ```python
-from resilience import ResilientOllamaClient, RetryConfig, CircuitBreakerConfig
+from shared_ollama import CircuitBreakerConfig, ResilientOllamaClient, RetryConfig
 
 retry_config = RetryConfig(
     max_retries=5,
@@ -143,12 +143,12 @@ client = ResilientOllamaClient(
 **Location**: `*.pyi` files alongside source modules
 
 **Files Created**:
-- `shared_ollama_client.pyi` - Type stubs for main client
-- `shared_ollama_client_async.pyi` - Type stubs for async client
-- `utils.pyi` - Type stubs for utilities
-- `monitoring.pyi` - Type stubs for monitoring
-- `resilience.pyi` - Type stubs for resilience features
-- `analytics.pyi` - Type stubs for analytics
+- `src/shared_ollama/client/sync.pyi` - Type stubs for main client
+- `src/shared_ollama/client/async_client.pyi` - Type stubs for async client
+- `src/shared_ollama/core/utils.pyi` - Type stubs for utilities
+- `src/shared_ollama/telemetry/metrics.pyi` - Type stubs for monitoring
+- `src/shared_ollama/core/resilience.pyi` - Type stubs for resilience features
+- `src/shared_ollama/telemetry/analytics.pyi` - Type stubs for analytics
 
 **Features**:
 - Complete type annotations for all modules
@@ -202,7 +202,7 @@ Type stubs are automatically detected by IDEs (VS Code, PyCharm, etc.) when the 
 
 ### 8. **Enhanced Usage Analytics** ✅
 
-**Location**: `analytics.py` and `scripts/view_analytics.py`
+**Location**: `src/shared_ollama/telemetry/analytics.py` and `scripts/view_analytics.py`
 
 **Features**:
 - **Project-level tracking**: Track usage by project
@@ -219,7 +219,7 @@ Type stubs are automatically detected by IDEs (VS Code, PyCharm, etc.) when the 
 
 **Usage**:
 ```python
-from analytics import track_request_with_project, AnalyticsCollector
+from shared_ollama import AnalyticsCollector, track_request_with_project
 
 # Track with project
 with track_request_with_project("qwen2.5vl:7b", "generate", project="knowledge_machine"):
@@ -242,13 +242,13 @@ python scripts/view_analytics.py
 | Feature | Status | Priority | Location |
 |---------|--------|----------|----------|
 | Test Suite | ✅ Complete | Critical | `tests/` |
-| Async Support | ✅ Complete | High | `shared_ollama_client_async.py` |
-| Monitoring | ✅ Complete | High | `monitoring.py` |
-| Resilience | ✅ Complete | High | `resilience.py` |
-| Type Stubs | ✅ Complete | Medium | `*.pyi` files |
+| Async Support | ✅ Complete | High | `src/shared_ollama/client/async_client.py` |
+| Monitoring | ✅ Complete | High | `src/shared_ollama/telemetry/metrics.py` |
+| Resilience | ✅ Complete | High | `src/shared_ollama/core/resilience.py` |
+| Type Stubs | ✅ Complete | Medium | `src/shared_ollama/**/*.pyi` |
 | CI/CD | ✅ Complete | Medium | `.github/workflows/` |
 | API Docs | ✅ Complete | Medium | `docs/openapi.yaml`, `docs/API_REFERENCE.md` |
-| Usage Analytics | ✅ Complete | Medium | `analytics.py`, `scripts/view_analytics.py` |
+| Usage Analytics | ✅ Complete | Medium | `src/shared_ollama/telemetry/analytics.py`, `scripts/view_analytics.py` |
 
 ## ✅ All Enhancements Complete
 
@@ -274,7 +274,7 @@ Potential future improvements:
 
 **Synchronous (existing)**:
 ```python
-from shared_ollama_client import SharedOllamaClient
+from shared_ollama import SharedOllamaClient
 
 client = SharedOllamaClient()
 response = client.generate("Hello!")
@@ -282,7 +282,7 @@ response = client.generate("Hello!")
 
 **Async (new)**:
 ```python
-from shared_ollama_client_async import AsyncSharedOllamaClient
+from shared_ollama import AsyncSharedOllamaClient
 
 async with AsyncSharedOllamaClient() as client:
     response = await client.generate("Hello!")
@@ -290,7 +290,7 @@ async with AsyncSharedOllamaClient() as client:
 
 **Resilient (new)**:
 ```python
-from resilience import ResilientOllamaClient
+from shared_ollama import ResilientOllamaClient
 
 client = ResilientOllamaClient()
 response = client.generate("Hello!")  # With retry and circuit breaker
@@ -298,8 +298,7 @@ response = client.generate("Hello!")  # With retry and circuit breaker
 
 **With Monitoring (new)**:
 ```python
-from shared_ollama_client import SharedOllamaClient
-from monitoring import track_request
+from shared_ollama import SharedOllamaClient, track_request
 
 client = SharedOllamaClient()
 

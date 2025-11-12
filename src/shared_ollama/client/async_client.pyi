@@ -1,22 +1,22 @@
-"""Type stubs for shared_ollama_client_async module."""
+"""Type stubs for shared_ollama.client.async_client module."""
 
 from typing import Any
 
-from shared_ollama_client import GenerateOptions, GenerateResponse
+from shared_ollama.client.sync import GenerateOptions, GenerateResponse
 
 class AsyncOllamaConfig:
-    """Configuration for Async Ollama client."""
-
     base_url: str
     default_model: str
     timeout: int
+    health_check_timeout: int
     verbose: bool
     max_retries: int
     retry_delay: float
+    max_connections: int
+    max_keepalive_connections: int
+    max_concurrent_requests: int | None
 
 class AsyncSharedOllamaClient:
-    """Async Unified Ollama client for all projects."""
-
     def __init__(
         self,
         config: AsyncOllamaConfig | None = ...,
@@ -48,10 +48,3 @@ class AsyncSharedOllamaClient:
     async def health_check(self) -> bool: ...
     async def get_model_info(self, model: str) -> dict[str, Any] | None: ...
 
-async def create_async_client(
-    base_url: str = ...,
-) -> AsyncSharedOllamaClient: ...
-async def quick_generate_async(
-    prompt: str,
-    model: str | None = ...,
-) -> str: ...

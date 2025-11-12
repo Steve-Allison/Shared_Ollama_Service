@@ -6,7 +6,7 @@ This document summarizes all Python 3.13+ patterns and improvements applied to t
 
 ### 1. **Match/Case Statements** (Python 3.10+, Enhanced in 3.13)
 
-**Location**: `resilience.py`
+**Location**: `src/shared_ollama/core/resilience.py`
 
 **Before**:
 ```python
@@ -39,7 +39,7 @@ match self.state:
 
 ### 2. **Generic Type Parameters** (PEP 695 - Python 3.12+)
 
-**Location**: `resilience.py`
+**Location**: `src/shared_ollama/core/resilience.py`
 
 **Before**:
 ```python
@@ -68,7 +68,7 @@ def exponential_backoff_retry[T](
 
 ### 3. **Specific Exception Handling**
 
-**Location**: `shared_ollama_client.py`
+**Location**: `src/shared_ollama/client/sync.py`
 
 **Before**:
 ```python
@@ -95,7 +95,7 @@ except requests.exceptions.RequestException:  # Specific exception
 
 ### 4. **Explicit Tuple Type Annotations**
 
-**Location**: `utils.py`
+**Location**: `src/shared_ollama/core/utils.py`
 
 **Before**:
 ```python
@@ -114,7 +114,7 @@ def check_service_health(...) -> tuple[bool, str | None]:
 
 ### 5. **Collections.abc Instead of typing**
 
-**Location**: `resilience.py`
+**Location**: `src/shared_ollama/core/resilience.py`
 
 **Before**:
 ```python
@@ -134,7 +134,7 @@ from typing import Any
 
 ### 6. **Return Type Annotations**
 
-**Location**: `resilience.py`
+**Location**: `src/shared_ollama/core/resilience.py`
 
 **Added explicit return types**:
 ```python
@@ -151,13 +151,13 @@ def record_failure(self) -> None:
 
 | Feature | Python Version | Status | Files |
 |---------|---------------|--------|-------|
-| Match/Case | 3.10+ | ✅ Applied | `resilience.py` |
-| Generic Type Params | 3.12+ | ✅ Applied | `resilience.py` |
+| Match/Case | 3.10+ | ✅ Applied | `src/shared_ollama/core/resilience.py` |
+| Generic Type Params | 3.12+ | ✅ Applied | `src/shared_ollama/core/resilience.py` |
 | Union Types (`\|`) | 3.10+ | ✅ Already used | All files |
 | Native types (`list`, `dict`) | 3.9+ | ✅ Already used | All files |
-| Explicit tuple types | 3.9+ | ✅ Applied | `utils.py` |
-| Specific exceptions | All | ✅ Applied | `shared_ollama_client.py` |
-| Collections.abc | 3.9+ | ✅ Applied | `resilience.py` |
+| Explicit tuple types | 3.9+ | ✅ Applied | `src/shared_ollama/core/utils.py` |
+| Specific exceptions | All | ✅ Applied | `src/shared_ollama/client/sync.py` |
+| Collections.abc | 3.9+ | ✅ Applied | `src/shared_ollama/core/resilience.py` |
 
 ## 🎯 Code Quality Improvements
 

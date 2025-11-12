@@ -6,12 +6,12 @@ This document summarizes how the shared Ollama deployment, Python clients, and s
 
 - **Shared Ollama Service (Ollama daemon)** – Hosts all large language models and exposes the HTTP API on `:11434`.
 - **Python Client Layer**
-  - `shared_ollama_client.py` – Synchronous adapter with retries, structured logging, and resilience hooks.
-  - `shared_ollama_client_async.py` – Async counterpart built on `httpx.AsyncClient`.
-  - `utils.py` – Service discovery, health checks, graceful fallback helpers.
+  - `shared_ollama/client/sync.py` – Synchronous adapter with retries, structured logging, and resilience hooks.
+  - `shared_ollama/client/async_client.py` – Async counterpart built on `httpx.AsyncClient`.
+  - `shared_ollama/core/utils.py` – Service discovery, health checks, graceful fallback helpers.
 - **Operational Modules**
-  - `monitoring.py`, `performance_logging.py`, `analytics.py` – Metrics, tracing, and model usage analytics.
-  - `resilience.py` – Circuit-breaker style protections and self-healing routines.
+  - `shared_ollama/telemetry/{metrics,performance,analytics}.py` – Metrics, tracing, and model usage analytics.
+  - `shared_ollama/core/resilience.py` – Circuit-breaker style protections and self-healing routines.
 - **Tooling & Scripts**
   - `scripts/*.sh` – Startup, health checks, cleanup, and performance benchmarking.
   - `scripts/performance_report.py` – Generates latency + throughput reports for regression detection.
@@ -26,10 +26,10 @@ This document summarizes how the shared Ollama deployment, Python clients, and s
 │  Client Project     │ ────────────────────────────────────────┐
 └────────────────────┘                                           │
                                                                   ▼
-                    configure client + ensure running       ┌──────────────────────┐
-                                                            │ shared_ollama_client │
-                                                            │ shared_ollama_client_async │
-                                                            └──────────────────────┘
+                    configure client + ensure running       ┌───────────────────────────┐
+                                                            │ shared_ollama.client.sync │
+                                                            │ shared_ollama.client.async │
+                                                            └───────────────────────────┘
                                                                   │  http(s) JSON
                                                                   ▼
                                                             ┌──────────────────────┐

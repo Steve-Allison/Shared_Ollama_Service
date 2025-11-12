@@ -80,6 +80,19 @@ else
     print_status 0 "No running Ollama processes found"
 fi
 
+# Kill REST API server (uvicorn)
+API_PIDS=$(ps aux | grep -i "[u]vicorn.*shared_ollama.api.server" | awk '{print $2}' 2>/dev/null || true)
+if [ -n "$API_PIDS" ]; then
+    print_info "Stopping REST API server..."
+    for pid in $API_PIDS; do
+        kill -9 "$pid" 2>/dev/null || true
+    done
+    sleep 1
+    print_status 0 "REST API server stopped"
+else
+    print_status 0 "No running REST API server found"
+fi
+
 # Verify service is stopped
 if curl -f -s "$API_ENDPOINT/tags" > /dev/null 2>&1; then
     print_warning "Service still appears to be running - may need manual intervention"
@@ -153,7 +166,7 @@ if [ -f "$LAUNCHD_PLIST" ]; then
     fi
 else
     print_info "No custom launch agent found"
-    
+
     # Check Homebrew service status
     if command -v brew &> /dev/null; then
         if brew services list 2>/dev/null | grep -q "ollama"; then

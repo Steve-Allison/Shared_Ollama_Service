@@ -197,6 +197,7 @@ format_ollama_log() {
 # Start Ollama service with optimizations
 echo -e "${BLUE}Starting Ollama service...${NC}"
 nohup ollama serve > "$LOG_DIR/ollama.log" 2> "$LOG_DIR/ollama.error.log" &
+OLLAMA_PID=$!
 
 # Wait for service to start
 echo -e "${BLUE}Waiting for service to start...${NC}"
@@ -235,18 +236,58 @@ while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
             echo "Or pull all models: ollama pull qwen2.5vl:7b && ollama pull qwen2.5:7b && ollama pull qwen2.5:14b && ollama pull granite4:tiny-h"
         fi
         echo ""
+
+        # Start REST API server
+        echo -e "${BLUE}🚀 Starting REST API server...${NC}"
+        API_HOST="${API_HOST:-0.0.0.0}"
+        API_PORT="${API_PORT:-8000}"
+
+        # Check if we're in a virtual environment
+        if [ -z "$VIRTUAL_ENV" ]; then
+            if [ -d "$PROJECT_ROOT/.venv" ]; then
+                source "$PROJECT_ROOT/.venv/bin/activate"
+            fi
+        fi
+
+        # Set environment variables for API
+        export OLLAMA_BASE_URL="${OLLAMA_BASE_URL:-http://localhost:11434}"
+        export PYTHONPATH="$PROJECT_ROOT/src:$PYTHONPATH"
+
+        # Start API server in background
+        cd "$PROJECT_ROOT"
+        nohup uvicorn shared_ollama.api.server:app \
+            --host "$API_HOST" \
+            --port "$API_PORT" \
+            --log-level info \
+            > "$LOG_DIR/api.log" 2> "$LOG_DIR/api.error.log" &
+        API_PID=$!
+
+        # Wait a moment for API to start
+        sleep 2
+
+        # Check if API started successfully
+        if curl -f -s "http://localhost:$API_PORT/api/v1/health" > /dev/null 2>&1; then
+            echo -e "${GREEN}✓ REST API server is running${NC}"
+            echo "  API URL: http://localhost:$API_PORT"
+            echo "  API Docs: http://localhost:$API_PORT/api/docs"
+        else
+            echo -e "${YELLOW}⚠ REST API server may not have started properly${NC}"
+            echo "  Check logs: tail -f $LOG_DIR/api.error.log"
+        fi
+        echo ""
+
         echo "=================================================="
         echo -e "${BLUE}📊 Request Monitor${NC}"
         echo "=================================================="
         echo -e "${GRAY}Monitoring Ollama requests in real-time...${NC}"
-        echo -e "${GRAY}Press Ctrl+C to stop monitoring (service continues running)${NC}"
+        echo -e "${GRAY}Press Ctrl+C to stop monitoring (services continue running)${NC}"
         echo ""
         echo -e "${GRAY}Date       Time     | Status | Method  Endpoint                        | Duration    | IP${NC}"
         echo -e "${GRAY}--------------------------------------------------------------------------------${NC}"
 
         # Start monitoring logs with formatted output
         # Use trap to handle Ctrl+C gracefully
-        trap 'echo ""; echo -e "${BLUE}Monitoring stopped. Service is still running.${NC}"; echo -e "${GRAY}To view logs: tail -f $LOG_DIR/ollama.log${NC}"; echo -e "${GRAY}To stop service: ./scripts/shutdown.sh${NC}"; exit 0' INT TERM
+        trap 'echo ""; echo -e "${BLUE}Monitoring stopped. Services are still running.${NC}"; echo -e "${GRAY}Ollama logs: tail -f $LOG_DIR/ollama.log${NC}"; echo -e "${GRAY}API logs: tail -f $LOG_DIR/api.log${NC}"; echo -e "${GRAY}To stop services: ./scripts/shutdown.sh${NC}"; exit 0' INT TERM
 
         # Tail the log file and format it
         # Disable exit on error for tail (it may exit when log file is rotated)

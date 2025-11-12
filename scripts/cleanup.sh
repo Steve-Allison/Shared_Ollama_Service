@@ -60,6 +60,8 @@ OLD_LOG_DIR="$HOME/.ollama"
 LOG_FILES=(
     "$LOG_DIR/ollama.log"
     "$LOG_DIR/ollama.error.log"
+    "$LOG_DIR/api.log"
+    "$LOG_DIR/api.error.log"
     "$OLD_LOG_DIR/ollama.log"
     "$OLD_LOG_DIR/ollama.error.log"
 )
@@ -76,7 +78,7 @@ done
 
 # Also check for any other .log files in the project
 if [ -d "$LOG_DIR" ]; then
-    OTHER_LOGS=$(find "$LOG_DIR" -maxdepth 1 -name "*.log" -type f 2>/dev/null | grep -v -E "(ollama\.log|ollama\.error\.log)" || true)
+    OTHER_LOGS=$(find "$LOG_DIR" -maxdepth 1 -name "*.log" -type f 2>/dev/null | grep -v -E "(ollama\.log|ollama\.error\.log|api\.log|api\.error\.log)" || true)
     if [ -n "$OTHER_LOGS" ]; then
         while IFS= read -r log_file; do
             if [ -f "$log_file" ]; then
@@ -88,24 +90,77 @@ if [ -d "$LOG_DIR" ]; then
     fi
 fi
 
+# Clean structured logging files (JSONL format)
+JSONL_FILES=(
+    "$LOG_DIR/requests.jsonl"
+    "$LOG_DIR/performance.jsonl"
+)
+
+JSONL_SIZE=0
+JSONL_COUNT=0
+for jsonl_file in "${JSONL_FILES[@]}"; do
+    if [ -f "$jsonl_file" ]; then
+        SIZE=$(stat -f%z "$jsonl_file" 2>/dev/null || stat -c%s "$jsonl_file" 2>/dev/null || echo "0")
+        JSONL_SIZE=$((JSONL_SIZE + SIZE))
+        JSONL_COUNT=$((JSONL_COUNT + 1))
+        LOG_SIZE=$((LOG_SIZE + SIZE))
+        LOG_COUNT=$((LOG_COUNT + 1))
+    fi
+done
+
+# Also check for any other .jsonl files in logs directory
+if [ -d "$LOG_DIR" ]; then
+    OTHER_JSONL=$(find "$LOG_DIR" -maxdepth 1 -name "*.jsonl" -type f 2>/dev/null | grep -v -E "(requests\.jsonl|performance\.jsonl)" || true)
+    if [ -n "$OTHER_JSONL" ]; then
+        while IFS= read -r jsonl_file; do
+            if [ -f "$jsonl_file" ]; then
+                SIZE=$(stat -f%z "$jsonl_file" 2>/dev/null || stat -c%s "$jsonl_file" 2>/dev/null || echo "0")
+                JSONL_SIZE=$((JSONL_SIZE + SIZE))
+                JSONL_COUNT=$((JSONL_COUNT + 1))
+                LOG_SIZE=$((LOG_SIZE + SIZE))
+                LOG_COUNT=$((LOG_COUNT + 1))
+            fi
+        done <<< "$OTHER_JSONL"
+    fi
+fi
+
+# Remove JSONL files
+for jsonl_file in "${JSONL_FILES[@]}"; do
+    if [ -f "$jsonl_file" ]; then
+        rm -f "$jsonl_file" 2>/dev/null || true
+    fi
+done
+
+# Clean other JSONL files
+if [ -n "$OTHER_JSONL" ]; then
+    while IFS= read -r jsonl_file; do
+        rm -f "$jsonl_file" 2>/dev/null || true
+    done <<< "$OTHER_JSONL"
+fi
+
+if [ $JSONL_COUNT -gt 0 ]; then
+    JSONL_SIZE_FORMATTED=$(format_size $JSONL_SIZE)
+    print_info "Found $JSONL_COUNT structured log file(s) (~${JSONL_SIZE_FORMATTED})"
+fi
+
 if [ $LOG_COUNT -gt 0 ]; then
     LOG_SIZE_FORMATTED=$(format_size $LOG_SIZE)
     print_info "Found $LOG_COUNT log file(s) totaling ~${LOG_SIZE_FORMATTED}"
-    
+
     # Remove log files (not just truncate)
     for log_file in "${LOG_FILES[@]}"; do
         if [ -f "$log_file" ]; then
             rm -f "$log_file" 2>/dev/null || true
         fi
     done
-    
+
     # Clean other log files
     if [ -n "$OTHER_LOGS" ]; then
         while IFS= read -r log_file; do
             rm -f "$log_file" 2>/dev/null || true
         done <<< "$OTHER_LOGS"
     fi
-    
+
     print_status 0 "Removed $LOG_COUNT log file(s)"
 else
     print_status 0 "No log files found"

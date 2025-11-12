@@ -330,6 +330,8 @@ resp, err := http.Post(
 **Benefits:**
 - ✅ **Fully Async**: Non-blocking I/O operations for maximum concurrency
 - ✅ **Language Agnostic**: Works with any language (Python, TypeScript, Go, Rust, etc.)
+- ✅ **Streaming Support**: Real-time token-by-token responses for better UX
+- ✅ **Request Queue**: Graceful handling of traffic spikes (up to 50 queued requests)
 - ✅ **Centralized Logging**: All requests logged to structured JSON logs (`logs/requests.jsonl`)
 - ✅ **Unified Metrics**: Aggregated metrics across all projects
 - ✅ **Rate Limiting**: 60 requests/minute per IP for generate/chat, 30/min for models
@@ -339,6 +341,170 @@ resp, err := http.Post(
 - ✅ **Input Validation**: Automatic validation prevents invalid requests (empty prompts, invalid roles, length limits)
 - ✅ **Robust Error Handling**: Specific error responses for validation errors (422), rate limits (429), service unavailable (503), timeouts (504), and more
 - ✅ **Production Ready**: Comprehensive error handling, input validation, and test coverage
+
+### Streaming Responses
+
+The REST API supports real-time streaming for token-by-token responses, providing better user experience for long-running AI generations.
+
+**Python Client Streaming:**
+```python
+import asyncio
+from shared_ollama import AsyncSharedOllamaClient
+
+async def stream_example():
+    async with AsyncSharedOllamaClient() as client:
+        # Stream text generation
+        async for chunk in client.generate_stream(prompt="Write a story about AI"):
+            print(chunk["chunk"], end="", flush=True)
+            if chunk["done"]:
+                print(f"\n\nCompleted in {chunk['latency_ms']}ms")
+
+        # Stream chat completion
+        messages = [{"role": "user", "content": "Tell me a joke"}]
+        async for chunk in client.chat_stream(messages=messages):
+            print(chunk["chunk"], end="", flush=True)
+            if chunk["done"]:
+                print(f"\n\nModel: {chunk['model']}, Latency: {chunk['latency_ms']}ms")
+
+asyncio.run(stream_example())
+```
+
+**REST API Streaming:**
+```python
+import requests
+
+# Streaming generate endpoint
+response = requests.post(
+    "http://localhost:8000/api/v1/generate",
+    json={"prompt": "Write a story", "model": "qwen2.5:7b", "stream": True},
+    stream=True
+)
+
+for line in response.iter_lines():
+    if line:
+        # Parse Server-Sent Events format
+        if line.startswith(b'data: '):
+            import json
+            chunk = json.loads(line[6:])  # Remove "data: " prefix
+            print(chunk['chunk'], end='', flush=True)
+            if chunk['done']:
+                print(f"\n\nLatency: {chunk['latency_ms']}ms")
+```
+
+**TypeScript/JavaScript Streaming:**
+```typescript
+const response = await fetch("http://localhost:8000/api/v1/generate", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({
+    prompt: "Write a story",
+    model: "qwen2.5:7b",
+    stream: true
+  })
+});
+
+const reader = response.body.getReader();
+const decoder = new TextDecoder();
+
+while (true) {
+  const { done, value } = await reader.read();
+  if (done) break;
+
+  const text = decoder.decode(value);
+  const lines = text.split('\n');
+
+  for (const line of lines) {
+    if (line.startsWith('data: ')) {
+      const chunk = JSON.parse(line.slice(6));
+      process.stdout.write(chunk.chunk);
+      if (chunk.done) {
+        console.log(`\n\nLatency: ${chunk.latency_ms}ms`);
+      }
+    }
+  }
+}
+```
+
+**Streaming Format:**
+
+- Uses Server-Sent Events (SSE) format: `data: {json}\n\n`
+- Each chunk contains: `chunk` (text), `done` (boolean), `model`, `request_id`
+- Final chunk (when `done=True`) includes metrics: `latency_ms`, `model_load_ms`, `model_warm_start`, token counts
+
+### Request Queue Management
+
+The REST API includes intelligent request queuing to handle traffic spikes gracefully. Instead of immediately rejecting requests with 503 errors when capacity is reached, the queue system allows requests to wait for available slots.
+
+**Configuration:**
+
+- **Max Concurrent**: 3 requests processed simultaneously
+- **Max Queue Size**: 50 requests can wait in queue
+- **Default Timeout**: 60 seconds wait time before timeout
+
+**How it Works:**
+
+1. When all 3 processing slots are busy, new requests enter the queue
+2. Requests wait for an available slot (up to 60 seconds by default)
+3. Once a slot opens, the next queued request begins processing
+4. If the queue fills (50+ waiting), new requests are rejected with clear error messages
+
+**Queue Statistics Endpoint:**
+
+Monitor queue health in real-time:
+
+```bash
+curl http://localhost:8000/api/v1/queue/stats
+```
+
+Response:
+
+```json
+{
+  "queued": 2,              // Currently waiting
+  "in_progress": 3,         // Currently processing
+  "completed": 145,         // Total completed
+  "failed": 2,              // Total failed
+  "rejected": 0,            // Rejected (queue full)
+  "timeout": 0,             // Timed out in queue
+  "total_wait_time_ms": 15420.5,  // Total wait time
+  "max_wait_time_ms": 3250.2,     // Maximum wait observed
+  "avg_wait_time_ms": 106.3,      // Average wait time
+  "max_concurrent": 3,      // Config: max concurrent
+  "max_queue_size": 50,     // Config: max queue size
+  "default_timeout": 60.0   // Config: timeout (seconds)
+}
+```
+
+**Benefits:**
+
+- ✅ **Graceful Degradation**: Requests wait instead of failing immediately
+- ✅ **Better UX**: Users see progress instead of errors during traffic spikes
+- ✅ **Visibility**: Real-time queue metrics for monitoring
+- ✅ **Automatic Cleanup**: Failed requests don't block the queue
+- ✅ **Timeout Protection**: Prevents indefinite waiting
+
+**Example Monitoring Script:**
+
+```python
+import requests
+import time
+
+def monitor_queue():
+    while True:
+        response = requests.get("http://localhost:8000/api/v1/queue/stats")
+        stats = response.json()
+
+        print(f"Queue Status: {stats['queued']} waiting, "
+              f"{stats['in_progress']} processing, "
+              f"avg wait: {stats['avg_wait_time_ms']:.1f}ms")
+
+        if stats['rejected'] > 0:
+            print(f"⚠️  {stats['rejected']} requests rejected (queue full)")
+
+        time.sleep(5)
+
+monitor_queue()
+```
 
 ### Alternative: Using the Shared Client Library (Python Only)
 

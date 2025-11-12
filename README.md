@@ -163,6 +163,16 @@ pip install -e ".[dev]" -c constraints.txt
 
 **Quick Commands:**
 
+**REST API:**
+```bash
+./scripts/start_api.sh          # Start async REST API server (port 8000)
+curl http://localhost:8000/api/v1/health  # Health check
+# Visit http://localhost:8000/api/docs for interactive API docs
+# Fully async implementation for maximum concurrency
+```
+
+**Ollama Service:**
+
 ```bash
 # Format code
 ruff format .
@@ -246,18 +256,91 @@ print(response.text)
 export OLLAMA_BASE_URL="http://localhost:11434"
 ```
 
+**API Documentation**: See [API_REFERENCE.md](docs/API_REFERENCE.md) for complete REST API documentation.
+
 See [INTEGRATION_GUIDE.md](docs/INTEGRATION_GUIDE.md) for complete integration instructions and project-specific examples.
 
 ## Usage in Projects
 
-### Recommended: Using the Shared Client (Easiest)
+### 🚀 Recommended: REST API (Language Agnostic)
+
+**Best for**: All projects (Python, TypeScript, Go, Rust, etc.)
+
+The REST API provides centralized logging, metrics, and rate limiting for all projects. Built with FastAPI and fully async for maximum concurrency and performance.
+
+```bash
+# Start the API server (runs on port 8000 by default)
+./scripts/start_api.sh
+```
+
+**Key Features:**
+- ✅ **Fully Async**: Uses `AsyncSharedOllamaClient` for non-blocking I/O operations
+- ✅ **High Concurrency**: Handles multiple concurrent requests efficiently
+- ✅ **Language Agnostic**: Works with any language that supports HTTP
+- ✅ **Centralized Logging**: All requests logged to structured JSON logs
+- ✅ **Rate Limiting**: Protects service from overload (60 req/min for generate/chat)
+- ✅ **Request Tracking**: Unique request IDs for debugging
+- ✅ **Project Identification**: Track usage by project via `X-Project-Name` header
+
+**Python Example:**
+```python
+import requests
+
+response = requests.post(
+    "http://localhost:8000/api/v1/generate",
+    json={
+        "prompt": "Hello, world!",
+        "model": "qwen2.5vl:7b"
+    }
+)
+print(response.json()["text"])
+```
+
+**TypeScript/JavaScript Example:**
+```typescript
+const res = await fetch("http://localhost:8000/api/v1/generate", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({
+    prompt: "Hello, world!",
+    model: "qwen2.5vl:7b"
+  })
+});
+const data = await res.json();
+console.log(data.text);
+```
+
+**Go Example:**
+```go
+resp, err := http.Post(
+    "http://localhost:8000/api/v1/generate",
+    "application/json",
+    bytes.NewBuffer(jsonData),
+)
+```
+
+**API Documentation**: Visit `http://localhost:8000/api/docs` for interactive API documentation.
+
+**Benefits:**
+- ✅ **Fully Async**: Non-blocking I/O operations for maximum concurrency
+- ✅ **Language Agnostic**: Works with any language (Python, TypeScript, Go, Rust, etc.)
+- ✅ **Centralized Logging**: All requests logged to structured JSON logs (`logs/requests.jsonl`)
+- ✅ **Unified Metrics**: Aggregated metrics across all projects
+- ✅ **Rate Limiting**: 60 requests/minute per IP for generate/chat, 30/min for models
+- ✅ **Request Tracking**: Unique request IDs for debugging and support
+- ✅ **Project Identification**: Track usage by project via `X-Project-Name` header
+- ✅ **High Performance**: Async implementation handles concurrent requests efficiently
+
+### Alternative: Using the Shared Client Library (Python Only)
+
+**Best for**: Python projects that want direct library access
 
 ```python
 import sys
 sys.path.insert(0, "/path/to/Shared_Ollama_Service")
 
 from shared_ollama import SharedOllamaClient
-from utils import get_ollama_base_url, ensure_service_running
+from shared_ollama.core.utils import ensure_service_running
 
 # Automatic service discovery from environment
 ensure_service_running()

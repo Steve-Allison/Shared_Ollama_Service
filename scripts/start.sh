@@ -101,7 +101,7 @@ fi
 
 # Optional: Set other optimizations (can be overridden by env vars)
 export OLLAMA_HOST="${OLLAMA_HOST:-0.0.0.0:11434}"
-export OLLAMA_KEEP_ALIVE="${OLLAMA_KEEP_ALIVE:-5m}"
+export OLLAMA_KEEP_ALIVE="${OLLAMA_KEEP_ALIVE:-30m}"
 
 # Auto-calculate memory limit if not set
 if [ -z "$OLLAMA_MAX_RAM" ]; then
@@ -216,6 +216,20 @@ while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
         MODELS=$(ollama list 2>/dev/null | tail -n +2 | awk '{print $1}' | tr '\n' ' ' || echo "none")
         if [ -n "$MODELS" ] && [ "$MODELS" != "none" ]; then
             echo "Available models: $MODELS"
+            echo ""
+
+            # Automatically warm up models
+            echo -e "${BLUE}🔥 Warming up models...${NC}"
+            WARMUP_SCRIPT="$PROJECT_ROOT/scripts/warmup_models.sh"
+            if [ -f "$WARMUP_SCRIPT" ]; then
+                # Use the same keep-alive setting as the service
+                KEEP_ALIVE="$OLLAMA_KEEP_ALIVE" "$WARMUP_SCRIPT" || {
+                    echo -e "${YELLOW}⚠ Model warm-up had some issues (models may still be available)${NC}"
+                }
+            else
+                echo -e "${YELLOW}⚠ Warm-up script not found at $WARMUP_SCRIPT${NC}"
+            fi
+            echo ""
         else
             echo "No models downloaded yet. Run: ollama pull qwen2.5vl:7b"
             echo "Or pull all models: ollama pull qwen2.5vl:7b && ollama pull qwen2.5:7b && ollama pull qwen2.5:14b && ollama pull granite4:tiny-h"

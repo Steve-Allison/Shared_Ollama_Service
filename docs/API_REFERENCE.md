@@ -1,378 +1,383 @@
-# API Reference Documentation
+# REST API Reference
 
-Complete API reference for the Shared Ollama Service client library.
+The Shared Ollama Service provides a RESTful API for language-agnostic access to Ollama models.
 
-## Table of Contents
+## Base URL
 
-- [Synchronous Client](#synchronous-client)
-- [Async Client](#async-client)
-- [Resilience Features](#resilience-features)
-- [Monitoring & Metrics](#monitoring--metrics)
-- [Analytics](#analytics)
-- [Utilities](#utilities)
-
-## Synchronous Client
-
-### `SharedOllamaClient`
-
-Main synchronous client for interacting with the Ollama service.
-
-#### Initialization
-
-```python
-from shared_ollama import OllamaConfig, SharedOllamaClient
-
-# With default configuration
-client = SharedOllamaClient()
-
-# With custom configuration
-config = OllamaConfig(
-    base_url="http://localhost:11434",
-    default_model="qwen2.5vl:7b",
-    timeout=60,
-    verbose=False,
-)
-client = SharedOllamaClient(config=config)
+```
+http://localhost:8000/api/v1
 ```
 
-#### Methods
+## Authentication
 
-##### `list_models() -> list[dict[str, Any]]`
+Currently, no authentication is required. Rate limiting is applied per IP address.
 
-List all available models.
+## Rate Limits
 
-```python
-models = client.list_models()
-for model in models:
-    print(f"{model['name']}: {model['size']} bytes")
+- **Generate/Chat endpoints**: 60 requests per minute per IP
+- **List Models endpoint**: 30 requests per minute per IP
+
+Rate limit headers are included in responses:
+- `X-RateLimit-Limit`: Maximum requests allowed
+- `X-RateLimit-Remaining`: Remaining requests in current window
+- `X-RateLimit-Reset`: Time when rate limit resets
+
+## Request Headers
+
+Optional headers for better tracking:
+
+- `X-Project-Name`: Project identifier (e.g., "Knowledge_Machine", "Story_Machine")
+  - Used for analytics and request tracking
+  - Appears in structured logs
+
+## Endpoints
+
+### Health Check
+
+**GET** `/api/v1/health`
+
+Check the health status of the API and underlying Ollama service.
+
+**Response:**
+```json
+{
+  "status": "healthy",
+  "ollama_service": "healthy",
+  "version": "1.0.0"
+}
 ```
-
-##### `generate(prompt, model=None, system=None, options=None, stream=False) -> GenerateResponse`
-
-Generate text using a model.
-
-**Parameters:**
-- `prompt` (str): The prompt to generate from
-- `model` (str | None): Model name (uses default if None)
-- `system` (str | None): Optional system prompt
-- `options` (GenerateOptions | None): Generation options
-- `stream` (bool): Whether to stream response
-
-**Returns:** `GenerateResponse` with generated text and metadata
 
 **Example:**
-```python
-from shared_ollama import GenerateOptions
-
-options = GenerateOptions(
-    temperature=0.7,
-    max_tokens=100,
-)
-
-response = client.generate(
-    "Why is the sky blue?",
-    options=options,
-)
-print(response.text)
+```bash
+curl http://localhost:8000/api/v1/health
 ```
 
-##### `chat(messages, model=None, stream=False) -> dict[str, Any]`
+---
 
-Chat with the model using conversation format.
+### List Models
 
-**Parameters:**
-- `messages` (list[dict[str, str]]): List of messages with "role" and "content"
-- `model` (str | None): Model name
-- `stream` (bool): Whether to stream response
+**GET** `/api/v1/models`
+
+List all available models in the Ollama service.
+
+**Response:**
+```json
+{
+  "models": [
+    {
+      "name": "qwen2.5vl:7b",
+      "size": 5969245856,
+      "modified_at": "2025-11-11T11:33:20.071224043Z"
+    }
+  ]
+}
+```
 
 **Example:**
-```python
-messages = [
-    {"role": "user", "content": "Hello!"},
-    {"role": "assistant", "content": "Hi there!"},
-    {"role": "user", "content": "What's 2+2?"},
-]
-
-response = client.chat(messages)
-print(response["message"]["content"])
-```
-
-##### `health_check() -> bool`
-
-Check if the Ollama service is healthy.
-
-```python
-if client.health_check():
-    print("Service is healthy")
-else:
-    print("Service is unavailable")
-```
-
-##### `get_model_info(model) -> dict[str, Any] | None`
-
-Get information about a specific model.
-
-```python
-info = client.get_model_info("qwen2.5vl:7b")
-if info:
-    print(f"Model size: {info['size']} bytes")
-```
-
-## Async Client
-
-### `AsyncSharedOllamaClient`
-
-Async/await client for modern Python applications.
-
-#### Initialization
-
-```python
-import asyncio
-from shared_ollama import AsyncSharedOllamaClient
-
-async def main():
-    async with AsyncSharedOllamaClient() as client:
-        response = await client.generate("Hello!")
-        print(response.text)
-
-asyncio.run(main())
-```
-
-#### Methods
-
-All methods are async versions of the synchronous client methods:
-
-- `async def list_models() -> list[dict[str, Any]]`
-- `async def generate(...) -> GenerateResponse`
-- `async def chat(...) -> dict[str, Any]`
-- `async def health_check() -> bool`
-- `async def get_model_info(model) -> dict[str, Any] | None`
-
-## Resilience Features
-
-### `ResilientOllamaClient`
-
-Client with automatic retry and circuit breaker.
-
-```python
-from resilience import ResilientOllamaClient, RetryConfig, CircuitBreakerConfig
-
-retry_config = RetryConfig(
-    max_retries=5,
-    initial_delay=2.0,
-    max_delay=120.0,
-)
-
-circuit_config = CircuitBreakerConfig(
-    failure_threshold=10,
-    success_threshold=3,
-    timeout=120.0,
-)
-
-client = ResilientOllamaClient(
-    retry_config=retry_config,
-    circuit_breaker_config=circuit_config,
-)
-
-# Automatically uses retry and circuit breaker
-response = client.generate("Hello!")
-```
-
-## Monitoring & Metrics
-
-### `MetricsCollector`
-
-Track request metrics and performance.
-
-```python
-from shared_ollama import MetricsCollector, track_request
-
-# Track a request
-with track_request("qwen2.5vl:7b", "generate"):
-    response = client.generate("Hello!")
-
-# Get metrics
-metrics = MetricsCollector.get_metrics()
-print(f"Total requests: {metrics.total_requests}")
-print(f"Average latency: {metrics.average_latency_ms:.2f}ms")
-print(f"P95 latency: {metrics.p95_latency_ms:.2f}ms")
-```
-
-### Metrics Structure
-
-```python
-@dataclass
-class ServiceMetrics:
-    total_requests: int
-    successful_requests: int
-    failed_requests: int
-    requests_by_model: dict[str, int]
-    requests_by_operation: dict[str, int]
-    average_latency_ms: float
-    p50_latency_ms: float
-    p95_latency_ms: float
-    p99_latency_ms: float
-    errors_by_type: dict[str, int]
-    last_request_time: datetime | None
-    first_request_time: datetime | None
-```
-
-## Analytics
-
-### `AnalyticsCollector`
-
-Enhanced analytics with project-level tracking and time-series analysis.
-
-```python
-from shared_ollama import AnalyticsCollector, track_request_with_project
-
-# Track with project identifier
-with track_request_with_project(
-    "qwen2.5vl:7b",
-    "generate",
-    project="knowledge_machine",
-):
-    response = client.generate("Hello!")
-
-# Get analytics
-analytics = AnalyticsCollector.get_analytics()
-print(f"Requests by project: {analytics.requests_by_project}")
-
-# Export to JSON
-AnalyticsCollector.export_json("analytics.json")
-
-# Export to CSV
-AnalyticsCollector.export_csv("analytics.csv")
-```
-
-### Analytics Dashboard
-
-Use the CLI dashboard to view analytics:
-
 ```bash
-python scripts/view_analytics.py
-python scripts/view_analytics.py --project knowledge_machine
-python scripts/view_analytics.py --window 60
-python scripts/view_analytics.py --export analytics.json
+curl http://localhost:8000/api/v1/models
 ```
 
-## Utilities
+---
 
-### `get_ollama_base_url() -> str`
+### Generate Text
 
-Get Ollama base URL from environment or default.
+**POST** `/api/v1/generate`
 
-```python
-from utils import get_ollama_base_url
+Generate text from a prompt.
 
-url = get_ollama_base_url()
-# Checks: OLLAMA_BASE_URL, OLLAMA_HOST/OLLAMA_PORT, defaults to http://localhost:11434
+**Request Body:**
+```json
+{
+  "prompt": "Hello, world!",
+  "model": "qwen2.5vl:7b",
+  "system": "You are a helpful assistant.",
+  "stream": false,
+  "temperature": 0.2,
+  "top_p": 0.9,
+  "top_k": 40,
+  "max_tokens": 100,
+  "seed": 42,
+  "stop": ["\n\n"]
+}
 ```
 
-### `check_service_health(base_url=None, timeout=5) -> tuple[bool, str | None]`
+**Parameters:**
+- `prompt` (required): The prompt to generate text from
+- `model` (optional): Model to use (defaults to service default)
+- `system` (optional): System message for the model
+- `stream` (optional): Whether to stream the response (default: false)
+- `temperature` (optional): Sampling temperature (0.0-2.0)
+- `top_p` (optional): Top-p sampling parameter (0.0-1.0)
+- `top_k` (optional): Top-k sampling parameter
+- `max_tokens` (optional): Maximum tokens to generate
+- `seed` (optional): Random seed for reproducibility
+- `stop` (optional): Stop sequences
 
-Check if Ollama service is healthy.
-
-```python
-from utils import check_service_health
-
-is_healthy, error = check_service_health()
-if not is_healthy:
-    print(f"Service unavailable: {error}")
+**Response:**
+```json
+{
+  "text": "Hello! How can I help you today?",
+  "model": "qwen2.5vl:7b",
+  "request_id": "550e8400-e29b-41d4-a716-446655440000",
+  "latency_ms": 1234.56,
+  "model_load_ms": 200.0,
+  "model_warm_start": false,
+  "prompt_eval_count": 16,
+  "generation_eval_count": 8,
+  "total_duration_ms": 500.0
+}
 ```
 
-### `ensure_service_running(base_url=None, raise_on_fail=True) -> bool`
-
-Ensure service is running, optionally raise exception.
-
-```python
-from utils import ensure_service_running
-
-ensure_service_running()  # Raises ConnectionError if not running
-```
-
-### `import_client() -> Type[SharedOllamaClient]`
-
-Dynamically import the client class.
-
-```python
-from utils import import_client
-
-ClientClass = import_client()
-client = ClientClass()
-```
-
-## Data Models
-
-### `GenerateOptions`
-
-```python
-@dataclass
-class GenerateOptions:
-    temperature: float = 0.2
-    top_p: float = 0.9
-    top_k: int = 40
-    repeat_penalty: float = 1.1
-    max_tokens: int | None = None
-    seed: int | None = None
-    stop: list[str] | None = None
-```
-
-### `GenerateResponse`
-
-```python
-@dataclass
-class GenerateResponse:
-    text: str
-    model: str
-    context: list[int] | None
-    total_duration: int
-    load_duration: int
-    prompt_eval_count: int
-    prompt_eval_duration: int
-    eval_count: int
-    eval_duration: int
-```
-
-### `Model` Enum
-
-```python
-class Model(str, Enum):
-    QWEN25_VL_7B = "qwen2.5vl:7b"
-    QWEN25_7B = "qwen2.5:7b"
-    QWEN25_14B = "qwen2.5:14b"
-    GRANITE_4_H_TINY = "granite4:tiny-h"
-```
-
-## Error Handling
-
-All client methods raise appropriate exceptions:
-
-- `ConnectionError`: Service is not available
-- `requests.HTTPError`: HTTP errors from Ollama API
-- `TimeoutError`: Request timeout
-
-Use resilience features for automatic retry:
-
-```python
-from resilience import ResilientOllamaClient
-
-client = ResilientOllamaClient()
-# Automatically retries on failure
-response = client.generate("Hello!")
-```
-
-## OpenAPI Specification
-
-Full API specification available in `docs/openapi.yaml`. View interactive documentation:
-
+**Example:**
 ```bash
-# Install Swagger UI (optional)
-pip install swagger-ui-py
-
-# Serve documentation
-python -m swagger_ui --spec docs/openapi.yaml
+curl -X POST http://localhost:8000/api/v1/generate \
+  -H "Content-Type: application/json" \
+  -H "X-Project-Name: MyProject" \
+  -d '{
+    "prompt": "Explain quantum computing",
+    "model": "qwen2.5vl:7b"
+  }'
 ```
 
-Or use online tools like [Swagger Editor](https://editor.swagger.io/) to view `docs/openapi.yaml`.
+**Python Example:**
+```python
+import requests
 
+response = requests.post(
+    "http://localhost:8000/api/v1/generate",
+    json={
+        "prompt": "Explain quantum computing",
+        "model": "qwen2.5vl:7b",
+        "temperature": 0.7
+    },
+    headers={"X-Project-Name": "MyProject"}
+)
+data = response.json()
+print(data["text"])
+```
+
+**TypeScript Example:**
+```typescript
+const response = await fetch("http://localhost:8000/api/v1/generate", {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+    "X-Project-Name": "MyProject"
+  },
+  body: JSON.stringify({
+    prompt: "Explain quantum computing",
+    model: "qwen2.5vl:7b",
+    temperature: 0.7
+  })
+});
+const data = await response.json();
+console.log(data.text);
+```
+
+---
+
+### Chat Completion
+
+**POST** `/api/v1/chat`
+
+Process a conversation with multiple messages.
+
+**Request Body:**
+```json
+{
+  "messages": [
+    {
+      "role": "system",
+      "content": "You are a helpful assistant."
+    },
+    {
+      "role": "user",
+      "content": "What is the capital of France?"
+    }
+  ],
+  "model": "qwen2.5vl:7b",
+  "stream": false,
+  "temperature": 0.2,
+  "top_p": 0.9,
+  "max_tokens": 100
+}
+```
+
+**Parameters:**
+- `messages` (required): List of chat messages
+  - Each message has `role` ("user", "assistant", or "system") and `content`
+- `model` (optional): Model to use (defaults to service default)
+- `stream` (optional): Whether to stream the response (default: false)
+- `temperature` (optional): Sampling temperature (0.0-2.0)
+- `top_p` (optional): Top-p sampling parameter (0.0-1.0)
+- `top_k` (optional): Top-k sampling parameter
+- `max_tokens` (optional): Maximum tokens to generate
+- `seed` (optional): Random seed for reproducibility
+- `stop` (optional): Stop sequences
+
+**Response:**
+```json
+{
+  "message": {
+    "role": "assistant",
+    "content": "The capital of France is Paris."
+  },
+  "model": "qwen2.5vl:7b",
+  "request_id": "550e8400-e29b-41d4-a716-446655440000",
+  "latency_ms": 1234.56,
+  "model_load_ms": 0.0,
+  "model_warm_start": true,
+  "prompt_eval_count": 20,
+  "generation_eval_count": 10,
+  "total_duration_ms": 450.0
+}
+```
+
+**Example:**
+```bash
+curl -X POST http://localhost:8000/api/v1/chat \
+  -H "Content-Type: application/json" \
+  -H "X-Project-Name: MyProject" \
+  -d '{
+    "messages": [
+      {"role": "user", "content": "Hello!"}
+    ],
+    "model": "qwen2.5vl:7b"
+  }'
+```
+
+**Python Example:**
+```python
+import requests
+
+response = requests.post(
+    "http://localhost:8000/api/v1/chat",
+    json={
+        "messages": [
+            {"role": "system", "content": "You are a helpful assistant."},
+            {"role": "user", "content": "What is 2+2?"}
+        ],
+        "model": "qwen2.5vl:7b"
+    },
+    headers={"X-Project-Name": "MyProject"}
+)
+data = response.json()
+print(data["message"]["content"])
+```
+
+---
+
+## Error Responses
+
+All errors follow this format:
+
+```json
+{
+  "error": "Error message",
+  "error_type": "HTTPException",
+  "request_id": "550e8400-e29b-41d4-a716-446655440000"
+}
+```
+
+**HTTP Status Codes:**
+- `200`: Success
+- `400`: Bad Request (invalid parameters)
+- `429`: Too Many Requests (rate limit exceeded)
+- `500`: Internal Server Error
+- `503`: Service Unavailable (Ollama service not available)
+
+**Example Error Response:**
+```json
+{
+  "error": "Generation failed: Connection refused",
+  "error_type": "ConnectionError",
+  "request_id": "550e8400-e29b-41d4-a716-446655440000"
+}
+```
+
+---
+
+## Interactive API Documentation
+
+Visit `http://localhost:8000/api/docs` for interactive Swagger UI documentation where you can:
+- Explore all endpoints
+- Test API calls directly in the browser
+- View request/response schemas
+- See example requests
+
+---
+
+## Structured Logging
+
+All API requests are automatically logged to `logs/requests.jsonl` with:
+- Request ID (unique per request)
+- Client IP address
+- Project name (from `X-Project-Name` header)
+- Model used
+- Operation type
+- Latency metrics
+- Model load times
+- Token counts
+- Success/error status
+
+**Example log entry:**
+```json
+{
+  "event": "api_request",
+  "client_type": "rest_api",
+  "operation": "generate",
+  "status": "success",
+  "model": "qwen2.5vl:7b",
+  "request_id": "550e8400-e29b-41d4-a716-446655440000",
+  "client_ip": "127.0.0.1",
+  "project_name": "MyProject",
+  "latency_ms": 1234.56,
+  "model_load_ms": 200.0,
+  "model_warm_start": false,
+  "prompt_eval_count": 16,
+  "generation_eval_count": 8,
+  "timestamp": "2025-11-12T14:30:00.123456+00:00"
+}
+```
+
+---
+
+## Best Practices
+
+1. **Use Project Headers**: Always include `X-Project-Name` header for better tracking
+2. **Handle Rate Limits**: Check `X-RateLimit-Remaining` header and implement backoff
+3. **Error Handling**: Always check response status codes and handle errors gracefully
+4. **Request IDs**: Use the `request_id` from responses for debugging and support
+5. **Model Selection**: Specify the model explicitly if you need a specific one
+6. **Warm Models**: First request to a model may be slower (cold start)
+
+---
+
+## Migration from Direct Ollama API
+
+If you're currently calling Ollama directly at `http://localhost:11434`, migrate to the REST API:
+
+**Before:**
+```python
+response = requests.post(
+    "http://localhost:11434/api/generate",
+    json={"model": "qwen2.5vl:7b", "prompt": "Hello"}
+)
+```
+
+**After:**
+```python
+response = requests.post(
+    "http://localhost:8000/api/v1/generate",
+    json={"model": "qwen2.5vl:7b", "prompt": "Hello"},
+    headers={"X-Project-Name": "MyProject"}
+)
+```
+
+**Benefits:**
+- ✅ Centralized logging and metrics
+- ✅ Rate limiting protection
+- ✅ Request tracking
+- ✅ Better error handling
+- ✅ Consistent API versioning

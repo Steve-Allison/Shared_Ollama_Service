@@ -5,6 +5,11 @@ This document summarizes how the shared Ollama deployment, Python clients, and s
 ## High-Level Components
 
 - **Shared Ollama Service (Ollama daemon)** – Hosts all large language models and exposes the HTTP API on `:11434`.
+- **REST API Layer** (FastAPI)
+  - `shared_ollama/api/server.py` – FastAPI REST API server with async endpoints (port 8000).
+  - `shared_ollama/api/models.py` – Pydantic request/response models with validation.
+  - Fully async implementation using `AsyncSharedOllamaClient` for non-blocking I/O.
+  - Rate limiting, CORS, structured logging, and request tracking.
 - **Python Client Layer**
   - `shared_ollama/client/sync.py` – Synchronous adapter with retries, structured logging, and resilience hooks.
   - `shared_ollama/client/async_client.py` – Async counterpart built on `httpx.AsyncClient`.
@@ -14,6 +19,7 @@ This document summarizes how the shared Ollama deployment, Python clients, and s
   - `shared_ollama/core/resilience.py` – Circuit-breaker style protections and self-healing routines.
 - **Tooling & Scripts**
   - `scripts/*.sh` – Startup, health checks, cleanup, and performance benchmarking.
+  - `scripts/start_api.sh` – Start the REST API server.
   - `scripts/performance_report.py` – Generates latency + throughput reports for regression detection.
 - **Documentation / Tests**
   - `docs/*` – Integration, migration, and operational runbooks.
@@ -21,11 +27,47 @@ This document summarizes how the shared Ollama deployment, Python clients, and s
 
 ## Request Flow
 
+### Via REST API (Recommended)
+
+```
+┌────────────────────┐    HTTP/REST
+│  Client Project     │ ────────────────────────────────────────┐
+│  (Any Language)     │                                           │
+└────────────────────┘                                           ▼
+                                                          ┌──────────────────────┐
+                                                          │  FastAPI REST API    │
+                                                          │  (Port 8000, Async)  │
+                                                          │  - Rate limiting     │
+                                                          │  - Request tracking  │
+                                                          │  - Structured logs   │
+                                                          └──────────────────────┘
+                                                                  │  Uses
+                                                                  ▼
+                                                          ┌───────────────────────────┐
+                                                          │ AsyncSharedOllamaClient   │
+                                                          │ (httpx.AsyncClient)       │
+                                                          └───────────────────────────┘
+                                                                  │  http(s) JSON
+                                                                  ▼
+                                                          ┌──────────────────────┐
+                                                          │     Ollama API      │
+                                                          │  (HTTP on :11434)   │
+                                                          └──────────────────────┘
+                                                                  │  GGUF model loads
+                                                                  ▼
+                                                          ┌──────────────────────┐
+                                                          │   Model Runtime      │
+                                                          │  (GPU/CPU via MPS)   │
+                                                          └──────────────────────┘
+```
+
+### Via Direct Client Library (Python Only)
+
 ```
 ┌────────────────────┐    generate() / stream()
 │  Client Project     │ ────────────────────────────────────────┐
-└────────────────────┘                                           │
-                                                                  ▼
+│  (Python)           │                                           │
+└────────────────────┘                                           ▼
                     configure client + ensure running       ┌───────────────────────────┐
                                                             │ shared_ollama.client.sync │
                                                             │ shared_ollama.client.async │

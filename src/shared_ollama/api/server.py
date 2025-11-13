@@ -42,8 +42,9 @@ from shared_ollama.client import (
     AsyncSharedOllamaClient,
     GenerateOptions,
 )
+from shared_ollama.core.ollama_manager import initialize_ollama_manager
 from shared_ollama.core.queue import RequestQueue
-from shared_ollama.core.utils import check_service_health
+from shared_ollama.core.utils import check_service_health, get_project_root
 from shared_ollama.telemetry.metrics import MetricsCollector
 from shared_ollama.telemetry.structured_logging import log_request_event
 
@@ -63,7 +64,34 @@ async def lifespan_context(app: FastAPI):
     print("LIFESPAN: Starting Shared Ollama Service API", flush=True)
     logger.info("LIFESPAN: Starting Shared Ollama Service API")
 
-    # Startup
+    # Initialize and start Ollama manager (manages Ollama process internally)
+    logger.info("LIFESPAN: Initializing Ollama manager")
+    try:
+        project_root = get_project_root()
+        log_dir = project_root / "logs"
+        log_dir.mkdir(exist_ok=True)
+
+        ollama_manager = initialize_ollama_manager(
+            base_url="http://localhost:11434",
+            log_dir=log_dir,
+            auto_detect_optimizations=True,
+        )
+
+        logger.info("LIFESPAN: Starting Ollama service (managed internally)")
+        ollama_started = await ollama_manager.start(wait_for_ready=True, max_wait_time=30)
+        if not ollama_started:
+            logger.error("LIFESPAN: Failed to start Ollama service")
+            raise RuntimeError("Failed to start Ollama service. Check logs for details.")
+        logger.info("LIFESPAN: Ollama service started successfully")
+        print("LIFESPAN: Ollama service started", flush=True)
+    except Exception as exc:
+        logger.error("LIFESPAN: Failed to start Ollama service: %s", exc, exc_info=True)
+        print(f"LIFESPAN ERROR: Failed to start Ollama: {exc}", flush=True)
+        import traceback
+        traceback.print_exc()
+        raise
+
+    # Initialize async client (connects to the managed Ollama service)
     try:
         config = AsyncOllamaConfig()
         logger.info("LIFESPAN: Creating AsyncSharedOllamaClient")
@@ -105,6 +133,18 @@ async def lifespan_context(app: FastAPI):
             _client = None
 
     _queue = None
+
+    # Stop Ollama service (managed internally)
+    try:
+        from shared_ollama.core.ollama_manager import get_ollama_manager
+
+        logger.info("LIFESPAN: Stopping Ollama service")
+        ollama_manager = get_ollama_manager()
+        await ollama_manager.stop(timeout=10)
+        logger.info("LIFESPAN: Ollama service stopped")
+        print("LIFESPAN: Ollama service stopped", flush=True)
+    except Exception as exc:
+        logger.warning("Error stopping Ollama service: %s", exc)
 
 
 app = FastAPI(
@@ -529,49 +569,50 @@ async def generate(request: Request) -> Response:
                 )
 
             # Non-streaming generate (async)
-            result = await client.generate(
-                prompt=generate_req.prompt,
-                model=generate_req.model,
-                system=generate_req.system,
-                options=options,
-                stream=False,
-            )
+        result = await client.generate(
+            prompt=generate_req.prompt,
+            model=generate_req.model,
+            system=generate_req.system,
+            options=options,
+            stream=False,
+            format=generate_req.format,  # Pass format parameter to Ollama
+        )
 
-            latency_ms = (time.perf_counter() - start_time) * 1000
-            load_ms = result.load_duration / 1_000_000 if result.load_duration else 0.0
-            total_ms = result.total_duration / 1_000_000 if result.total_duration else 0.0
+        latency_ms = (time.perf_counter() - start_time) * 1000
+        load_ms = result.load_duration / 1_000_000 if result.load_duration else 0.0
+        total_ms = result.total_duration / 1_000_000 if result.total_duration else 0.0
 
-            # Log request
-            log_request_event({
-                "event": "api_request",
-                "client_type": "rest_api",
-                "operation": "generate",
-                "status": "success",
-                "model": result.model,
-                "request_id": ctx.request_id,
-                "client_ip": ctx.client_ip,
-                "project_name": ctx.project_name,
-                "latency_ms": round(latency_ms, 3),
-                "total_duration_ms": round(total_ms, 3) if total_ms else None,
-                "model_load_ms": round(load_ms, 3) if load_ms else 0.0,
-                "model_warm_start": load_ms == 0.0,
-                "prompt_chars": len(generate_req.prompt),
-                "prompt_eval_count": result.prompt_eval_count,
-                "generation_eval_count": result.eval_count,
-                "stream": generate_req.stream,
-            })
+        # Log request
+        log_request_event({
+            "event": "api_request",
+            "client_type": "rest_api",
+            "operation": "generate",
+            "status": "success",
+            "model": result.model,
+            "request_id": ctx.request_id,
+            "client_ip": ctx.client_ip,
+            "project_name": ctx.project_name,
+            "latency_ms": round(latency_ms, 3),
+            "total_duration_ms": round(total_ms, 3) if total_ms else None,
+            "model_load_ms": round(load_ms, 3) if load_ms else 0.0,
+            "model_warm_start": load_ms == 0.0,
+            "prompt_chars": len(generate_req.prompt),
+            "prompt_eval_count": result.prompt_eval_count,
+            "generation_eval_count": result.eval_count,
+            "stream": generate_req.stream,
+        })
 
-            return GenerateResponse(
-                text=result.text,
-                model=result.model,
-                request_id=ctx.request_id,
-                latency_ms=round(latency_ms, 3),
-                model_load_ms=round(load_ms, 3) if load_ms else None,
-                model_warm_start=load_ms == 0.0,
-                prompt_eval_count=result.prompt_eval_count,
-                generation_eval_count=result.eval_count,
-                total_duration_ms=round(total_ms, 3) if total_ms else None,
-            )
+        return GenerateResponse(
+            text=result.text,
+            model=result.model,
+            request_id=ctx.request_id,
+            latency_ms=round(latency_ms, 3),
+            model_load_ms=round(load_ms, 3) if load_ms else None,
+            model_warm_start=load_ms == 0.0,
+            prompt_eval_count=result.prompt_eval_count,
+            generation_eval_count=result.eval_count,
+            total_duration_ms=round(total_ms, 3) if total_ms else None,
+        )
 
     except HTTPException:
         # Re-raise HTTPException (from parsing or other validation) - FastAPI will handle it
@@ -856,55 +897,55 @@ async def chat(request: Request) -> Response:
                 )
 
             # Non-streaming chat (async)
-            result = await client.chat(
+        result = await client.chat(
                 messages=messages, model=chat_req.model, options=options, stream=False
-            )
+        )
 
-            latency_ms = (time.perf_counter() - start_time) * 1000
+        latency_ms = (time.perf_counter() - start_time) * 1000
 
-            # Extract metrics from result (chat returns dict with message and metadata)
-            message_content = result.get("message", {}).get("content", "")
-            model_used = result.get("model", chat_req.model or "unknown")
-            prompt_eval_count = result.get("prompt_eval_count", 0)
-            eval_count = result.get("eval_count", 0)
-            total_duration = result.get("total_duration", 0)
-            load_duration = result.get("load_duration", 0)
+        # Extract metrics from result (chat returns dict with message and metadata)
+        message_content = result.get("message", {}).get("content", "")
+        model_used = result.get("model", chat_req.model or "unknown")
+        prompt_eval_count = result.get("prompt_eval_count", 0)
+        eval_count = result.get("eval_count", 0)
+        total_duration = result.get("total_duration", 0)
+        load_duration = result.get("load_duration", 0)
 
-            load_ms = load_duration / 1_000_000 if load_duration else 0.0
-            total_ms = total_duration / 1_000_000 if total_duration else 0.0
+        load_ms = load_duration / 1_000_000 if load_duration else 0.0
+        total_ms = total_duration / 1_000_000 if total_duration else 0.0
 
-            # Log request
-            total_prompt_chars = sum(len(msg.content) for msg in chat_req.messages)
-            log_request_event({
-                "event": "api_request",
-                "client_type": "rest_api",
-                "operation": "chat",
-                "status": "success",
-                "model": model_used,
-                "request_id": ctx.request_id,
-                "client_ip": ctx.client_ip,
-                "project_name": ctx.project_name,
-                "latency_ms": round(latency_ms, 3),
-                "total_duration_ms": round(total_ms, 3) if total_ms else None,
-                "model_load_ms": round(load_ms, 3) if load_ms else 0.0,
-                "model_warm_start": load_ms == 0.0,
-                "prompt_chars": total_prompt_chars,
-                "prompt_eval_count": prompt_eval_count,
-                "generation_eval_count": eval_count,
-                "stream": chat_req.stream,
-            })
+        # Log request
+        total_prompt_chars = sum(len(msg.content) for msg in chat_req.messages)
+        log_request_event({
+            "event": "api_request",
+            "client_type": "rest_api",
+            "operation": "chat",
+            "status": "success",
+            "model": model_used,
+            "request_id": ctx.request_id,
+            "client_ip": ctx.client_ip,
+            "project_name": ctx.project_name,
+            "latency_ms": round(latency_ms, 3),
+            "total_duration_ms": round(total_ms, 3) if total_ms else None,
+            "model_load_ms": round(load_ms, 3) if load_ms else 0.0,
+            "model_warm_start": load_ms == 0.0,
+            "prompt_chars": total_prompt_chars,
+            "prompt_eval_count": prompt_eval_count,
+            "generation_eval_count": eval_count,
+            "stream": chat_req.stream,
+        })
 
-            return ChatResponse(
-                message=ChatMessage(role="assistant", content=message_content),
-                model=model_used,
-                request_id=ctx.request_id,
-                latency_ms=round(latency_ms, 3),
-                model_load_ms=round(load_ms, 3) if load_ms else None,
-                model_warm_start=load_ms == 0.0,
-                prompt_eval_count=prompt_eval_count,
-                generation_eval_count=eval_count,
-                total_duration_ms=round(total_ms, 3) if total_ms else None,
-            )
+        return ChatResponse(
+            message=ChatMessage(role="assistant", content=message_content),
+            model=model_used,
+            request_id=ctx.request_id,
+            latency_ms=round(latency_ms, 3),
+            model_load_ms=round(load_ms, 3) if load_ms else None,
+            model_warm_start=load_ms == 0.0,
+            prompt_eval_count=prompt_eval_count,
+            generation_eval_count=eval_count,
+            total_duration_ms=round(total_ms, 3) if total_ms else None,
+        )
 
     except ValueError as exc:
         latency_ms = (time.perf_counter() - start_time) * 1000

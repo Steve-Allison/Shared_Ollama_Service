@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Start the Shared Ollama Service REST API
-# This provides a language-agnostic REST API wrapper around the Ollama client
+# The REST API manages Ollama internally - no need to start Ollama separately
 
 set -e
 
@@ -18,21 +18,26 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 # Default configuration
 API_HOST="${API_HOST:-0.0.0.0}"
 API_PORT="${API_PORT:-8000}"
-OLLAMA_BASE_URL="${OLLAMA_BASE_URL:-http://localhost:11434}"
 
 echo -e "${BLUE}🚀 Starting Shared Ollama Service REST API${NC}"
 echo "=================================================="
 echo ""
+echo -e "${GRAY}Note: The REST API will automatically start and manage Ollama internally${NC}"
+echo ""
 
-# Check if Ollama service is running
-if ! curl -f -s "${OLLAMA_BASE_URL}/api/tags" > /dev/null 2>&1; then
-    echo -e "${RED}✗ Ollama service is not running at ${OLLAMA_BASE_URL}${NC}"
-    echo "Start Ollama first: ./scripts/start.sh"
+# Check if Ollama is installed
+if ! command -v ollama &> /dev/null; then
+    echo -e "${RED}✗ Ollama is not installed${NC}"
+    echo "Please install Ollama first: ./scripts/install_native.sh"
     exit 1
 fi
 
-echo -e "${GREEN}✓ Ollama service is running${NC}"
-echo ""
+# Check if REST API is already running
+if curl -f -s "http://localhost:$API_PORT/api/v1/health" > /dev/null 2>&1; then
+    echo -e "${YELLOW}⚠ REST API is already running on port $API_PORT${NC}"
+    echo "To restart, stop it first: ./scripts/shutdown.sh"
+    exit 0
+fi
 
 # Check if we're in a virtual environment
 if [ -z "$VIRTUAL_ENV" ]; then
@@ -45,19 +50,21 @@ if [ -z "$VIRTUAL_ENV" ]; then
 fi
 
 # Set environment variables
-export OLLAMA_BASE_URL
 export PYTHONPATH="$PROJECT_ROOT/src:$PYTHONPATH"
 
 echo -e "${BLUE}Configuration:${NC}"
 echo "  ✓ API Host: ${API_HOST}"
 echo "  ✓ API Port: ${API_PORT}"
-echo "  ✓ Ollama URL: ${OLLAMA_BASE_URL}"
+echo "  ✓ Ollama: Managed internally by REST API"
 echo ""
 
 echo -e "${BLUE}Starting API server...${NC}"
 echo ""
 echo -e "${GRAY}API Documentation: http://${API_HOST}:${API_PORT}/api/docs${NC}"
 echo -e "${GRAY}Health Check: http://${API_HOST}:${API_PORT}/api/v1/health${NC}"
+echo ""
+echo -e "${GRAY}The REST API will automatically start and manage Ollama internally${NC}"
+echo -e "${GRAY}System optimizations will be auto-detected and applied${NC}"
 echo ""
 
 cd "$PROJECT_ROOT"

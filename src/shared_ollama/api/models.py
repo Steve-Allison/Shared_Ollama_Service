@@ -16,6 +16,10 @@ class GenerateRequest(BaseModel):
     model: str | None = Field(None, description="Model to use (defaults to service default)")
     system: str | None = Field(None, description="System message for the model")
     stream: bool = Field(False, description="Whether to stream the response")
+    format: str | dict | None = Field(
+        None,
+        description="Output format: 'json' for JSON mode, or JSON schema object for structured output",
+    )
     temperature: float | None = Field(None, ge=0.0, le=2.0, description="Temperature for sampling")
     top_p: float | None = Field(None, ge=0.0, le=1.0, description="Top-p sampling parameter")
     top_k: int | None = Field(None, ge=1, description="Top-k sampling parameter")

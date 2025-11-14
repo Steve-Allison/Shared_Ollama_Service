@@ -164,6 +164,7 @@ pip install -e ".[dev]" -c constraints.txt
 **Quick Commands:**
 
 **REST API:**
+
 ```bash
 ./scripts/start_api.sh          # Start async REST API server (port 8000)
 curl http://localhost:8000/api/v1/health  # Health check
@@ -277,6 +278,7 @@ The REST API provides centralized logging, metrics, and rate limiting for all pr
 ```
 
 **Key Features:**
+
 - ✅ **Fully Async**: Uses `AsyncSharedOllamaClient` for non-blocking I/O operations
 - ✅ **High Concurrency**: Handles multiple concurrent requests efficiently
 - ✅ **Language Agnostic**: Works with any language that supports HTTP
@@ -289,6 +291,7 @@ The REST API provides centralized logging, metrics, and rate limiting for all pr
 - ✅ **Comprehensive Testing**: Full test suite with 20+ test cases covering all endpoints and error scenarios
 
 **Python Example:**
+
 ```python
 import requests
 
@@ -303,6 +306,7 @@ print(response.json()["text"])
 ```
 
 **TypeScript/JavaScript Example:**
+
 ```typescript
 const res = await fetch("http://localhost:8000/api/v1/generate", {
   method: "POST",
@@ -317,6 +321,7 @@ console.log(data.text);
 ```
 
 **Go Example:**
+
 ```go
 resp, err := http.Post(
     "http://localhost:8000/api/v1/generate",
@@ -328,6 +333,7 @@ resp, err := http.Post(
 **API Documentation**: Visit `http://localhost:8000/api/docs` for interactive API documentation.
 
 **Benefits:**
+
 - ✅ **Fully Async**: Non-blocking I/O operations for maximum concurrency
 - ✅ **Language Agnostic**: Works with any language (Python, TypeScript, Go, Rust, etc.)
 - ✅ **Streaming Support**: Real-time token-by-token responses for better UX
@@ -347,6 +353,7 @@ resp, err := http.Post(
 The REST API supports real-time streaming for token-by-token responses, providing better user experience for long-running AI generations.
 
 **Python Client Streaming:**
+
 ```python
 import asyncio
 from shared_ollama import AsyncSharedOllamaClient
@@ -370,6 +377,7 @@ asyncio.run(stream_example())
 ```
 
 **REST API Streaming:**
+
 ```python
 import requests
 
@@ -392,6 +400,7 @@ for line in response.iter_lines():
 ```
 
 **TypeScript/JavaScript Streaming:**
+
 ```typescript
 const response = await fetch("http://localhost:8000/api/v1/generate", {
   method: "POST",
@@ -1167,6 +1176,7 @@ This codebase has been fully modernized to leverage Python 3.13+ native features
 
 **Native Features:**
 §s
+
 - ✅ `datetime.now(UTC)` for timezone-aware timestamps
 - ✅ `time.perf_counter()` for precise performance measurements
 - ✅ Modern type hints with `|` union syntax

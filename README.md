@@ -9,6 +9,8 @@ A centralized Ollama instance for all AI projects to reduce duplication and impr
 This service provides a single Ollama instance accessible on port `11434` that all projects can use:
 
 - **Architecture snapshot**: see `docs/ARCHITECTURE.md` for diagrams, request flow, and runtime environments.
+- **Clean Architecture**: see `docs/CLEAN_ARCHITECTURE_REFACTORING.md` for layer structure and dependency rules.
+- **Testing strategy**: see `docs/TESTING_PLAN.md` for comprehensive testing approach and reusable components.
 - **Scaling playbooks**: see `docs/SCALING_AND_LOAD_TESTING.md` for concurrency tuning and load-testing guidance.
 - **Knowledge Machine**
 - **Course Intelligence Compiler**
@@ -43,27 +45,59 @@ Models remain in memory for 5 minutes after last use (OLLAMA_KEEP_ALIVE), then a
 
 ## Project Structure
 
+The codebase follows **Clean Architecture** principles with clear separation of concerns:
+
 ```text
 shared_ollama_service/
 ├── src/shared_ollama/
 │   ├── __init__.py                 # Public SDK exports
-│   ├── client/
-│   │   ├── __init__.py
-│   │   ├── sync.py                 # Synchronous client implementation
-│   │   └── async_client.py         # Async client (httpx-based)
-│   ├── core/
-│   │   ├── __init__.py
-│   │   ├── utils.py                # Service discovery & helpers
-│   │   └── resilience.py           # Circuit breaker, retries, resilient client
-│   └── telemetry/
-│       ├── __init__.py
-│       ├── metrics.py              # Request telemetry & Prometheus-ready helpers
-│       ├── analytics.py            # Project-level analytics & exports
-│       ├── performance.py          # Structured performance logging
-│       └── structured_logging.py   # JSONL request logging
-├── tests/                          # Unit tests for the SDK
-└── scripts/                        # Operational CLI utilities (load tests, analytics, etc.)
+│   ├── domain/                     # Domain layer (business logic)
+│   │   ├── entities.py            # Core business entities
+│   │   ├── value_objects.py        # Validated value objects
+│   │   └── exceptions.py           # Domain-specific exceptions
+│   ├── application/                # Application layer (use cases)
+│   │   ├── interfaces.py          # Protocol definitions
+│   │   └── use_cases.py            # Business workflow orchestration
+│   ├── infrastructure/             # Infrastructure layer (external services)
+│   │   └── adapters.py            # Adapters for external services
+│   ├── api/                        # Interface adapters (HTTP layer)
+│   │   ├── server.py              # FastAPI endpoints
+│   │   ├── models.py              # Pydantic request/response models
+│   │   ├── dependencies.py        # Dependency injection
+│   │   └── mappers.py             # API ↔ Domain mapping
+│   ├── client/                     # Client implementations
+│   │   ├── sync.py                # Synchronous client
+│   │   └── async_client.py        # Async client (httpx-based)
+│   ├── core/                       # Core utilities
+│   │   ├── utils.py               # Service discovery & helpers
+│   │   ├── queue.py               # Request queue management
+│   │   ├── resilience.py          # Circuit breaker, retries
+│   │   └── ollama_manager.py      # Ollama process management
+│   └── telemetry/                  # Observability
+│       ├── metrics.py             # Request telemetry & Prometheus helpers
+│       ├── analytics.py           # Project-level analytics & exports
+│       ├── performance.py         # Structured performance logging
+│       └── structured_logging.py  # JSONL request logging
+├── tests/                          # Comprehensive test suite (33+ tests)
+│   ├── test_api_server.py         # API endpoint tests
+│   ├── test_client.py             # Client tests
+│   ├── test_async_client.py      # Async client tests
+│   ├── test_resilience.py         # Resilience pattern tests
+│   ├── test_telemetry.py          # Telemetry tests
+│   ├── test_utils.py              # Utility tests
+│   └── helpers.py                 # Reusable test utilities
+└── scripts/                        # Operational CLI utilities
 ```
+
+**Architecture Benefits:**
+
+- ✅ **Clean Architecture**: Strict dependency rules (Domain → Application → Infrastructure)
+- ✅ **Dependency Injection**: No global state, fully testable
+- ✅ **Type Safety**: Full type hints with Python 3.13+ features
+- ✅ **Testability**: 33+ comprehensive tests with reusable fixtures
+- ✅ **Maintainability**: Clear separation of concerns
+
+See [docs/CLEAN_ARCHITECTURE_REFACTORING.md](docs/CLEAN_ARCHITECTURE_REFACTORING.md) for detailed architecture documentation.
 
 All modules are shipped as a package (installable via `pip install -e .`) with type stubs co-located under `src/shared_ollama/**/*.pyi`.
 
@@ -288,7 +322,9 @@ The REST API provides centralized logging, metrics, and rate limiting for all pr
 - ✅ **Project Identification**: Track usage by project via `X-Project-Name` header
 - ✅ **Input Validation**: Automatic validation of prompts, messages, and parameters
 - ✅ **Enhanced Error Handling**: Specific HTTP status codes (400, 422, 429, 500, 503, 504) with actionable error messages
-- ✅ **Comprehensive Testing**: Full test suite with 20+ test cases covering all endpoints and error scenarios
+- ✅ **Comprehensive Testing**: Full test suite with 33+ test cases covering all endpoints, error scenarios, and edge cases
+- ✅ **Clean Architecture**: Strict separation of concerns with domain, application, and infrastructure layers
+- ✅ **Dependency Injection**: Fully testable with no global state, using FastAPI's dependency system
 
 **Python Example:**
 
@@ -1192,12 +1228,51 @@ This codebase has been fully modernized to leverage Python 3.13+ native features
 
 **Testing:**
 
-- ✅ 54 comprehensive tests (all passing)
-- ✅ Edge case handling and validation
-- ✅ Error scenario testing
-- ✅ Performance and resilience testing
+- ✅ **33+ comprehensive tests** (all passing) for API endpoints
+- ✅ **Reusable test infrastructure** with helper utilities and fixtures
+- ✅ **Behavioral testing** focused on real-world scenarios
+- ✅ **Edge case coverage** including validation, errors, and timeouts
+- ✅ **Dependency injection testing** with FastAPI TestClient
+- ✅ **Full test suite** covering client, async client, resilience, telemetry, and utilities
+
+See [docs/TESTING_PLAN.md](docs/TESTING_PLAN.md) for comprehensive testing strategy and [docs/TESTING_IMPLEMENTATION_SUMMARY.md](docs/TESTING_IMPLEMENTATION_SUMMARY.md) for implementation details.
 
 See recent commits for detailed modernization improvements.
+
+## Architecture
+
+This project follows **Clean Architecture** principles with strict dependency rules:
+
+### Layer Structure
+
+1. **Domain Layer** (`domain/`): Pure business logic with no external dependencies
+   - Entities: `Model`, `ModelInfo`, `GenerationRequest`, `ChatCompletionRequest`
+   - Value Objects: `ModelName`, `Prompt`, `SystemMessage`
+   - Domain Exceptions: `InvalidModelError`, `InvalidPromptError`, `InvalidRequestError`
+
+2. **Application Layer** (`application/`): Orchestrates domain logic
+   - Use Cases: `GenerateUseCase`, `ChatUseCase`, `ListModelsUseCase`
+   - Interfaces: `OllamaClientInterface`, `RequestLoggerInterface`, `MetricsCollectorInterface`
+
+3. **Infrastructure Layer** (`infrastructure/`): External service implementations
+   - Adapters: `AsyncOllamaClientAdapter`, `RequestLoggerAdapter`, `MetricsCollectorAdapter`
+
+4. **Interface Adapters** (`api/`): HTTP/FastAPI layer
+   - Controllers: FastAPI endpoints (thin, no business logic)
+   - Mappers: Convert between API models and domain entities
+   - Dependencies: Dependency injection for use cases
+
+### Key Benefits
+
+- ✅ **Testability**: All dependencies injected, easy to mock
+- ✅ **Maintainability**: Clear separation of concerns
+- ✅ **Flexibility**: Swap implementations without changing business logic
+- ✅ **Type Safety**: Protocol-based interfaces with full type hints
+
+For detailed architecture documentation, see:
+
+- [Clean Architecture Refactoring](docs/CLEAN_ARCHITECTURE_REFACTORING.md)
+- [Architecture Overview](docs/ARCHITECTURE.md)
 
 ## Development
 
@@ -1226,10 +1301,21 @@ pip install -e ".[dev]"
 
 - **Type check**: `pyright src/shared_ollama`
 
-**Testing** - pytest with coverage
+**Testing** - pytest with comprehensive test suite
 
-- **Run tests**: `pytest`
+- **Run all tests**: `pytest`
+- **Run API tests**: `pytest tests/test_api_server.py -v`
 - **With coverage**: `pytest --cov`
+- **Test utilities**: See `tests/helpers.py` for reusable test components
+
+**Test Infrastructure:**
+
+- ✅ 33+ passing tests covering all endpoints and scenarios
+- ✅ Reusable fixtures and helper functions
+- ✅ FastAPI TestClient for reliable dependency injection testing
+- ✅ Comprehensive error path and edge case coverage
+
+See [docs/TESTING_PLAN.md](docs/TESTING_PLAN.md) for testing strategy and [docs/TESTING_IMPLEMENTATION_SUMMARY.md](docs/TESTING_IMPLEMENTATION_SUMMARY.md) for implementation details.
 
 ### Makefile Commands
 

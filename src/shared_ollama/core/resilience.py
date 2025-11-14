@@ -233,7 +233,7 @@ class CircuitBreaker:
 def exponential_backoff_retry(
     func: Callable[[], _T],
     config: RetryConfig | None = None,
-    exceptions: tuple[type[Exception], ...] = (requests.RequestException,),
+    exceptions: tuple[type[Exception], ...] | None = None,
 ) -> _T:
     """Execute function with exponential backoff retry logic.
 
@@ -244,7 +244,7 @@ def exponential_backoff_retry(
         func: Function to execute. Must be callable with no arguments.
         config: Retry configuration. If None, uses default RetryConfig().
         exceptions: Tuple of exception types to catch and retry. Defaults to
-            requests.RequestException.
+            (ConnectionError, TimeoutError) if None.
 
     Returns:
         Result of function execution.
@@ -260,10 +260,14 @@ def exponential_backoff_retry(
 
     Example:
         >>> def fetch_data():
-        ...     return requests.get("http://example.com").json()
+        ...     # Example function that may raise ConnectionError or TimeoutError
+        ...     return {"data": "example"}
         >>> result = exponential_backoff_retry(fetch_data)
     """
     config = config or RetryConfig()
+    if exceptions is None:
+        # Default to generic exceptions instead of framework-specific ones
+        exceptions = (ConnectionError, TimeoutError)
     last_exception: Exception | None = None
 
     for attempt in range(config.max_retries):
@@ -351,7 +355,8 @@ class ResilientOllamaClient:
 
         Raises:
             ConnectionError: If circuit breaker is OPEN.
-            requests.RequestException: If all retries fail.
+            ConnectionError: If all retries fail.
+            TimeoutError: If operation times out.
             TimeoutError: If operation times out.
 
         Side effects:
@@ -363,13 +368,28 @@ class ResilientOllamaClient:
             raise ConnectionError(msg)
 
         try:
+            # Include HTTPError in retry exceptions for transient server errors
             result = exponential_backoff_retry(
                 lambda: operation(*args, **kwargs),
                 config=self.retry_config,
+                exceptions=(
+                    ConnectionError,
+                    TimeoutError,
+                    requests.exceptions.HTTPError,  # Retry 5xx errors
+                    requests.exceptions.RequestException,  # Retry network errors
+                ),
             )
             self.circuit_breaker.record_success()
             return result
-        except (requests.RequestException, ConnectionError, TimeoutError):
+        except requests.exceptions.HTTPError as exc:
+            # HTTP errors that weren't retried (e.g., 4xx client errors)
+            self.circuit_breaker.record_failure()
+            raise
+        except requests.exceptions.RequestException as exc:
+            # Network-level errors - convert to ConnectionError for consistency
+            self.circuit_breaker.record_failure()
+            raise ConnectionError(f"Request failed: {exc!s}") from exc
+        except (ConnectionError, TimeoutError) as exc:
             self.circuit_breaker.record_failure()
             raise
 
@@ -388,7 +408,8 @@ class ResilientOllamaClient:
 
         Raises:
             ConnectionError: If circuit breaker is OPEN.
-            requests.RequestException: If all retries fail.
+            ConnectionError: If all retries fail.
+            TimeoutError: If operation times out.
         """
         return self._execute_with_resilience(
             self.client.generate, prompt, model=model, **kwargs
@@ -412,7 +433,8 @@ class ResilientOllamaClient:
 
         Raises:
             ConnectionError: If circuit breaker is OPEN.
-            requests.RequestException: If all retries fail.
+            ConnectionError: If all retries fail.
+            TimeoutError: If operation times out.
         """
         return self._execute_with_resilience(
             self.client.chat, messages, model=model, **kwargs
@@ -430,7 +452,7 @@ class ResilientOllamaClient:
         """
         try:
             return self._execute_with_resilience(self.client.health_check)
-        except (requests.RequestException, ConnectionError, TimeoutError) as exc:
+        except (ConnectionError, TimeoutError) as exc:
             logger.debug("Health check failed: %s", exc)
             return False
 
@@ -442,7 +464,8 @@ class ResilientOllamaClient:
 
         Raises:
             ConnectionError: If circuit breaker is OPEN.
-            requests.RequestException: If all retries fail.
+            ConnectionError: If all retries fail.
+            TimeoutError: If operation times out.
         """
         return self._execute_with_resilience(self.client.list_models)
 

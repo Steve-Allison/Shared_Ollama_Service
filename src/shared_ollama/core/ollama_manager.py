@@ -30,8 +30,6 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, Literal, TypeAlias
 
-import requests
-
 logger = logging.getLogger(__name__)
 
 # Type aliases for better type safety
@@ -198,6 +196,9 @@ class OllamaManager:
         Performs a lightweight HTTP health check to determine if the service
         is responding.
 
+        This method delegates to the infrastructure layer for HTTP operations,
+        keeping the core module framework-agnostic.
+
         Args:
             timeout: Request timeout in seconds.
 
@@ -205,13 +206,11 @@ class OllamaManager:
             True if service responds with HTTP 200, False otherwise.
 
         Side effects:
-            Makes an HTTP GET request to /api/tags endpoint.
+            Makes an HTTP GET request to /api/tags endpoint (via infrastructure layer).
         """
-        try:
-            response = requests.get(f"{self.base_url}/api/tags", timeout=timeout)
-            return response.status_code == 200
-        except Exception:
-            return False
+        from shared_ollama.infrastructure.health_checker import check_ollama_health_simple
+
+        return check_ollama_health_simple(base_url=self.base_url, timeout=timeout)
 
     async def start(
         self,

@@ -361,15 +361,21 @@ class TestResilienceFeatures:
 
     def test_circuit_breaker_half_open_after_timeout(self):
         """Test circuit breaker moves to HALF_OPEN after timeout."""
-        cb = CircuitBreaker()
+        from shared_ollama.core.resilience import CircuitBreakerConfig
+        
+        # Use a config with failure_threshold=5 to match the test
+        config = CircuitBreakerConfig(failure_threshold=5, timeout=60.0)
+        cb = CircuitBreaker(config=config)
 
-        # Force circuit to OPEN state
+        # Force circuit to OPEN state (need 5 failures)
         for _ in range(5):
             cb.record_failure()
         assert cb.state == CircuitState.OPEN
 
         # Simulate timeout by setting last_open_time to past
-        cb.last_open_time = time.time() - 61  # Config timeout is 60s
+        # Use time.monotonic() to match what CircuitBreaker uses internally
+        import time as time_module
+        cb.last_open_time = time_module.monotonic() - 61  # Config timeout is 60s
 
         # Should transition to HALF_OPEN
         assert cb.can_proceed() is True
@@ -394,7 +400,7 @@ class TestResilienceFeatures:
         def failing_then_success():
             call_count[0] += 1
             if call_count[0] < 3:
-                raise requests.RequestException("Temporary failure")
+                raise ConnectionError("Temporary failure")
             return "success"
 
         result = exponential_backoff_retry(failing_then_success)

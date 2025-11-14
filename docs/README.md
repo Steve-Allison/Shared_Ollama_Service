@@ -10,14 +10,18 @@ This directory contains all documentation for the Shared Ollama Service.
 - **[Migration Guide](MIGRATION_GUIDE.md)** - Migrating from individual Ollama instances
 
 ### Technical Documentation
-- **[Model Storage](MODEL_STORAGE.md)** - Where models are stored and managed
 - **[Architecture Overview](ARCHITECTURE.md)** - Components, request flow, and runtime environments
+- **[Clean Architecture Refactoring](CLEAN_ARCHITECTURE_REFACTORING.md)** - Layer structure, dependency rules, and architecture patterns
+- **[Model Storage](MODEL_STORAGE.md)** - Where models are stored and managed
 - **[Scaling & Load Testing](SCALING_AND_LOAD_TESTING.md)** - Async tuning, Locust walkthrough, performance playbooks
 - **[OpenAPI Specification](openapi.yaml)** - Complete API specification (OpenAPI 3.1.0)
 
 ### Implementation Details
 - **[Implemented Enhancements](IMPLEMENTED_ENHANCEMENTS.md)** - Details of all enhancements
 - **[Python 3.13+ Improvements](PYTHON_313_IMPROVEMENTS.md)** - Modern Python patterns used
+- **[Testing Plan](TESTING_PLAN.md)** - Comprehensive testing strategy and reusable components
+- **[Testing Implementation Summary](TESTING_IMPLEMENTATION_SUMMARY.md)** - Test suite implementation details (33+ tests)
+- **[Dependency Injection Options](DEPENDENCY_INJECTION_OPTIONS.md)** - Analysis of FastAPI dependency injection approaches
 
 ### Project Organization
 - **[Project Structure](../PROJECT_STRUCTURE.md)** - Complete project organization guide

@@ -6,7 +6,7 @@ Mocks are only used for external HTTP requests (session.get/post).
 """
 
 import json
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 import pytest
 import requests

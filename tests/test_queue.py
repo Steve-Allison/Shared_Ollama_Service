@@ -176,8 +176,9 @@ class TestRequestQueue:
         """Test that queue tracks failed requests."""
         queue = RequestQueue()
 
-        async with queue.acquire(request_id="req-fail"):
-            raise ValueError("Test failure")
+        with pytest.raises(ValueError, match="Test failure"):
+            async with queue.acquire(request_id="req-fail"):
+                raise ValueError("Test failure")
 
         stats = await queue.get_stats()
         assert stats.failed == 1
@@ -222,19 +223,20 @@ class TestRequestQueue:
     @pytest.mark.asyncio
     async def test_custom_timeout_overrides_default(self):
         """Test that custom timeout parameter overrides default_timeout."""
-        queue = RequestQueue(default_timeout=60.0)
+        queue = RequestQueue(max_concurrent=1, default_timeout=60.0)
 
-        # Hold slot
+        # Hold slot with first request
         async def hold_slot():
             async with queue.acquire(request_id="holder"):
-                await asyncio.sleep(0.3)
+                await asyncio.sleep(0.5)  # Hold longer than custom timeout
 
         holder_task = asyncio.create_task(hold_slot())
-        await asyncio.sleep(0.01)
+        await asyncio.sleep(0.1)  # Ensure holder acquires the slot first
 
-        # Custom timeout should be used
+        # Custom timeout (0.1s) should be used instead of default (60s)
+        # Should timeout waiting for semaphore
         with pytest.raises(asyncio.TimeoutError):
-            async with queue.acquire(request_id="req-custom", timeout=0.05):
+            async with queue.acquire(request_id="req-custom", timeout=0.1):
                 pass
 
         await holder_task

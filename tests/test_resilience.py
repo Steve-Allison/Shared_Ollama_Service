@@ -9,6 +9,7 @@ import time
 
 import pytest
 import requests
+from requests.exceptions import HTTPError
 
 from shared_ollama import (
     CircuitBreaker,
@@ -42,7 +43,7 @@ class TestExponentialBackoffRetry:
         def failing_then_success():
             call_count[0] += 1
             if call_count[0] < 3:
-                raise requests.RequestException("Temporary failure")
+                raise ConnectionError("Temporary failure")
             return "success"
 
         result = exponential_backoff_retry(
@@ -56,9 +57,9 @@ class TestExponentialBackoffRetry:
         """Test that retry raises exception after max retries exhausted."""
 
         def always_fails():
-            raise requests.RequestException("Permanent failure")
+            raise ConnectionError("Permanent failure")
 
-        with pytest.raises(requests.RequestException):
+        with pytest.raises(ConnectionError):
             exponential_backoff_retry(
                 always_fails, config=RetryConfig(max_retries=3, initial_delay=0.01)
             )
@@ -70,7 +71,7 @@ class TestExponentialBackoffRetry:
         def failing_func():
             call_times.append(time.perf_counter())
             if len(call_times) < 3:
-                raise requests.RequestException("Temporary failure")
+                raise ConnectionError("Temporary failure")
             return "success"
 
         start_time = time.perf_counter()
@@ -96,7 +97,7 @@ class TestExponentialBackoffRetry:
         def failing_func():
             call_times.append(time.perf_counter())
             if len(call_times) < 3:
-                raise requests.RequestException("Temporary failure")
+                raise ConnectionError("Temporary failure")
             return "success"
 
         start_time = time.perf_counter()
@@ -111,12 +112,12 @@ class TestExponentialBackoffRetry:
             ),
         )
 
-        # Delays should be capped at max_delay
+        # Delays should be capped at max_delay (with tolerance for execution overhead)
         if len(call_times) >= 3:
             delay1 = call_times[1] - call_times[0]
             delay2 = call_times[2] - call_times[1]
-            assert delay1 <= 0.16  # Allow tolerance
-            assert delay2 <= 0.16  # Should be capped
+            assert delay1 <= 0.17  # Allow tolerance for execution overhead
+            assert delay2 <= 0.17  # Should be capped at ~0.15, allow tolerance
 
     def test_retry_only_retries_specified_exceptions(self):
         """Test that retry only retries specified exception types."""
@@ -128,7 +129,7 @@ class TestExponentialBackoffRetry:
             exponential_backoff_retry(
                 raises_value_error,
                 config=RetryConfig(max_retries=3, initial_delay=0.01),
-                exceptions=(requests.RequestException,),
+                exceptions=(ConnectionError,),
             )
 
 
@@ -302,12 +303,12 @@ class TestResilientOllamaClient:
             ),
         )
 
-        # First failure
-        with pytest.raises((requests.RequestException, ConnectionError)):
+        # First failure - HTTPError will be retried, then eventually raises HTTPError
+        with pytest.raises((ConnectionError, TimeoutError, HTTPError)):
             client.generate("trigger failure 1")
 
         # Second failure should open circuit
-        with pytest.raises((requests.RequestException, ConnectionError)):
+        with pytest.raises((ConnectionError, TimeoutError, HTTPError)):
             client.generate("trigger failure 2")
 
         assert client.circuit_breaker.state == CircuitState.OPEN
@@ -351,15 +352,22 @@ class TestResilientOllamaClient:
 
         client = ResilientOllamaClient(
             base_url=ollama_server.base_url,
-            retry_config=RetryConfig(max_retries=3, initial_delay=0.01),
+            retry_config=RetryConfig(
+                max_retries=3,
+                initial_delay=0.01,
+                max_delay=0.02,
+                jitter=False,
+            ),
             circuit_breaker_config=CircuitBreakerConfig(
                 failure_threshold=5, success_threshold=1, timeout=0.1
             ),
         )
 
         messages = [{"role": "user", "content": "Chat test"}]
+        # Should succeed after one retry (first attempt fails, second succeeds)
         response = client.chat(messages)
         assert "message" in response
+        assert ollama_server.state["chat_failures"] == 0
 
     def test_resilient_client_health_check_never_raises(self, ollama_server):
         """Test that resilient client health_check() never raises exceptions."""

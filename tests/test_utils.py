@@ -89,7 +89,7 @@ class TestGetOllamaBaseUrl:
 class TestCheckServiceHealth:
     """Behavioral tests for check_service_health() with real error scenarios."""
 
-    @patch("shared_ollama.core.utils.requests.get")
+    @patch("shared_ollama.infrastructure.health_checker.requests.get")
     def test_healthy_service_returns_true(self, mock_get):
         """Test that healthy service (HTTP 200) returns (True, None)."""
         mock_response = requests.Response()
@@ -102,7 +102,7 @@ class TestCheckServiceHealth:
         assert error is None
         mock_get.assert_called_once()
 
-    @patch("shared_ollama.core.utils.requests.get")
+    @patch("shared_ollama.infrastructure.health_checker.requests.get")
     def test_unhealthy_service_returns_false_with_message(self, mock_get):
         """Test that non-200 status codes return (False, error_message)."""
         for status_code in [400, 401, 403, 404, 500, 502, 503]:
@@ -117,7 +117,7 @@ class TestCheckServiceHealth:
             assert str(status_code) in error
             assert "status code" in error.lower()
 
-    @patch("shared_ollama.core.utils.requests.get")
+    @patch("shared_ollama.infrastructure.health_checker.requests.get")
     def test_connection_error_returns_helpful_message(self, mock_get):
         """Test that connection errors return helpful error message."""
         mock_get.side_effect = requests.exceptions.ConnectionError("Connection refused")
@@ -129,7 +129,7 @@ class TestCheckServiceHealth:
         assert "Cannot connect" in error
         assert "Is the service running" in error
 
-    @patch("shared_ollama.core.utils.requests.get")
+    @patch("shared_ollama.infrastructure.health_checker.requests.get")
     def test_timeout_error_includes_timeout_value(self, mock_get):
         """Test that timeout errors include the timeout value in message."""
         timeout = 10
@@ -142,7 +142,7 @@ class TestCheckServiceHealth:
         assert "timed out" in error.lower()
         assert str(timeout) in error or "timeout" in error.lower()
 
-    @patch("shared_ollama.core.utils.requests.get")
+    @patch("shared_ollama.infrastructure.health_checker.requests.get")
     def test_custom_base_url_is_used(self, mock_get):
         """Test that custom base_url parameter is used in request."""
         custom_url = "http://custom:8080"
@@ -156,7 +156,7 @@ class TestCheckServiceHealth:
         assert call_args is not None
         assert custom_url in str(call_args)
 
-    @patch("shared_ollama.core.utils.requests.get")
+    @patch("shared_ollama.infrastructure.health_checker.requests.get")
     def test_custom_timeout_is_used(self, mock_get):
         """Test that custom timeout parameter is passed to requests.get."""
         timeout = 15
@@ -170,7 +170,7 @@ class TestCheckServiceHealth:
         assert call_args is not None
         assert timeout in call_args.kwargs.values() or timeout in call_args.args
 
-    @patch("shared_ollama.core.utils.requests.get")
+    @patch("shared_ollama.infrastructure.health_checker.requests.get")
     def test_unexpected_exception_is_handled(self, mock_get):
         """Test that unexpected exceptions are caught and return False."""
         mock_get.side_effect = ValueError("Unexpected error")

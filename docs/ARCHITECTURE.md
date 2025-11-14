@@ -4,26 +4,41 @@ This document summarizes how the shared Ollama deployment, Python clients, and s
 
 ## High-Level Components
 
+The codebase follows **Clean Architecture** principles with strict layer separation. See [CLEAN_ARCHITECTURE_REFACTORING.md](CLEAN_ARCHITECTURE_REFACTORING.md) for detailed architecture documentation.
+
 - **Shared Ollama Service (Ollama daemon)** – Hosts all large language models and exposes the HTTP API on `:11434`.
-- **REST API Layer** (FastAPI)
+- **REST API Layer** (FastAPI) - Interface Adapters
   - `shared_ollama/api/server.py` – FastAPI REST API server with async endpoints (port 8000).
   - `shared_ollama/api/models.py` – Pydantic request/response models with validation.
+  - `shared_ollama/api/dependencies.py` – Dependency injection for use cases.
+  - `shared_ollama/api/mappers.py` – API ↔ Domain entity mapping.
   - Fully async implementation using `AsyncSharedOllamaClient` for non-blocking I/O.
   - Rate limiting, CORS, structured logging, and request tracking.
-- **Python Client Layer**
+- **Application Layer** - Use Cases & Interfaces
+  - `shared_ollama/application/use_cases.py` – Business workflow orchestration (GenerateUseCase, ChatUseCase, ListModelsUseCase).
+  - `shared_ollama/application/interfaces.py` – Protocol definitions for dependency inversion.
+- **Domain Layer** - Business Logic
+  - `shared_ollama/domain/entities.py` – Core business entities (Model, GenerationRequest, ChatCompletionRequest).
+  - `shared_ollama/domain/value_objects.py` – Validated value objects (ModelName, Prompt, SystemMessage).
+  - `shared_ollama/domain/exceptions.py` – Domain-specific exceptions.
+- **Infrastructure Layer** - External Services
+  - `shared_ollama/infrastructure/adapters.py` – Adapters implementing application interfaces.
   - `shared_ollama/client/sync.py` – Synchronous adapter with retries, structured logging, and resilience hooks.
   - `shared_ollama/client/async_client.py` – Async counterpart built on `httpx.AsyncClient`.
   - `shared_ollama/core/utils.py` – Service discovery, health checks, graceful fallback helpers.
 - **Operational Modules**
   - `shared_ollama/telemetry/{metrics,performance,analytics}.py` – Metrics, tracing, and model usage analytics.
   - `shared_ollama/core/resilience.py` – Circuit-breaker style protections and self-healing routines.
+  - `shared_ollama/core/queue.py` – Request queue management for graceful concurrency control.
+  - `shared_ollama/core/ollama_manager.py` – Ollama process lifecycle management.
 - **Tooling & Scripts**
   - `scripts/*.sh` – Startup, health checks, cleanup, and performance benchmarking.
-  - `scripts/start_api.sh` – Start the REST API server.
+  - `scripts/start_api.sh` – Start the REST API server (manages Ollama internally).
   - `scripts/performance_report.py` – Generates latency + throughput reports for regression detection.
 - **Documentation / Tests**
   - `docs/*` – Integration, migration, and operational runbooks.
-  - `tests/` – Coverage for core sync + async clients, modernization compatibility, and utilities.
+  - `tests/` – Comprehensive test suite with 33+ tests covering all endpoints, error scenarios, and edge cases.
+  - `tests/helpers.py` – Reusable test utilities and fixtures.
 
 ## Request Flow
 
@@ -111,7 +126,7 @@ Key checkpoints:
 
 - **External**: Ollama CLI, Python packages (`requests`, `httpx`, `numpy`, etc.), monitoring stack.
 - **Internal**: Python modules in this repo; other projects consume only public client APIs.
-- **Contracts**: API surface documented in `docs/API_REFERENCE.md`; integration validation via `tests/test_client.py` and `tests/test_modernization.py`.
+- **Contracts**: API surface documented in `docs/API_REFERENCE.md`; integration validation via comprehensive test suite (33+ tests) covering all endpoints, error scenarios, and edge cases. See [TESTING_PLAN.md](TESTING_PLAN.md) for testing strategy.
 
 ## Operational Checklist
 

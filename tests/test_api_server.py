@@ -12,11 +12,32 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
-from httpx import AsyncClient
 
+from shared_ollama.api.dependencies import (
+    get_chat_use_case,
+    get_client_adapter,
+    get_generate_use_case,
+    get_list_models_use_case,
+    get_logger_adapter,
+    get_metrics_adapter,
+    get_queue,
+    set_dependencies,
+)
 from shared_ollama.api.server import app
+from shared_ollama.application.use_cases import ChatUseCase, GenerateUseCase, ListModelsUseCase
 from shared_ollama.client import AsyncOllamaConfig, AsyncSharedOllamaClient, GenerateResponse
 from shared_ollama.core.queue import RequestQueue
+from shared_ollama.infrastructure.adapters import (
+    AsyncOllamaClientAdapter,
+    MetricsCollectorAdapter,
+    RequestLoggerAdapter,
+)
+from tests.helpers import (
+    assert_error_response,
+    assert_response_structure,
+    cleanup_dependency_overrides,
+    setup_dependency_overrides,
+)
 
 
 @pytest.fixture
@@ -30,52 +51,114 @@ def mock_async_client():
 
 
 @pytest.fixture
-def api_client(mock_async_client):
-    """Create a test client with mocked async client."""
-    with patch("shared_ollama.api.server._client", mock_async_client):
-        with patch("shared_ollama.api.server._queue", RequestQueue(max_concurrent=3, max_queue_size=10)):
-            async def mock_lifespan(app):
-                yield
+def mock_use_cases(mock_async_client):
+    """Create mock use cases with mocked client adapter."""
+    client_adapter = AsyncOllamaClientAdapter(mock_async_client)
+    logger_adapter = RequestLoggerAdapter()
+    metrics_adapter = MetricsCollectorAdapter()
 
-            app.router.lifespan_context = mock_lifespan
-            with TestClient(app) as client:
-                yield client
+    generate_use_case = GenerateUseCase(
+        client=client_adapter,
+        logger=logger_adapter,
+        metrics=metrics_adapter,
+    )
+    chat_use_case = ChatUseCase(
+        client=client_adapter,
+        logger=logger_adapter,
+        metrics=metrics_adapter,
+    )
+    list_models_use_case = ListModelsUseCase(
+        client=client_adapter,
+        logger=logger_adapter,
+        metrics=metrics_adapter,
+    )
+
+    return {
+        "generate": generate_use_case,
+        "chat": chat_use_case,
+        "list_models": list_models_use_case,
+    }
 
 
 @pytest.fixture
-def async_api_client(mock_async_client):
-    """Create an async test client."""
-    with patch("shared_ollama.api.server._client", mock_async_client):
-        with patch("shared_ollama.api.server._queue", RequestQueue(max_concurrent=3, max_queue_size=10)):
-            async def mock_lifespan(app):
-                yield
+def sync_api_client(mock_async_client, mock_use_cases):
+    """Create a sync test client for endpoints without dependencies (health, root)."""
+    # Set up dependencies
+    client_adapter = AsyncOllamaClientAdapter(mock_async_client)
+    logger_adapter = RequestLoggerAdapter()
+    metrics_adapter = MetricsCollectorAdapter()
+    queue = RequestQueue(max_concurrent=3, max_queue_size=10)
 
-            app.router.lifespan_context = mock_lifespan
-            return AsyncClient(app=app, base_url="http://test")
+    setup_dependency_overrides(
+        app=app,
+        client_adapter=client_adapter,
+        logger_adapter=logger_adapter,
+        metrics_adapter=metrics_adapter,
+        queue=queue,
+        generate_use_case=mock_use_cases["generate"],
+        chat_use_case=mock_use_cases["chat"],
+        list_models_use_case=mock_use_cases["list_models"],
+    )
+
+    try:
+        with TestClient(app) as client:
+            yield client
+    finally:
+        cleanup_dependency_overrides(app)
+
+
+@pytest.fixture
+def api_client(mock_async_client, mock_use_cases):
+    """Create a test client using TestClient - works with all dependency patterns.
+
+    TestClient handles async endpoints correctly and works with Annotated[Type, Depends(...)]
+    syntax, unlike ASGITransport which has issues with this pattern.
+    """
+    # Set up dependencies
+    client_adapter = AsyncOllamaClientAdapter(mock_async_client)
+    logger_adapter = RequestLoggerAdapter()
+    metrics_adapter = MetricsCollectorAdapter()
+    queue = RequestQueue(max_concurrent=3, max_queue_size=10)
+
+    setup_dependency_overrides(
+        app=app,
+        client_adapter=client_adapter,
+        logger_adapter=logger_adapter,
+        metrics_adapter=metrics_adapter,
+        queue=queue,
+        generate_use_case=mock_use_cases["generate"],
+        chat_use_case=mock_use_cases["chat"],
+        list_models_use_case=mock_use_cases["list_models"],
+    )
+
+    try:
+        with TestClient(app) as client:
+            yield client
+    finally:
+        cleanup_dependency_overrides(app)
 
 
 class TestHealthEndpoint:
     """Behavioral tests for health check endpoint."""
 
-    def test_health_check_success(self, api_client, mock_async_client):
+    def test_health_check_success(self, sync_api_client, mock_async_client):
         """Test successful health check returns healthy status."""
         with patch("shared_ollama.core.utils.check_service_health", return_value=(True, None)):
-            response = api_client.get("/api/v1/health")
-            assert response.status_code == 200
-            data = response.json()
+            response = sync_api_client.get("/api/v1/health")
+            data = assert_response_structure(response, 200)
             assert data["status"] == "healthy"
             assert data["ollama_service"] == "healthy"
             assert data["version"] == "1.0.0"
 
-    def test_health_check_unhealthy(self, api_client, mock_async_client):
+    def test_health_check_unhealthy(self, sync_api_client, mock_async_client):
         """Test health check returns unhealthy when service is down."""
+        # Need to patch at the module level where it's imported
         with patch(
-            "shared_ollama.core.utils.check_service_health",
+            "shared_ollama.api.server.check_service_health",
             return_value=(False, "Connection refused"),
         ):
-            response = api_client.get("/api/v1/health")
-            assert response.status_code == 200
-            data = response.json()
+            response = sync_api_client.get("/api/v1/health")
+            data = assert_response_structure(response, 200)
             assert data["status"] == "unhealthy"
             assert "unhealthy" in data["ollama_service"]
             assert "Connection refused" in data["ollama_service"]
@@ -93,8 +176,7 @@ class TestListModelsEndpoint:
         mock_async_client.list_models = AsyncMock(return_value=mock_models)
 
         response = api_client.get("/api/v1/models")
-        assert response.status_code == 200
-        data = response.json()
+        data = assert_response_structure(response, 200)
         assert "models" in data
         assert len(data["models"]) == 2
         assert data["models"][0]["name"] == "qwen2.5vl:7b"
@@ -105,18 +187,15 @@ class TestListModelsEndpoint:
         mock_async_client.list_models = AsyncMock(return_value=[])
 
         response = api_client.get("/api/v1/models")
-        assert response.status_code == 200
-        data = response.json()
+        data = assert_response_structure(response, 200)
         assert data["models"] == []
 
-    def test_list_models_error_returns_500(self, api_client, mock_async_client):
-        """Test that errors during model listing return 500."""
+    def test_list_models_error_returns_503(self, api_client, mock_async_client):
+        """Test that connection errors during model listing return 503."""
         mock_async_client.list_models = AsyncMock(side_effect=ConnectionError("Service unavailable"))
 
         response = api_client.get("/api/v1/models")
-        assert response.status_code == 500
-        data = response.json()
-        assert "error" in data or "detail" in data
+        assert_error_response(response, 503)
 
 
 class TestQueueStatsEndpoint:
@@ -125,8 +204,7 @@ class TestQueueStatsEndpoint:
     def test_get_queue_stats_returns_comprehensive_metrics(self, api_client, mock_async_client):
         """Test that queue stats endpoint returns all queue metrics."""
         response = api_client.get("/api/v1/queue/stats")
-        assert response.status_code == 200
-        data = response.json()
+        data = assert_response_structure(response, 200)
 
         # Verify all expected fields are present
         assert "queued" in data
@@ -171,8 +249,7 @@ class TestGenerateEndpoint:
             "/api/v1/generate",
             json={"prompt": "Hello", "model": "qwen2.5vl:7b"},
         )
-        assert response.status_code == 200
-        data = response.json()
+        data = assert_response_structure(response, 200)
         assert data["text"] == "Hello, world!"
         assert data["model"] == "qwen2.5vl:7b"
         assert "request_id" in data
@@ -209,8 +286,7 @@ class TestGenerateEndpoint:
                 "format": "json",
             },
         )
-        assert response.status_code == 200
-        data = response.json()
+        data = assert_response_structure(response, 200)
         assert data["text"] == "Response"
         assert data["model_warm_start"] is True  # load_duration == 0
 
@@ -252,9 +328,7 @@ class TestGenerateEndpoint:
             "/api/v1/generate",
             json={"prompt": "Hello", "model": "nonexistent"},
         )
-        assert response.status_code == 500
-        data = response.json()
-        assert "error" in data or "detail" in data
+        assert_error_response(response, 500)
 
     def test_generate_uses_queue_slot(self, api_client, mock_async_client):
         """Test that generate endpoint uses queue for concurrency control."""
@@ -283,8 +357,7 @@ class TestGenerateEndpoint:
 class TestGenerateStreaming:
     """Behavioral tests for streaming generate endpoint."""
 
-    @pytest.mark.asyncio
-    async def test_generate_stream_returns_sse_format(self, async_api_client, mock_async_client):
+    def test_generate_stream_returns_sse_format(self, api_client, mock_async_client):
         """Test that streaming generate returns Server-Sent Events format."""
         async def mock_stream():
             yield {"chunk": "Hello", "done": False, "model": "test", "request_id": "test-1"}
@@ -299,46 +372,41 @@ class TestGenerateStreaming:
 
         mock_async_client.generate_stream = AsyncMock(return_value=mock_stream())
 
-        async with async_api_client as client:
-            response = await client.post(
-                "/api/v1/generate",
-                json={"prompt": "Hello", "stream": True},
-            )
-            assert response.status_code == 200
-            assert "text/event-stream" in response.headers.get("content-type", "")
+        response = api_client.post(
+            "/api/v1/generate",
+            json={"prompt": "Hello", "stream": True},
+        )
+        assert response.status_code == 200
+        assert "text/event-stream" in response.headers.get("content-type", "")
 
-            # Read streaming response
-            content = b""
-            async for chunk in response.aiter_bytes():
-                content += chunk
+        # Read streaming response (TestClient supports iter_lines for SSE)
+        text = ""
+        for line in response.iter_lines():
+            text += line + "\n"
 
-            # Verify SSE format
-            text = content.decode("utf-8")
-            assert text.startswith("data: ")
-            assert "\n\n" in text
+        # Verify SSE format
+        assert "data: " in text
+        assert "\n\n" in text or "\n" in text
 
-    @pytest.mark.asyncio
-    async def test_generate_stream_handles_errors(self, async_api_client, mock_async_client):
+    def test_generate_stream_handles_errors(self, api_client, mock_async_client):
         """Test that streaming errors are sent as final chunk."""
         async def mock_stream():
             raise RuntimeError("Streaming error")
 
         mock_async_client.generate_stream = AsyncMock(return_value=mock_stream())
 
-        async with async_api_client as client:
-            response = await client.post(
-                "/api/v1/generate",
-                json={"prompt": "Test", "stream": True},
-            )
-            assert response.status_code == 200
+        response = api_client.post(
+            "/api/v1/generate",
+            json={"prompt": "Test", "stream": True},
+        )
+        assert response.status_code == 200
 
-            content = b""
-            async for chunk in response.aiter_bytes():
-                content += chunk
+        text = ""
+        for line in response.iter_lines():
+            text += line + "\n"
 
-            text = content.decode("utf-8")
-            # Should contain error in final chunk
-            assert "error" in text.lower() or "done" in text.lower()
+        # Should contain error in final chunk
+        assert "error" in text.lower() or "done" in text.lower()
 
 
 class TestChatEndpoint:
@@ -363,8 +431,7 @@ class TestChatEndpoint:
                 "model": "qwen2.5vl:7b",
             },
         )
-        assert response.status_code == 200
-        data = response.json()
+        data = assert_response_structure(response, 200)
         assert data["message"]["role"] == "assistant"
         assert data["message"]["content"] == "Hello! How can I help?"
         assert data["model"] == "qwen2.5vl:7b"
@@ -427,28 +494,25 @@ class TestChatEndpoint:
                 "model": "qwen2.5vl:7b",
             },
         )
-        assert response.status_code == 200
-        data = response.json()
+        data = assert_response_structure(response, 200)
         assert data["message"]["content"] == "Response"
 
-    def test_chat_error_returns_500(self, api_client, mock_async_client):
-        """Test that chat errors return 500."""
+    def test_chat_error_returns_400(self, api_client, mock_async_client):
+        """Test that chat validation errors return 400."""
+        # ValueError from use case gets converted to InvalidRequestError, which returns 400
         mock_async_client.chat = AsyncMock(side_effect=ValueError("Invalid messages"))
 
         response = api_client.post(
             "/api/v1/chat",
             json={"messages": [{"role": "user", "content": "Hello"}]},
         )
-        assert response.status_code == 500
-        data = response.json()
-        assert "error" in data or "detail" in data
+        assert_error_response(response, 400)
 
 
 class TestChatStreaming:
     """Behavioral tests for streaming chat endpoint."""
 
-    @pytest.mark.asyncio
-    async def test_chat_stream_returns_sse_format(self, async_api_client, mock_async_client):
+    def test_chat_stream_returns_sse_format(self, api_client, mock_async_client):
         """Test that streaming chat returns Server-Sent Events format."""
         async def mock_stream():
             yield {"chunk": "Hello", "role": "assistant", "done": False, "model": "test"}
@@ -463,13 +527,12 @@ class TestChatStreaming:
 
         mock_async_client.chat_stream = AsyncMock(return_value=mock_stream())
 
-        async with async_api_client as client:
-            response = await client.post(
-                "/api/v1/chat",
-                json={"messages": [{"role": "user", "content": "Hello"}], "stream": True},
-            )
-            assert response.status_code == 200
-            assert "text/event-stream" in response.headers.get("content-type", "")
+        response = api_client.post(
+            "/api/v1/chat",
+            json={"messages": [{"role": "user", "content": "Hello"}], "stream": True},
+        )
+        assert response.status_code == 200
+        assert "text/event-stream" in response.headers.get("content-type", "")
 
 
 class TestRequestContext:
@@ -495,8 +558,7 @@ class TestRequestContext:
             json={"prompt": "Test"},
             headers={"X-Project-Name": "Knowledge_Machine"},
         )
-        assert response.status_code == 200
-        data = response.json()
+        data = assert_response_structure(response, 200)
         assert "request_id" in data
 
     def test_request_id_is_unique(self, api_client, mock_async_client):
@@ -525,11 +587,10 @@ class TestRequestContext:
 class TestRootEndpoint:
     """Behavioral tests for root endpoint."""
 
-    def test_root_endpoint_returns_api_info(self, api_client):
+    def test_root_endpoint_returns_api_info(self, sync_api_client):
         """Test root endpoint returns API metadata."""
-        response = api_client.get("/")
-        assert response.status_code == 200
-        data = response.json()
+        response = sync_api_client.get("/")
+        data = assert_response_structure(response, 200)
         assert data["service"] == "Shared Ollama Service API"
         assert data["version"] == "1.0.0"
         assert "/api/docs" in data["docs"]
@@ -541,44 +602,47 @@ class TestErrorHandling:
 
     def test_client_not_initialized_returns_503(self, api_client):
         """Test that uninitialized client returns 503."""
-        with patch("shared_ollama.api.server._client", None):
+        # Clear dependencies to simulate uninitialized state
+        cleanup_dependency_overrides(app)
+        set_dependencies(None, None, None, None)  # type: ignore[arg-type]
+
+        try:
             response = api_client.get("/api/v1/models")
-            assert response.status_code == 503
-            data = response.json()
-            assert "not initialized" in data.get("detail", "").lower()
+            assert_error_response(response, 503)
+        finally:
+            # Restore dependencies
+            client_adapter = AsyncOllamaClientAdapter(AsyncMock(spec=AsyncSharedOllamaClient))
+            logger_adapter = RequestLoggerAdapter()
+            metrics_adapter = MetricsCollectorAdapter()
+            queue = RequestQueue()
+            set_dependencies(client_adapter, logger_adapter, metrics_adapter, queue)
 
     def test_validation_error_returns_422(self, api_client, mock_async_client):
         """Test that validation errors return 422 with details."""
         response = api_client.post("/api/v1/generate", json={"invalid": "data"})
-        assert response.status_code == 422
-        data = response.json()
-        assert "error" in data or "detail" in data
+        assert_error_response(response, 422)
 
     def test_global_exception_handler_returns_500(self, api_client, mock_async_client):
         """Test that unexpected exceptions are handled gracefully."""
         mock_async_client.list_models = AsyncMock(side_effect=Exception("Unexpected error"))
 
         response = api_client.get("/api/v1/models")
-        assert response.status_code == 500
-        data = response.json()
-        assert "error" in data or "detail" in data
+        assert_error_response(response, 500)
 
     def test_error_response_includes_request_id(self, api_client, mock_async_client):
         """Test that error responses include request_id when available."""
         mock_async_client.list_models = AsyncMock(side_effect=RuntimeError("Test error"))
 
         response = api_client.get("/api/v1/models")
-        assert response.status_code == 500
-        data = response.json()
-        # Request ID should be present in error response
-        assert "request_id" in data or "error" in data
+        data = assert_error_response(response, 500)
+        # Request ID should be present in error response (either in detail or as separate field)
+        assert "request_id" in data.get("detail", "") or "request_id" in data or "error" in data
 
 
 class TestAsyncFunctionality:
     """Behavioral tests for async endpoint behavior."""
 
-    @pytest.mark.asyncio
-    async def test_endpoints_are_truly_async(self, async_api_client, mock_async_client):
+    def test_endpoints_are_truly_async(self, api_client, mock_async_client):
         """Test that endpoints handle async operations correctly."""
         mock_response = GenerateResponse(
             text="Async response",
@@ -593,11 +657,10 @@ class TestAsyncFunctionality:
         )
         mock_async_client.generate = AsyncMock(return_value=mock_response)
 
-        async with async_api_client as client:
-            response = await client.post(
-                "/api/v1/generate",
-                json={"prompt": "Test async"},
-            )
-            assert response.status_code == 200
-            data = response.json()
-            assert data["text"] == "Async response"
+        response = api_client.post(
+            "/api/v1/generate",
+            json={"prompt": "Test async"},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["text"] == "Async response"

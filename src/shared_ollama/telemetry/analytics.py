@@ -1,5 +1,20 @@
-"""
-Enhanced usage analytics for the Shared Ollama Service.
+"""Enhanced usage analytics for the Shared Ollama Service.
+
+This module provides project-based analytics tracking and reporting with
+time-series aggregation and export capabilities.
+
+Key behaviors:
+    - Project-based request tracking via X-Project-Name header
+    - Time-series aggregation (hourly metrics)
+    - Comprehensive analytics reports with percentiles
+    - JSON and CSV export functionality
+    - Efficient filtering by time window and project
+
+Analytics features:
+    - Project-level metrics aggregation
+    - Hourly time-series data
+    - Success rates and latency percentiles
+    - Model and operation breakdowns
 """
 
 from __future__ import annotations
@@ -11,7 +26,7 @@ import time
 from collections import defaultdict
 from collections.abc import Generator
 from contextlib import contextmanager
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, ClassVar
@@ -22,19 +37,56 @@ logger = logging.getLogger(__name__)
 
 
 def _convert_datetime_to_iso(obj: Any) -> Any:
-    if isinstance(obj, datetime):
-        return obj.isoformat()
-    if isinstance(obj, defaultdict):
-        return {k: _convert_datetime_to_iso(v) for k, v in obj.items()}
-    if isinstance(obj, dict):
-        return {k: _convert_datetime_to_iso(v) for k, v in obj.items()}
-    if isinstance(obj, list):
-        return [_convert_datetime_to_iso(item) for item in obj]
-    return obj
+    """Recursively convert datetime objects to ISO format strings.
+
+    Traverses nested data structures (dicts, lists, defaultdicts) and
+    converts all datetime objects to ISO 8601 strings. Uses pattern
+    matching for clean type handling.
+
+    Args:
+        obj: Object to convert. Can be datetime, dict, list, defaultdict,
+            or any other type.
+
+    Returns:
+        Object with all datetime values converted to ISO strings.
+        Other types are returned unchanged.
+
+    Side effects:
+        None. Pure function.
+    """
+    match obj:
+        case datetime():
+            return obj.isoformat()
+        case defaultdict():
+            return {k: _convert_datetime_to_iso(v) for k, v in obj.items()}
+        case dict():
+            return {k: _convert_datetime_to_iso(v) for k, v in obj.items()}
+        case list():
+            return [_convert_datetime_to_iso(item) for item in obj]
+        case _:
+            return obj
 
 
-@dataclass
+@dataclass(slots=True)
 class ProjectMetrics:
+    """Metrics aggregated by project.
+
+    Contains request statistics for a single project. All time values
+    are in milliseconds. Timestamps are timezone-aware (UTC).
+
+    Attributes:
+        project_name: Project identifier (from X-Project-Name header).
+        total_requests: Total number of requests for this project.
+        successful_requests: Number of successful requests.
+        failed_requests: Number of failed requests.
+        requests_by_model: Dictionary mapping model names to request counts.
+        requests_by_operation: Dictionary mapping operation types to request counts.
+        average_latency_ms: Average request latency in milliseconds.
+        total_latency_ms: Cumulative latency for all requests (ms).
+        last_request_time: Timestamp of most recent request. None if no requests.
+        first_request_time: Timestamp of oldest request. None if no requests.
+    """
+
     project_name: str
     total_requests: int = 0
     successful_requests: int = 0
@@ -47,8 +99,22 @@ class ProjectMetrics:
     first_request_time: datetime | None = None
 
 
-@dataclass
+@dataclass(slots=True)
 class TimeSeriesMetrics:
+    """Time series metrics for a specific time period.
+
+    Contains aggregated metrics for a single hour. Used for time-series
+    analysis and trend visualization.
+
+    Attributes:
+        timestamp: Hour timestamp (minute/second/microsecond set to 0).
+        requests_count: Total number of requests in this hour.
+        successful_count: Number of successful requests.
+        failed_count: Number of failed requests.
+        average_latency_ms: Average request latency in milliseconds.
+        requests_by_model: Dictionary mapping model names to request counts.
+    """
+
     timestamp: datetime
     requests_count: int = 0
     successful_count: int = 0
@@ -57,8 +123,31 @@ class TimeSeriesMetrics:
     requests_by_model: dict[str, int] = field(default_factory=lambda: defaultdict(int))
 
 
-@dataclass
+@dataclass(slots=True)
 class AnalyticsReport:
+    """Comprehensive analytics report.
+
+    Contains aggregated analytics across all projects, models, and operations.
+    Includes time-series data and project-level breakdowns.
+
+    Attributes:
+        total_requests: Total number of requests in the report window.
+        successful_requests: Number of successful requests.
+        failed_requests: Number of failed requests.
+        success_rate: Success rate as a float (0.0-1.0).
+        average_latency_ms: Average request latency in milliseconds.
+        p50_latency_ms: 50th percentile (median) latency in milliseconds.
+        p95_latency_ms: 95th percentile latency in milliseconds.
+        p99_latency_ms: 99th percentile latency in milliseconds.
+        requests_by_model: Dictionary mapping model names to request counts.
+        requests_by_operation: Dictionary mapping operation types to request counts.
+        requests_by_project: Dictionary mapping project names to request counts.
+        project_metrics: Dictionary mapping project names to ProjectMetrics objects.
+        hourly_metrics: List of TimeSeriesMetrics, one per hour in the window.
+        start_time: Timestamp of earliest request in the window. None if no requests.
+        end_time: Timestamp of latest request in the window. None if no requests.
+    """
+
     total_requests: int = 0
     successful_requests: int = 0
     failed_requests: int = 0
@@ -77,10 +166,34 @@ class AnalyticsReport:
 
 
 class AnalyticsCollector:
+    """Collects and analyzes usage analytics with project tracking.
+
+    Extends MetricsCollector with project-based tracking and comprehensive
+    analytics reporting. Maintains a mapping from metric indices to project
+    names for efficient filtering.
+
+    Attributes:
+        _project_metadata: Class variable mapping metric indices to project names.
+            Used to associate metrics with projects after they're recorded.
+
+    Thread safety:
+        Not thread-safe. Use from a single thread or protect with locks
+        if accessing from multiple threads.
+    """
+
     _project_metadata: ClassVar[dict[int, str]] = {}
 
     @classmethod
     def _build_metric_index_map(cls) -> dict[int, int]:
+        """Build a mapping from metric ID to index.
+
+        Creates a dictionary that maps the id() of each metric object to
+        its index in the MetricsCollector._metrics list. Used for efficient
+        project filtering.
+
+        Returns:
+            Dictionary mapping metric object IDs to list indices.
+        """
         all_metrics_list = list(getattr(MetricsCollector, "_metrics", []))
         return {id(metric): index for index, metric in enumerate(all_metrics_list)}
 
@@ -94,6 +207,24 @@ class AnalyticsCollector:
         project: str | None = None,
         error: str | None = None,
     ) -> None:
+        """Record a request metric with project tracking.
+
+        Records the metric via MetricsCollector and associates it with
+        a project name if provided. The project association is stored
+        separately for efficient filtering.
+
+        Args:
+            model: Model name used for the request.
+            operation: Operation type (e.g., "generate", "chat").
+            latency_ms: Request latency in milliseconds (>=0.0).
+            success: Whether the request succeeded.
+            project: Project name for tracking. None if not provided.
+            error: Error message if request failed. None if successful.
+
+        Side effects:
+            - Calls MetricsCollector.record_request()
+            - Updates _project_metadata if project is provided
+        """
         MetricsCollector.record_request(
             model=model,
             operation=operation,
@@ -114,6 +245,27 @@ class AnalyticsCollector:
         window_minutes: int | None = None,
         project: str | None = None,
     ) -> AnalyticsReport:
+        """Get comprehensive analytics report.
+
+        Computes aggregated analytics with optional filtering by time window
+        and project. Includes project-level breakdowns and hourly time-series
+        data.
+
+        Args:
+            window_minutes: Time window in minutes. If None, aggregates all
+                metrics. Only metrics within the window are included.
+            project: Filter by project name. If None, includes all projects.
+                Only metrics for the specified project are included.
+
+        Returns:
+            AnalyticsReport with comprehensive statistics. Returns empty
+            AnalyticsReport if no metrics match the filters.
+
+        Side effects:
+            - Filters metrics by timestamp if window_minutes specified
+            - Filters metrics by project if project specified
+            - Computes aggregations (O(n) for filtering, O(n log n) for sorting)
+        """
         base_metrics = MetricsCollector.get_metrics(window_minutes)
 
         all_metrics = getattr(MetricsCollector, "_metrics", [])
@@ -199,10 +351,23 @@ class AnalyticsCollector:
 
     @classmethod
     def _calculate_hourly_metrics(cls, metrics: list[RequestMetrics]) -> list[TimeSeriesMetrics]:
+        """Calculate hourly aggregated metrics.
+
+        Groups metrics by hour and computes aggregated statistics for each
+        hour. Hours are determined by rounding timestamps down to the hour.
+
+        Args:
+            metrics: List of request metrics to aggregate.
+
+        Returns:
+            List of TimeSeriesMetrics, one per hour that contains metrics.
+            Sorted by timestamp (earliest first). Returns empty list if
+            no metrics provided.
+        """
         if not metrics:
             return []
 
-        hourly_data: dict[datetime, list[RequestMetrics]] = defaultdict(list)
+        hourly_data: defaultdict[datetime, list[RequestMetrics]] = defaultdict(list)
 
         for metric in metrics:
             hour = metric.timestamp.replace(minute=0, second=0, microsecond=0)
@@ -213,7 +378,7 @@ class AnalyticsCollector:
             total_latency = sum(metric.latency_ms for metric in hour_metrics)
             avg_latency = total_latency / len(hour_metrics) if hour_metrics else 0.0
 
-            requests_by_model = defaultdict(int)
+            requests_by_model: defaultdict[str, int] = defaultdict(int)
             for metric in hour_metrics:
                 requests_by_model[metric.model] += 1
 
@@ -237,9 +402,29 @@ class AnalyticsCollector:
         window_minutes: int | None = None,
         project: str | None = None,
     ) -> Path:
+        """Export analytics to JSON file.
+
+        Generates a comprehensive analytics report and writes it to a JSON
+        file with pretty-printed formatting. All datetime objects are
+        converted to ISO 8601 strings.
+
+        Args:
+            filepath: Path to output file. Parent directories are created
+                if they don't exist.
+            window_minutes: Time window in minutes. If None, exports all metrics.
+            project: Filter by project name. If None, exports all projects.
+
+        Returns:
+            Path to exported file (absolute path).
+
+        Side effects:
+            - Creates parent directories if they don't exist
+            - Writes JSON file to disk
+            - Logs info message with file path
+        """
         analytics = cls.get_analytics(window_minutes, project)
 
-        data = {
+        data: dict[str, Any] = {
             "total_requests": analytics.total_requests,
             "successful_requests": analytics.successful_requests,
             "failed_requests": analytics.failed_requests,
@@ -299,6 +484,25 @@ class AnalyticsCollector:
         window_minutes: int | None = None,
         project: str | None = None,
     ) -> Path:
+        """Export analytics to CSV file.
+
+        Exports raw metrics data to CSV format with one row per request.
+        Includes project information for each request.
+
+        Args:
+            filepath: Path to output file. Parent directories are created
+                if they don't exist.
+            window_minutes: Time window in minutes. If None, exports all metrics.
+            project: Filter by project name. If None, exports all projects.
+
+        Returns:
+            Path to exported file (absolute path).
+
+        Side effects:
+            - Creates parent directories if they don't exist
+            - Writes CSV file to disk
+            - Logs info message with file path
+        """
         path = Path(filepath)
         path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -350,6 +554,28 @@ def track_request_with_project(
     operation: str = "generate",
     project: str | None = None,
 ) -> Generator[None, None, None]:
+    """Context manager to track a request with project tracking.
+
+    Automatically measures execution time and records metrics with project
+    association. Handles exceptions by recording error information.
+
+    Args:
+        model: Model name for the request.
+        operation: Operation type (e.g., "generate", "chat"). Defaults to "generate".
+        project: Project name for tracking. None if not provided.
+
+    Yields:
+        None. The context manager tracks timing while the context is active.
+
+    Side effects:
+        - Measures execution time using time.perf_counter()
+        - Records metrics via AnalyticsCollector.record_request_with_project()
+        - Logs error information if exception occurs
+
+    Example:
+        >>> with track_request_with_project("qwen2.5vl:7b", "generate", "my-project"):
+        ...     result = await client.generate("Hello")
+    """
     start_time = time.perf_counter()
     success = False
     error = None
@@ -376,8 +602,61 @@ def get_analytics_json(
     window_minutes: int | None = None,
     project: str | None = None,
 ) -> dict[str, Any]:
+    """Get analytics as JSON-serializable dictionary.
+
+    Convenience function that generates an analytics report and converts
+    it to a dictionary with all datetime objects converted to ISO strings.
+
+    Args:
+        window_minutes: Time window in minutes. If None, returns all metrics.
+        project: Filter by project name. If None, returns all projects.
+
+    Returns:
+        Dictionary with analytics data. All datetime values are ISO 8601
+        strings. Structure matches AnalyticsReport dataclass fields.
+    """
     analytics = AnalyticsCollector.get_analytics(window_minutes, project)
-    data = asdict(analytics)
+    data = {
+        "total_requests": analytics.total_requests,
+        "successful_requests": analytics.successful_requests,
+        "failed_requests": analytics.failed_requests,
+        "success_rate": analytics.success_rate,
+        "average_latency_ms": analytics.average_latency_ms,
+        "p50_latency_ms": analytics.p50_latency_ms,
+        "p95_latency_ms": analytics.p95_latency_ms,
+        "p99_latency_ms": analytics.p99_latency_ms,
+        "requests_by_model": dict(analytics.requests_by_model),
+        "requests_by_operation": dict(analytics.requests_by_operation),
+        "requests_by_project": dict(analytics.requests_by_project),
+        "project_metrics": {
+            k: {
+                "project_name": v.project_name,
+                "total_requests": v.total_requests,
+                "successful_requests": v.successful_requests,
+                "failed_requests": v.failed_requests,
+                "requests_by_model": dict(v.requests_by_model),
+                "requests_by_operation": dict(v.requests_by_operation),
+                "average_latency_ms": v.average_latency_ms,
+                "total_latency_ms": v.total_latency_ms,
+                "last_request_time": v.last_request_time,
+                "first_request_time": v.first_request_time,
+            }
+            for k, v in analytics.project_metrics.items()
+        },
+        "hourly_metrics": [
+            {
+                "timestamp": h.timestamp,
+                "requests_count": h.requests_count,
+                "successful_count": h.successful_count,
+                "failed_count": h.failed_count,
+                "average_latency_ms": h.average_latency_ms,
+                "requests_by_model": dict(h.requests_by_model),
+            }
+            for h in analytics.hourly_metrics
+        ],
+        "start_time": analytics.start_time,
+        "end_time": analytics.end_time,
+    }
     return _convert_datetime_to_iso(data)  # type: ignore[return-value]
 
 
@@ -389,4 +668,3 @@ __all__ = [
     "get_analytics_json",
     "track_request_with_project",
 ]
-

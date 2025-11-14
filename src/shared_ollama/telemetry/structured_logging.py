@@ -1,19 +1,52 @@
-"""
-Structured logging utilities for the Shared Ollama Service.
+"""Structured logging utilities for the Shared Ollama Service.
 
-All request/response events are written as JSON Lines to ``logs/requests.jsonl``.
+This module provides JSON-based structured logging for request/response
+events. All events are written as JSON Lines (JSONL) format to a log file.
+
+Key behaviors:
+    - JSON Lines format (one JSON object per line)
+    - Automatic timestamp injection if not present
+    - Custom serialization for datetime and Path objects
+    - Cached log directory resolution for performance
+    - Non-propagating logger to avoid duplicate logs
+
+Log file:
+    - Location: ``logs/requests.jsonl`` (relative to project root)
+    - Format: One JSON object per line
+    - Encoding: UTF-8
+    - Rotation: Not implemented (file grows unbounded)
 """
 
 from __future__ import annotations
 
+import functools
 import json
 import logging
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-LOGS_DIR = Path(__file__).resolve().parents[3] / "logs"
-LOGS_DIR.mkdir(exist_ok=True)
+# Cache log directory resolution
+@functools.cache
+def _get_logs_dir() -> Path:
+    """Get logs directory with caching for performance.
+
+    Resolves the logs directory relative to the project root and creates
+    it if it doesn't exist. Result is cached since the path doesn't change
+    at runtime.
+
+    Returns:
+        Path to logs directory.
+
+    Side effects:
+        Creates logs directory if it doesn't exist.
+    """
+    logs_dir = Path(__file__).resolve().parents[3] / "logs"
+    logs_dir.mkdir(exist_ok=True)
+    return logs_dir
+
+
+LOGS_DIR = _get_logs_dir()
 
 REQUEST_LOGGER = logging.getLogger("ollama.requests")
 if not REQUEST_LOGGER.handlers:
@@ -25,25 +58,64 @@ if not REQUEST_LOGGER.handlers:
 
 
 def _json_default(value: Any) -> Any:
-    """Fallback serializer for datetime and Path objects."""
-    if isinstance(value, datetime):
-        return value.isoformat()
-    if isinstance(value, Path):
-        return str(value)
-    return str(value)
+    """Fallback serializer for datetime and Path objects.
+
+    Custom JSON encoder fallback that handles datetime and Path objects
+    by converting them to strings. Uses pattern matching for clean type
+    handling.
+
+    Args:
+        value: Value to serialize. Expected to be datetime, Path, or
+            other non-serializable type.
+
+    Returns:
+        Serialized value:
+            - datetime: ISO 8601 format string
+            - Path: String representation of path
+            - Other: String representation
+
+    Side effects:
+        None. Pure function.
+    """
+    match value:
+        case datetime():
+            return value.isoformat()
+        case Path():
+            return str(value)
+        case _:
+            return str(value)
 
 
 def log_request_event(event: dict[str, Any]) -> None:
-    """
-    Emit a structured request event.
+    """Emit a structured request event.
+
+    Writes a JSON-formatted log entry to the requests log file. Automatically
+    injects timestamp if not present in the event dictionary.
 
     Args:
-        event: Event payload. ``timestamp`` is injected automatically if absent.
+        event: Event payload dictionary. Should contain:
+            - event: str - Event type (e.g., "api_request", "ollama_request")
+            - operation: str - Operation name (e.g., "generate", "chat")
+            - status: str - Status ("success", "error")
+            - Additional fields as needed (model, latency_ms, etc.)
+        The 'timestamp' field is automatically added if missing.
+
+    Side effects:
+        - Writes JSON line to logs/requests.jsonl file
+        - Adds timestamp to event dictionary if missing
+        - May raise IOError if file write fails
+
+    Example:
+        >>> log_request_event({
+        ...     "event": "api_request",
+        ...     "operation": "generate",
+        ...     "status": "success",
+        ...     "model": "qwen2.5vl:7b",
+        ...     "latency_ms": 1234.56
+        ... })
     """
-    if "timestamp" not in event:
-        event["timestamp"] = datetime.now(UTC).isoformat()
+    event.setdefault("timestamp", datetime.now(UTC).isoformat())
     REQUEST_LOGGER.info(json.dumps(event, default=_json_default))
 
 
 __all__ = ["log_request_event"]
-

@@ -1,9 +1,24 @@
-"""
-Performance logging utilities for the Shared Ollama Service.
+"""Performance logging utilities for the Shared Ollama Service.
+
+This module provides detailed performance metrics collection including
+token generation rates, model load times, and evaluation durations.
+
+Key behaviors:
+    - Detailed timing metrics from Ollama responses (nanoseconds)
+    - Automatic conversion to milliseconds and tokens/second
+    - JSON Lines logging to performance.jsonl
+    - In-memory storage with automatic size limiting
+    - Model-specific performance aggregation
+
+Log file:
+    - Location: ``logs/performance.jsonl`` (relative to project root)
+    - Format: One JSON object per line
+    - Encoding: UTF-8
 """
 
 from __future__ import annotations
 
+import functools
 import json
 import logging
 import time
@@ -21,16 +36,61 @@ if TYPE_CHECKING:  # pragma: no cover
 performance_logger = logging.getLogger("ollama.performance")
 performance_logger.setLevel(logging.INFO)
 
-LOGS_DIR = Path(__file__).resolve().parents[3] / "logs"
-LOGS_DIR.mkdir(exist_ok=True)
+# Cache log directory resolution
+@functools.cache
+def _get_logs_dir() -> Path:
+    """Get logs directory with caching for performance.
+
+    Resolves the logs directory relative to the project root and creates
+    it if it doesn't exist. Result is cached since the path doesn't change
+    at runtime.
+
+    Returns:
+        Path to logs directory.
+
+    Side effects:
+        Creates logs directory if it doesn't exist.
+    """
+    logs_dir = Path(__file__).resolve().parents[3] / "logs"
+    logs_dir.mkdir(exist_ok=True)
+    return logs_dir
+
+
+LOGS_DIR = _get_logs_dir()
 
 performance_handler = logging.FileHandler(LOGS_DIR / "performance.jsonl")
 performance_handler.setFormatter(logging.Formatter("%(message)s"))
 performance_logger.addHandler(performance_handler)
 
 
-@dataclass
+@dataclass(slots=True)
 class DetailedPerformanceMetrics:
+    """Detailed performance metrics for a request.
+
+    Contains comprehensive timing and token metrics extracted from Ollama
+    responses. All duration values are converted from nanoseconds to
+    milliseconds for readability.
+
+    Attributes:
+        model: Model name used for the request.
+        operation: Operation type (e.g., "generate", "chat").
+        timestamp: Request timestamp in UTC.
+        total_latency_ms: Total request latency in milliseconds (>=0.0).
+        success: Whether the request succeeded.
+        error: Error message if request failed. None if successful.
+        load_duration_ns: Model load duration in nanoseconds. None if N/A.
+        prompt_eval_count: Number of prompt tokens evaluated. None if N/A.
+        prompt_eval_duration_ns: Prompt evaluation duration in nanoseconds. None if N/A.
+        eval_count: Number of generation tokens produced. None if N/A.
+        eval_duration_ns: Generation duration in nanoseconds. None if N/A.
+        total_duration_ns: Total generation duration in nanoseconds. None if N/A.
+        load_time_ms: Model load time in milliseconds (converted from ns). None if N/A.
+        prompt_eval_time_ms: Prompt evaluation time in milliseconds. None if N/A.
+        generation_time_ms: Generation time in milliseconds. None if N/A.
+        tokens_per_second: Token generation rate (tokens/sec). None if N/A.
+        prompt_tokens_per_second: Prompt evaluation rate (tokens/sec). None if N/A.
+    """
+
     model: str
     operation: str
     timestamp: datetime
@@ -50,6 +110,15 @@ class DetailedPerformanceMetrics:
     prompt_tokens_per_second: float | None = None
 
     def to_dict(self) -> dict[str, Any]:
+        """Convert metrics to dictionary for JSON serialization.
+
+        Converts all fields to JSON-serializable format. Timestamps are
+        converted to ISO 8601 strings. Numeric values are rounded to
+        2 decimal places.
+
+        Returns:
+            Dictionary with all metrics in JSON-serializable format.
+        """
         return {
             "timestamp": self.timestamp.isoformat(),
             "model": self.model,
@@ -70,6 +139,24 @@ class DetailedPerformanceMetrics:
 
 
 class PerformanceCollector:
+    """Collects detailed performance metrics for requests.
+
+    Extracts detailed timing and token metrics from Ollama responses and
+    computes derived metrics like tokens/second. Stores metrics in-memory
+    and logs to JSON Lines file.
+
+    Attributes:
+        _metrics: Class variable storing list of DetailedPerformanceMetrics.
+        _max_metrics: Maximum number of metrics to retain (default: 10,000).
+
+    Thread safety:
+        Not thread-safe. Use from a single thread or protect with locks
+        if accessing from multiple threads.
+
+    Memory management:
+        Automatically trims oldest metrics when _max_metrics is exceeded.
+    """
+
     _metrics: ClassVar[list[DetailedPerformanceMetrics]] = []
     _max_metrics: ClassVar[int] = 10_000
 
@@ -80,9 +167,29 @@ class PerformanceCollector:
         operation: str,
         total_latency_ms: float,
         success: bool,
-        response: "GenerateResponse | None" = None,
+        response: GenerateResponse | None = None,
         error: str | None = None,
     ) -> None:
+        """Record detailed performance metrics.
+
+        Extracts timing and token metrics from GenerateResponse and computes
+        derived metrics. Logs to performance.jsonl file.
+
+        Args:
+            model: Model name used for the request.
+            operation: Operation type (e.g., "generate", "chat").
+            total_latency_ms: Total request latency in milliseconds (>=0.0).
+            success: Whether the request succeeded.
+            response: GenerateResponse with detailed timing data. Only used
+                if success is True.
+            error: Error message if request failed. None if successful.
+
+        Side effects:
+            - Creates DetailedPerformanceMetrics object
+            - Appends to _metrics list (may trim if limit exceeded)
+            - Writes JSON line to performance.jsonl file
+            - Logs info message with tokens/second if available
+        """
         metric = DetailedPerformanceMetrics(
             model=model,
             operation=operation,
@@ -137,10 +244,28 @@ class PerformanceCollector:
 
     @classmethod
     def get_performance_stats(cls) -> dict[str, Any]:
+        """Get aggregated performance statistics.
+
+        Computes average performance metrics across all successful requests
+        with token generation data. Groups statistics by model.
+
+        Returns:
+            Dictionary with keys:
+                - avg_tokens_per_second: float - Overall average
+                - avg_load_time_ms: float - Overall average
+                - avg_generation_time_ms: float - Overall average
+                - total_requests: int - Count of successful requests
+                - by_model: dict[str, dict] - Per-model statistics with same
+                  structure as top-level keys plus request_count
+
+            Returns empty dict if no successful metrics available.
+        """
         if not cls._metrics:
             return {}
 
-        successful = [metric for metric in cls._metrics if metric.success and metric.tokens_per_second]
+        successful = [
+            metric for metric in cls._metrics if metric.success and metric.tokens_per_second
+        ]
         if not successful:
             return {}
 
@@ -161,11 +286,11 @@ class PerformanceCollector:
             sum(generation_times) / len(generation_times) if generation_times else 0.0
         )
 
-        by_model: dict[str, list[DetailedPerformanceMetrics]] = defaultdict(list)
+        by_model: defaultdict[str, list[DetailedPerformanceMetrics]] = defaultdict(list)
         for metric in successful:
             by_model[metric.model].append(metric)
 
-        model_stats = {}
+        model_stats: dict[str, dict[str, Any]] = {}
         for model, metrics in by_model.items():
             tokens = [m.tokens_per_second for m in metrics if m.tokens_per_second is not None]
             loads = [m.load_time_ms for m in metrics if m.load_time_ms is not None]
@@ -188,6 +313,14 @@ class PerformanceCollector:
 
     @classmethod
     def reset(cls) -> None:
+        """Reset all collected performance metrics.
+
+        Clears the entire metrics collection. Useful for testing or
+        periodic resets.
+
+        Side effects:
+            Sets _metrics to empty list.
+        """
         cls._metrics = []
 
 
@@ -195,8 +328,33 @@ class PerformanceCollector:
 def track_performance(
     model: str,
     operation: str = "generate",
-    response: "GenerateResponse | None" = None,
+    response: GenerateResponse | None = None,
 ) -> Generator[None, None, None]:
+    """Context manager to track request performance.
+
+    Automatically measures execution time and records detailed performance
+    metrics. Handles exceptions by recording error information.
+
+    Args:
+        model: Model name for the request.
+        operation: Operation type (e.g., "generate", "chat"). Defaults to "generate".
+        response: GenerateResponse with detailed timing data. Should be set
+            after the request completes if available.
+
+    Yields:
+        None. The context manager tracks timing while the context is active.
+
+    Side effects:
+        - Measures execution time using time.perf_counter()
+        - Records metrics via PerformanceCollector.record_performance()
+        - Logs error information if exception occurs
+
+    Example:
+        >>> response = None
+        >>> with track_performance("qwen2.5vl:7b", "generate"):
+        ...     response = await client.generate("Hello")
+        >>> # Note: response should be passed to record_performance separately
+    """
     start_time = time.perf_counter()
     success = False
     error = None
@@ -220,6 +378,14 @@ def track_performance(
 
 
 def get_performance_stats() -> dict[str, Any]:
+    """Get aggregated performance statistics.
+
+    Convenience function that delegates to PerformanceCollector.get_performance_stats().
+
+    Returns:
+        Dictionary with performance statistics. See PerformanceCollector.get_performance_stats()
+        for structure.
+    """
     return PerformanceCollector.get_performance_stats()
 
 
@@ -229,4 +395,3 @@ __all__ = [
     "get_performance_stats",
     "track_performance",
 ]
-

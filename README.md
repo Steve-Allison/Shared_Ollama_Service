@@ -43,7 +43,7 @@ Models remain in memory for 5 minutes after last use (OLLAMA_KEEP_ALIVE), then a
 
 ## Project Structure
 
-```
+```text
 shared_ollama_service/
 ├── src/shared_ollama/
 │   ├── __init__.py                 # Public SDK exports
@@ -95,7 +95,7 @@ ollama serve
 
 ### Pull Models
 
-**Option 1: Manual Pull**
+#### Option 1: Manual Pull
 
 ```bash
 # Pull primary model (qwen2.5vl:7b)
@@ -111,7 +111,7 @@ ollama pull qwen2.5:14b
 ollama pull granite4:tiny-h
 ```
 
-**Option 2: Automated Pre-download (Recommended)**
+#### Option 2: Automated Pre-download (Recommended)
 
 ```bash
 # Pre-download all required models
@@ -1000,7 +1000,7 @@ KEEP_ALIVE=60m ./scripts/warmup_models.sh
 
 ### Automated Warm-up on Startup
 
-**Option 1: Manual warm-up after service start**
+#### Option 1: Manual warm-up after service start
 
 ```bash
 # Start Ollama
@@ -1010,7 +1010,7 @@ ollama serve
 ./scripts/warmup_models.sh
 ```
 
-**Option 2: Cron job for warm-up** (if using launchd service)
+#### Option 2: Cron job for warm-up (if using launchd service)
 
 ```bash
 # Add to crontab to warm up 2 minutes after login
@@ -1020,7 +1020,7 @@ crontab -e
 @reboot sleep 120 && /path/to/Shared_Ollama_Service/scripts/warmup_models.sh
 ```
 
-**Option 3: Warm-up via API call**
+#### Option 3: Warm-up via API call
 
 ```bash
 # Warm up a specific model

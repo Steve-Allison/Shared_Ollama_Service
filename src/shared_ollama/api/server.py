@@ -1,8 +1,29 @@
-"""
-FastAPI REST API server for the Shared Ollama Service.
+"""FastAPI REST API server for the Shared Ollama Service.
 
-Provides a language-agnostic REST API that wraps the Python client library,
-enabling centralized logging, metrics, and control for all projects.
+This module provides a language-agnostic REST API that wraps the Python
+client library, enabling centralized logging, metrics, and control for
+all projects.
+
+Key behaviors:
+    - Manages Ollama service lifecycle internally via OllamaManager
+    - Implements request queuing for graceful traffic handling
+    - Provides rate limiting via slowapi
+    - Comprehensive error handling with consistent error responses
+    - Streaming support via Server-Sent Events (SSE)
+    - Automatic metrics collection and structured logging
+
+Architecture:
+    - FastAPI application with lifespan management
+    - Global async client instance for Ollama operations
+    - Request queue for concurrency control
+    - Helper functions for error handling and status code mapping
+
+Endpoints:
+    - GET /api/v1/health - Health check
+    - GET /api/v1/models - List available models
+    - GET /api/v1/queue/stats - Queue statistics
+    - POST /api/v1/generate - Text generation (with streaming support)
+    - POST /api/v1/chat - Chat completion (with streaming support)
 """
 
 from __future__ import annotations
@@ -12,6 +33,7 @@ import logging
 import time
 import uuid
 from contextlib import asynccontextmanager
+from typing import Any
 
 import httpx
 from fastapi import FastAPI, HTTPException, Request, Response, status
@@ -196,7 +218,17 @@ def get_queue() -> RequestQueue:
 
 
 def get_request_context(request: Request) -> RequestContext:
-    """Extract request context from FastAPI request."""
+    """Extract request context from FastAPI request.
+
+    Creates a RequestContext object with unique request ID and extracted
+    headers. Used throughout request lifecycle for logging and tracking.
+
+    Args:
+        request: FastAPI Request object.
+
+    Returns:
+        RequestContext with request_id, client_ip, user_agent, and project_name.
+    """
     return RequestContext(
         request_id=str(uuid.uuid4()),
         client_ip=get_remote_address(request),
@@ -205,16 +237,109 @@ def get_request_context(request: Request) -> RequestContext:
     )
 
 
+def _map_http_status_code(status_code: int | None) -> tuple[int, str]:
+    """Map Ollama HTTP status codes to appropriate API responses.
+
+    Converts Ollama service HTTP status codes to appropriate FastAPI
+    status codes and error messages for client consumption.
+
+    Args:
+        status_code: HTTP status code from Ollama service. None if
+            status code unavailable.
+
+    Returns:
+        Tuple of (http_status_code, error_message):
+            - (400, ...) for 4xx client errors from Ollama
+            - (502, ...) for 5xx server errors from Ollama
+            - (503, ...) for unknown/unavailable status
+    """
+    match status_code:
+        case code if code and 400 <= code < 500:
+            return (status.HTTP_400_BAD_REQUEST, f"Invalid request to Ollama service (status {code})")
+        case code if code and code >= 500:
+            return (status.HTTP_502_BAD_GATEWAY, "Ollama service returned an error. Please try again later.")
+        case _:
+            return (status.HTTP_503_SERVICE_UNAVAILABLE, "Ollama service is unavailable.")
+
+
+def _log_and_record_error(
+    ctx: RequestContext,
+    operation: str,
+    model: str,
+    latency_ms: float,
+    error_type: str,
+    error_message: str,
+    status_code: int | None = None,
+    **extra_log_data: dict[str, Any],
+) -> None:
+    """Log error and record metrics with consistent format.
+
+    Helper function to reduce code duplication across error handlers.
+
+    Args:
+        ctx: Request context.
+        operation: Operation name (e.g., "generate", "chat").
+        model: Model name or "unknown".
+        latency_ms: Request latency in milliseconds.
+        error_type: Type of error.
+        error_message: Error message.
+        status_code: Optional HTTP status code.
+        **extra_log_data: Additional data to include in logs.
+    """
+    log_data: dict[str, Any] = {
+        "event": "api_request",
+        "client_type": "rest_api",
+        "operation": operation,
+        "status": "error",
+        "model": model,
+        "request_id": ctx.request_id,
+        "client_ip": ctx.client_ip,
+        "project_name": ctx.project_name,
+        "latency_ms": round(latency_ms, 3),
+        "error_type": error_type,
+        "error_message": error_message,
+    }
+    if status_code is not None:
+        log_data["ollama_status_code"] = status_code
+    log_data.update(extra_log_data)
+
+    log_request_event(log_data)
+
+    error_name = f"{error_type}:{status_code}" if status_code else error_type
+    MetricsCollector.record_request(
+        model=model,
+        operation=operation,
+        latency_ms=latency_ms,
+        success=False,
+        error=error_name,
+    )
+
+
 async def _stream_generate(
     client: AsyncSharedOllamaClient,
     ctx: RequestContext,
     generate_req: GenerateRequest,
     options: GenerateOptions | None,
-):
-    """
-    Stream generate responses in SSE format.
+) -> AsyncIterator[str]:
+    """Stream generate responses in Server-Sent Events (SSE) format.
 
-    Yields Server-Sent Events formatted chunks.
+    Converts async generator chunks from client.generate_stream() into
+    SSE-formatted strings. Handles errors by sending error chunk as final
+    message.
+
+    Args:
+        client: AsyncSharedOllamaClient instance.
+        ctx: Request context for tracking.
+        generate_req: GenerateRequest with prompt and options.
+        options: GenerateOptions for generation parameters.
+
+    Yields:
+        SSE-formatted strings. Each chunk is prefixed with "data: " and
+        suffixed with "\\n\\n". Final chunk on error includes error details.
+
+    Side effects:
+        - Calls client.generate_stream() which makes HTTP request
+        - Logs exceptions on error
     """
     try:
         async for chunk_data in client.generate_stream(
@@ -246,11 +371,27 @@ async def _stream_chat(
     chat_req: ChatRequest,
     messages: list[dict[str, str]],
     options: GenerateOptions | None,
-):
-    """
-    Stream chat responses in SSE format.
+) -> AsyncIterator[str]:
+    """Stream chat responses in Server-Sent Events (SSE) format.
 
-    Yields Server-Sent Events formatted chunks.
+    Converts async generator chunks from client.chat_stream() into
+    SSE-formatted strings. Handles errors by sending error chunk as final
+    message.
+
+    Args:
+        client: AsyncSharedOllamaClient instance.
+        ctx: Request context for tracking.
+        chat_req: ChatRequest with messages and options.
+        messages: List of message dictionaries for client.
+        options: GenerateOptions for generation parameters.
+
+    Yields:
+        SSE-formatted strings. Each chunk is prefixed with "data: " and
+        suffixed with "\\n\\n". Final chunk on error includes error details.
+
+    Side effects:
+        - Calls client.chat_stream() which makes HTTP request
+        - Logs exceptions on error
     """
     try:
         async for chunk_data in client.chat_stream(
@@ -278,10 +419,19 @@ async def _stream_chat(
 
 @app.get("/api/v1/health", response_model=HealthResponse, tags=["Health"])
 async def health_check() -> HealthResponse:
-    """
-    Health check endpoint.
+    """Health check endpoint.
 
-    Returns the health status of the API and underlying Ollama service.
+    Performs a lightweight health check on the API and underlying Ollama
+    service. Returns status information without requiring authentication.
+
+    Returns:
+        HealthResponse with:
+            - status: "healthy" or "unhealthy"
+            - ollama_service: Ollama service status string
+            - version: API version string
+
+    Side effects:
+        Calls check_service_health() which makes HTTP request to Ollama.
     """
     is_healthy, error = check_service_health()
     ollama_status = "healthy" if is_healthy else f"unhealthy: {error}"
@@ -295,11 +445,20 @@ async def health_check() -> HealthResponse:
 
 @app.get("/api/v1/queue/stats", response_model=QueueStatsResponse, tags=["Queue"])
 async def get_queue_stats() -> QueueStatsResponse:
-    """
-    Get request queue statistics.
+    """Get request queue statistics.
 
-    Returns current queue metrics including wait times, queue depth,
-    and success/failure counts.
+    Returns comprehensive queue metrics including current state, historical
+    counts, and performance statistics.
+
+    Returns:
+        QueueStatsResponse with:
+            - Current state: queued, in_progress
+            - Historical counts: completed, failed, rejected, timeout
+            - Performance metrics: wait times (total, max, avg)
+            - Configuration: max_concurrent, max_queue_size, default_timeout
+
+    Side effects:
+        Acquires asyncio.Lock briefly to read statistics atomically.
     """
     queue = get_queue()
     stats = await queue.get_stats()
@@ -324,10 +483,24 @@ async def get_queue_stats() -> QueueStatsResponse:
 @app.get("/api/v1/models", response_model=ModelsResponse, tags=["Models"])
 @limiter.limit("30/minute")
 async def list_models(request: Request) -> ModelsResponse:
-    """
-    List available models.
+    """List available models.
 
-    Returns a list of all models available in the Ollama service.
+    Retrieves the list of all models available in the Ollama service.
+    Rate limited to 30 requests per minute per IP address.
+
+    Args:
+        request: FastAPI Request object (injected).
+
+    Returns:
+        ModelsResponse with list of ModelInfo objects, one per available model.
+
+    Raises:
+        HTTPException: If Ollama service is unavailable or request fails.
+
+    Side effects:
+        - Makes HTTP request to Ollama service
+        - Logs request event
+        - Records metrics
     """
     ctx = get_request_context(request)
     start_time = time.perf_counter()
@@ -503,11 +676,34 @@ async def list_models(request: Request) -> ModelsResponse:
 @app.post("/api/v1/generate", tags=["Generation"])
 @limiter.limit("60/minute")
 async def generate(request: Request) -> Response:
-    """
-    Generate text from a prompt.
+    """Generate text from a prompt.
 
-    Uses the specified model (or default) to generate text from the given prompt.
-    Supports both streaming and non-streaming responses based on the 'stream' parameter.
+    Sends a text generation request to the Ollama service. Supports both
+    streaming (Server-Sent Events) and non-streaming responses based on
+    the 'stream' parameter in the request body.
+
+    Args:
+        request: FastAPI Request object (injected). Body must contain
+            GenerateRequest JSON.
+
+    Returns:
+        - GenerateResponse (JSON) if stream=False
+        - StreamingResponse (text/event-stream) if stream=True
+
+    Raises:
+        HTTPException: With appropriate status code for various error conditions:
+            - 422: Invalid request body or validation error
+            - 400: Invalid prompt or request parameters
+            - 503: Ollama service unavailable
+            - 504: Request timeout
+            - 500: Internal server error
+
+    Side effects:
+        - Parses request body JSON
+        - Acquires queue slot (may wait or timeout)
+        - Makes HTTP request to Ollama service
+        - Logs request event with comprehensive metrics
+        - Records metrics via MetricsCollector
     """
     ctx = get_request_context(request)
     start_time = time.perf_counter()
@@ -711,43 +907,19 @@ async def generate(request: Request) -> Response:
         latency_ms = (time.perf_counter() - start_time) * 1000
         status_code = exc.response.status_code if exc.response else None
 
-        # Map HTTP status codes appropriately
-        if status_code and 400 <= status_code < 500:
-            # Client error from Ollama - return 400 Bad Request
-            http_status = status.HTTP_400_BAD_REQUEST
-            error_msg = f"Invalid request to Ollama service (status {status_code})"
-        elif status_code and status_code >= 500:
-            # Server error from Ollama - return 502 Bad Gateway
-            http_status = status.HTTP_502_BAD_GATEWAY
-            error_msg = "Ollama service returned an error. Please try again later."
-        else:
-            # Unknown status - treat as service unavailable
-            http_status = status.HTTP_503_SERVICE_UNAVAILABLE
-            error_msg = "Ollama service is unavailable."
+        # Map HTTP status codes using helper function
+        http_status, error_msg = _map_http_status_code(status_code)
 
         logger.error("http_status_error: request_id=%s, status_code=%s, error=%s", ctx.request_id, status_code, str(exc))
 
-        log_request_event({
-            "event": "api_request",
-            "client_type": "rest_api",
-            "operation": "generate",
-            "status": "error",
-            "model": generate_req.model or "unknown",
-            "request_id": ctx.request_id,
-            "client_ip": ctx.client_ip,
-            "project_name": ctx.project_name,
-            "latency_ms": round(latency_ms, 3),
-            "error_type": "HTTPStatusError",
-            "error_message": str(exc),
-            "ollama_status_code": status_code,
-        })
-
-        MetricsCollector.record_request(
-            model=generate_req.model or "unknown",
+        _log_and_record_error(
+            ctx=ctx,
             operation="generate",
+            model=generate_req.model or "unknown",
             latency_ms=latency_ms,
-            success=False,
-            error=f"HTTPStatusError:{status_code}",
+            error_type="HTTPStatusError",
+            error_message=str(exc),
+            status_code=status_code,
         )
 
         raise HTTPException(
@@ -820,11 +992,35 @@ async def generate(request: Request) -> Response:
 @app.post("/api/v1/chat", tags=["Chat"])
 @limiter.limit("60/minute")
 async def chat(request: Request) -> Response:
-    """
-    Chat completion endpoint.
+    """Chat completion endpoint.
 
-    Processes a conversation with multiple messages and returns the assistant's response.
-    Supports both streaming and non-streaming responses based on the 'stream' parameter.
+    Processes a conversation with multiple messages and returns the assistant's
+    response. Supports both streaming (Server-Sent Events) and non-streaming
+    responses based on the 'stream' parameter in the request body.
+
+    Args:
+        request: FastAPI Request object (injected). Body must contain
+            ChatRequest JSON with messages list.
+
+    Returns:
+        - ChatResponse (JSON) if stream=False
+        - StreamingResponse (text/event-stream) if stream=True
+
+    Raises:
+        HTTPException: With appropriate status code for various error conditions:
+            - 422: Invalid request body or validation error
+            - 400: Invalid messages or request parameters
+            - 503: Ollama service unavailable
+            - 504: Request timeout
+            - 500: Internal server error
+
+    Side effects:
+        - Parses request body JSON
+        - Validates message structure and content
+        - Acquires queue slot (may wait or timeout)
+        - Makes HTTP request to Ollama service
+        - Logs request event with comprehensive metrics
+        - Records metrics via MetricsCollector
     """
     ctx = get_request_context(request)
     start_time = time.perf_counter()
@@ -1145,8 +1341,22 @@ async def chat(request: Request) -> Response:
 
 
 @app.exception_handler(RequestValidationError)
-async def validation_exception_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
-    """Handle request validation errors."""
+async def validation_exception_handler(
+    request: Request, exc: RequestValidationError
+) -> JSONResponse:
+    """Handle request validation errors.
+
+    Global exception handler for Pydantic validation errors. Returns
+    structured error response with validation details.
+
+    Args:
+        request: FastAPI Request object.
+        exc: RequestValidationError with validation error details.
+
+    Returns:
+        JSONResponse with ErrorResponse containing validation error message
+        and request_id. Status code 422 (Unprocessable Entity).
+    """
     ctx = get_request_context(request)
     error_details = exc.errors()
     logger.warning("validation_error: request_id=%s, errors=%s", ctx.request_id, error_details)
@@ -1167,8 +1377,22 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 
 
 @app.exception_handler(RateLimitExceeded)
-async def rate_limit_exception_handler(request: Request, exc: RateLimitExceeded) -> JSONResponse:
-    """Handle rate limit exceeded errors."""
+async def rate_limit_exception_handler(
+    request: Request, exc: RateLimitExceeded
+) -> JSONResponse:
+    """Handle rate limit exceeded errors.
+
+    Global exception handler for rate limiting. Returns structured error
+    response with Retry-After header.
+
+    Args:
+        request: FastAPI Request object.
+        exc: RateLimitExceeded exception.
+
+    Returns:
+        JSONResponse with ErrorResponse. Status code 429 (Too Many Requests).
+        Includes Retry-After header set to 60 seconds.
+    """
     ctx = get_request_context(request)
     logger.warning("rate_limit_exceeded: request_id=%s, client_ip=%s", ctx.request_id, ctx.client_ip)
     return JSONResponse(
@@ -1183,8 +1407,25 @@ async def rate_limit_exception_handler(request: Request, exc: RateLimitExceeded)
 
 
 @app.exception_handler(Exception)
-async def global_exception_handler(request: Request, exc: Exception) -> JSONResponse:
-    """Global exception handler for unexpected errors."""
+async def global_exception_handler(
+    request: Request, exc: Exception
+) -> JSONResponse:
+    """Global exception handler for unexpected errors.
+
+    Catches any unhandled exceptions and returns a generic error response
+    without exposing internal error details to clients.
+
+    Args:
+        request: FastAPI Request object.
+        exc: Exception that was not handled by other handlers.
+
+    Returns:
+        JSONResponse with ErrorResponse containing generic error message.
+        Status code 500 (Internal Server Error).
+
+    Side effects:
+        Logs full exception traceback for debugging.
+    """
     ctx = get_request_context(request)
     logger.exception("unhandled_exception: request_id=%s, error_type=%s, error=%s", ctx.request_id, type(exc).__name__, str(exc))
     return JSONResponse(
@@ -1199,7 +1440,18 @@ async def global_exception_handler(request: Request, exc: Exception) -> JSONResp
 
 @app.get("/", tags=["Root"])
 async def root() -> dict[str, str]:
-    """Root endpoint with API information."""
+    """Root endpoint with API information.
+
+    Provides basic API metadata and links to documentation endpoints.
+    Useful for service discovery and health checks.
+
+    Returns:
+        Dictionary with keys:
+            - service: Service name
+            - version: API version
+            - docs: Path to OpenAPI documentation
+            - health: Path to health check endpoint
+    """
     return {
         "service": "Shared Ollama Service API",
         "version": "1.0.0",

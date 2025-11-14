@@ -35,12 +35,26 @@ if ! command -v ollama &> /dev/null; then
     exit 1
 fi
 
+# Check for restart flag
+RESTART=false
+if [ "$1" = "--restart" ] || [ "$1" = "-r" ]; then
+    RESTART=true
+fi
+
 # Check if REST API is already running
 API_PORT="${API_PORT:-8000}"
 if curl -f -s "http://localhost:$API_PORT/api/v1/health" > /dev/null 2>&1; then
-    echo -e "${YELLOW}⚠ REST API is already running on port $API_PORT${NC}"
-    echo "To restart, stop it first: ./scripts/shutdown.sh"
-    exit 0
+    if [ "$RESTART" = true ]; then
+        echo -e "${YELLOW}⚠ REST API is already running. Stopping it first...${NC}"
+        "$SCRIPT_DIR/shutdown.sh" || true
+        echo "Waiting 2 seconds for port to be released..."
+        sleep 2
+    else
+        echo -e "${YELLOW}⚠ REST API is already running on port $API_PORT${NC}"
+        echo "To restart, run: $0 --restart"
+        echo "Or stop it first: ./scripts/shutdown.sh"
+        exit 0
+    fi
 fi
 
 echo -e "${BLUE}Configuration:${NC}"
@@ -53,14 +67,34 @@ echo ""
 echo -e "${BLUE}🚀 Starting REST API server...${NC}"
 API_HOST="${API_HOST:-0.0.0.0}"
 
+# Determine Python and uvicorn paths
+UVICORN_CMD="uvicorn"
+PYTHON_CMD="python3"
+
 # Check if we're in a virtual environment
 if [ -z "$VIRTUAL_ENV" ]; then
     if [ -d "$PROJECT_ROOT/.venv" ]; then
-        echo -e "${BLUE}Activating virtual environment...${NC}"
-        source "$PROJECT_ROOT/.venv/bin/activate"
+        echo -e "${BLUE}Using virtual environment at .venv${NC}"
+        UVICORN_CMD="$PROJECT_ROOT/.venv/bin/uvicorn"
+        PYTHON_CMD="$PROJECT_ROOT/.venv/bin/python"
+        # Verify uvicorn exists in venv
+        if [ ! -f "$UVICORN_CMD" ]; then
+            echo -e "${RED}✗ uvicorn not found in virtual environment${NC}"
+            echo "Please install dependencies: pip install -e \".[dev]\""
+            exit 1
+        fi
     else
         echo -e "${YELLOW}⚠ No virtual environment found. Using system Python.${NC}"
+        # Check if uvicorn is available in system
+        if ! command -v uvicorn &> /dev/null; then
+            echo -e "${RED}✗ uvicorn not found. Please install dependencies or create a virtual environment.${NC}"
+            exit 1
+        fi
     fi
+else
+    # Already in a venv, use it
+    UVICORN_CMD="uvicorn"
+    PYTHON_CMD="python"
 fi
 
 # Set environment variables for API
@@ -74,7 +108,15 @@ echo -e "${GRAY}System optimizations will be auto-detected and applied${NC}"
 echo ""
 
 # Start API server in foreground (so we can monitor it)
-exec uvicorn shared_ollama.api.server:app \
+echo -e "${GREEN}Starting uvicorn server...${NC}"
+echo -e "${GRAY}Command: $UVICORN_CMD shared_ollama.api.server:app --host $API_HOST --port $API_PORT${NC}"
+echo ""
+echo -e "${GRAY}API will be available at: http://${API_HOST}:${API_PORT}${NC}"
+echo -e "${GRAY}API docs: http://${API_HOST}:${API_PORT}/docs${NC}"
+echo ""
+
+# Start the server (exec replaces this process)
+exec "$UVICORN_CMD" shared_ollama.api.server:app \
     --host "$API_HOST" \
     --port "$API_PORT" \
     --log-level info

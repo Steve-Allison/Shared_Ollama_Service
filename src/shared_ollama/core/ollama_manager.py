@@ -19,7 +19,6 @@ Key behaviors:
 from __future__ import annotations
 
 import asyncio
-import functools
 import logging
 import os
 import platform
@@ -105,7 +104,7 @@ class OllamaManager:
         log_dir.mkdir(exist_ok=True)
         return log_dir
 
-    @functools.cached_property
+    @property
     def ollama_executable(self) -> str | None:
         """Find and cache the Ollama executable path.
 

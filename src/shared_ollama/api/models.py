@@ -20,9 +20,9 @@ Validation:
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import Any, Literal, Union
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class GenerateRequest(BaseModel):
@@ -70,15 +70,49 @@ class GenerateRequest(BaseModel):
     stop: list[str] | None = Field(None, description="Stop sequences")
 
 
-class ChatMessage(BaseModel):
-    """A chat message with role and content.
+class ImageContentPart(BaseModel):
+    """Image content part for multimodal messages.
 
-    Represents a single message in a conversation. Role must be one of
-    the predefined values.
+    Represents an image in a multimodal message. Images must be base64-encoded
+    with a data URL format: data:image/<format>;base64,<base64_data>
 
     Attributes:
-        role: Message role. Must be "user", "assistant", or "system".
-        content: Message content. Required, must not be empty.
+        type: Content type, must be "image_url".
+        image_url: Image URL object containing the base64-encoded image.
+    """
+
+    model_config = ConfigDict(
+        validate_assignment=True,
+        extra="forbid",
+    )
+
+    type: Literal["image_url"] = Field(..., description="Content type: 'image_url'")
+    image_url: dict[str, str] = Field(
+        ..., description="Image URL object with 'url' key containing base64 data URL"
+    )
+
+    @field_validator("image_url")
+    @classmethod
+    def validate_image_url(cls, v: dict[str, str]) -> dict[str, str]:
+        """Validate image URL format."""
+        if "url" not in v:
+            raise ValueError("image_url must contain 'url' key")
+        url = v["url"]
+        if not url.startswith("data:image/"):
+            raise ValueError("Image URL must start with 'data:image/'")
+        if ";base64," not in url:
+            raise ValueError("Image URL must contain ';base64,' separator")
+        return v
+
+
+class TextContentPart(BaseModel):
+    """Text content part for multimodal messages.
+
+    Represents text in a multimodal message.
+
+    Attributes:
+        type: Content type, must be "text".
+        text: Text content.
     """
 
     model_config = ConfigDict(
@@ -87,10 +121,77 @@ class ChatMessage(BaseModel):
         extra="forbid",
     )
 
+    type: Literal["text"] = Field(..., description="Content type: 'text'")
+    text: str = Field(..., min_length=1, description="Text content")
+
+
+ContentPart = Union[TextContentPart, ImageContentPart]
+
+
+class ChatMessage(BaseModel):
+    """A chat message with role and content.
+
+    Represents a single message in a conversation. Supports both text-only
+    and multimodal (text + images) content for vision language models.
+
+    For vision models (e.g., qwen2.5vl:7b), content can be:
+    - A string (text-only, backward compatible)
+    - An array of content parts (multimodal):
+      - {"type": "text", "text": "..."}
+      - {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64,..."}}
+
+    Attributes:
+        role: Message role. Must be "user", "assistant", or "system".
+        content: Message content. Can be:
+            - str: Text-only content (backward compatible)
+            - list[ContentPart]: Multimodal content with text and/or images
+    """
+
+    model_config = ConfigDict(
+        validate_assignment=True,
+        extra="forbid",
+    )
+
     role: Literal["user", "assistant", "system"] = Field(
         ..., description="Message role: 'user', 'assistant', or 'system'"
     )
-    content: str = Field(..., min_length=1, description="Message content")
+    content: Union[str, list[ContentPart]] = Field(
+        ...,
+        description=(
+            "Message content. Can be a string (text-only) or an array of content parts "
+            "(multimodal with text and/or images). For images, use base64-encoded data URLs: "
+            "data:image/<format>;base64,<base64_data>"
+        ),
+    )
+
+    @field_validator("content")
+    @classmethod
+    def validate_content(cls, v: Union[str, list[dict[str, Any]]]) -> Union[str, list[ContentPart]]:
+        """Validate and normalize content."""
+        if isinstance(v, str):
+            if not v.strip():
+                raise ValueError("Content cannot be empty")
+            return v
+        if isinstance(v, list):
+            if not v:
+                raise ValueError("Content array cannot be empty")
+            # Convert dicts to proper models
+            parts: list[ContentPart] = []
+            for part in v:
+                if isinstance(part, dict):
+                    part_type = part.get("type")
+                    if part_type == "text":
+                        parts.append(TextContentPart(**part))
+                    elif part_type == "image_url":
+                        parts.append(ImageContentPart(**part))
+                    else:
+                        raise ValueError(f"Unknown content part type: {part_type}")
+                elif isinstance(part, (TextContentPart, ImageContentPart)):
+                    parts.append(part)
+                else:
+                    raise ValueError(f"Invalid content part type: {type(part)}")
+            return parts
+        raise ValueError("Content must be a string or array of content parts")
 
 
 class ChatRequest(BaseModel):

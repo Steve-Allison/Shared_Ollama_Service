@@ -10,15 +10,19 @@ All mapping logic is isolated here to maintain separation of concerns.
 from __future__ import annotations
 
 from shared_ollama.api.models import (
+    ChatMessage as APIChatMessage,
     ChatRequest as APIChatRequest,
     GenerateRequest as APIGenerateRequest,
+    ImageContentPart,
     ModelInfo as APIModelInfo,
+    TextContentPart,
 )
 from shared_ollama.domain.entities import (
     ChatMessage,
     ChatRequest,
     GenerationOptions,
     GenerationRequest,
+    ImageContent,
     ModelInfo,
 )
 from shared_ollama.domain.value_objects import ModelName, Prompt, SystemMessage
@@ -70,6 +74,8 @@ def api_to_domain_generation_request(api_req: APIGenerateRequest) -> GenerationR
 def api_to_domain_chat_request(api_req: APIChatRequest) -> ChatRequest:
     """Convert API ChatRequest to domain ChatRequest.
 
+    Handles both text-only and multimodal (text + images) content.
+
     Args:
         api_req: API request model.
 
@@ -79,7 +85,23 @@ def api_to_domain_chat_request(api_req: APIChatRequest) -> ChatRequest:
     Raises:
         ValueError: If request validation fails (handled by domain entity).
     """
-    messages = tuple(ChatMessage(role=msg.role, content=msg.content) for msg in api_req.messages)
+    domain_messages: list[ChatMessage] = []
+    for api_msg in api_req.messages:
+        if isinstance(api_msg.content, str):
+            # Text-only message (backward compatible)
+            domain_messages.append(ChatMessage(role=api_msg.role, content=api_msg.content))
+        else:
+            # Multimodal message - convert content parts
+            content_parts: list[tuple[str, str | ImageContent]] = []
+            for part in api_msg.content:
+                if isinstance(part, TextContentPart):
+                    content_parts.append(("text", part.text))
+                elif isinstance(part, ImageContentPart):
+                    image_url = part.image_url["url"]
+                    content_parts.append(("image_url", ImageContent(url=image_url)))
+            domain_messages.append(ChatMessage(role=api_msg.role, content=tuple(content_parts)))
+
+    messages = tuple(domain_messages)
     model = ModelName(value=api_req.model) if api_req.model else None
 
     options: GenerationOptions | None = None

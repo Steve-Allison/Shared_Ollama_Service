@@ -21,10 +21,14 @@ This service provides a single Ollama instance accessible on port `11434` that a
 
 **Note**: Models are loaded on-demand. Only one model is in memory at a time based on which model is requested.
 
-- **Primary**: `qwen2.5vl:7b` (7B parameters, vision-language model)
-  - Vision-language model with multimodal capabilities
-  - Excellent performance for vision and text tasks
+- **Primary**: `qwen2.5vl:7b` (7B parameters, vision-language model) ⭐ **VLM SUPPORTED**
+  - **Full multimodal capabilities**: Process images + text in the same request
+  - **Native API support**: Uses Ollama's OpenAI-compatible multimodal format
+  - **Image analysis**: Describe, analyze, and answer questions about images
+  - **Visual understanding**: Extract text, context, and information from images
+  - Excellent performance for both vision and text tasks
   - Loaded into memory when requested (~6 GB RAM)
+  - **See VLM Support section below for usage examples**
 - **Standard**: `qwen2.5:7b` (7B parameters, text-only model)
   - Efficient text-only model with excellent performance
   - Fast inference for text generation tasks
@@ -42,6 +46,251 @@ This service provides a single Ollama instance accessible on port `11434` that a
   - Loaded into memory when requested (~8 GB RAM)
 
 Models remain in memory for 5 minutes after last use (OLLAMA_KEEP_ALIVE), then are automatically unloaded to free memory. Switching between models requires a brief load time (~2-3 seconds).
+
+## Vision Language Model (VLM) Support
+
+The service **fully supports** vision-language models with multimodal capabilities, specifically optimized for `qwen2.5vl:7b`. You can send images alongside text prompts for image analysis, visual question answering, and multimodal understanding.
+
+### VLM Capabilities
+
+- ✅ **Image Analysis**: Describe, analyze, and answer questions about images
+- ✅ **Multimodal Chat**: Combine text and images in conversation
+- ✅ **Visual Question Answering**: Ask questions about image content
+- ✅ **Image Understanding**: Extract information, text, and context from images
+- ✅ **Native API Format**: Uses Ollama's native OpenAI-compatible multimodal format
+
+### Service Expectations
+
+**Model Requirements:**
+
+- Use `qwen2.5vl:7b` for vision-language tasks (primary model)
+- Text-only models (`qwen2.5:7b`, `qwen2.5:14b`) do NOT support images
+- Images are processed by the VLM model's vision encoder
+
+**Image Format Requirements:**
+
+- **Format**: Base64-encoded data URLs
+- **Pattern**: `data:image/<format>;base64,<base64_encoded_data>`
+- **Supported Formats**: JPEG, PNG, GIF, WebP (any format supported by Ollama)
+- **Size Limits**: Recommended max 10MB per image (larger images may timeout)
+- **Validation**: Automatic validation of image format and encoding
+
+**API Behavior:**
+
+- **Backward Compatible**: Text-only messages still work as strings
+- **Multimodal Messages**: Use array format for text + images
+- **Streaming**: Fully supported for multimodal requests
+- **Error Handling**: Clear error messages for invalid image formats
+
+### Using VLM with REST API
+
+**Text-Only Chat (Backward Compatible):**
+
+```python
+import requests
+
+response = requests.post(
+    "http://localhost:8000/api/v1/chat",
+    json={
+        "model": "qwen2.5vl:7b",
+        "messages": [
+            {"role": "user", "content": "Hello, how are you?"}
+        ]
+    }
+)
+print(response.json()["message"]["content"])
+```
+
+**Multimodal Chat with Images:**
+
+```python
+import requests
+import base64
+
+# Read and encode image
+with open("image.jpg", "rb") as f:
+    image_data = base64.b64encode(f.read()).decode()
+    image_url = f"data:image/jpeg;base64,{image_data}"
+
+# Send multimodal request
+response = requests.post(
+    "http://localhost:8000/api/v1/chat",
+    json={
+        "model": "qwen2.5vl:7b",
+        "messages": [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": "What's in this image? Describe it in detail."},
+                    {
+                        "type": "image_url",
+                        "image_url": {"url": image_url}
+                    }
+                ]
+            }
+        ]
+    }
+)
+print(response.json()["message"]["content"])
+```
+
+**Multiple Images in One Message:**
+
+```python
+import requests
+import base64
+
+def encode_image(image_path):
+    with open(image_path, "rb") as f:
+        return f"data:image/jpeg;base64,{base64.b64encode(f.read()).decode()}"
+
+response = requests.post(
+    "http://localhost:8000/api/v1/chat",
+    json={
+        "model": "qwen2.5vl:7b",
+        "messages": [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": "Compare these two images:"},
+                    {"type": "image_url", "image_url": {"url": encode_image("image1.jpg")}},
+                    {"type": "image_url", "image_url": {"url": encode_image("image2.jpg")}}
+                ]
+            }
+        ]
+    }
+)
+```
+
+**TypeScript/JavaScript Example:**
+
+```typescript
+import fs from 'fs';
+
+// Read and encode image
+const imageBuffer = fs.readFileSync('image.jpg');
+const imageBase64 = imageBuffer.toString('base64');
+const imageUrl = `data:image/jpeg;base64,${imageBase64}`;
+
+// Send multimodal request
+const response = await fetch('http://localhost:8000/api/v1/chat', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    model: 'qwen2.5vl:7b',
+    messages: [
+      {
+        role: 'user',
+        content: [
+          { type: 'text', text: 'What do you see in this image?' },
+          { type: 'image_url', image_url: { url: imageUrl } }
+        ]
+      }
+    ]
+  })
+});
+
+const data = await response.json();
+console.log(data.message.content);
+```
+
+**Python Client Example:**
+
+```python
+from shared_ollama import AsyncSharedOllamaClient
+import base64
+
+async def analyze_image():
+    async with AsyncSharedOllamaClient() as client:
+        # Encode image
+        with open("image.jpg", "rb") as f:
+            image_data = base64.b64encode(f.read()).decode()
+            image_url = f"data:image/jpeg;base64,{image_data}"
+
+        # Send multimodal request
+        messages = [{
+            "role": "user",
+            "content": [
+                {"type": "text", "text": "Analyze this image"},
+                {"type": "image_url", "image_url": {"url": image_url}}
+            ]
+        }]
+
+        response = await client.chat(
+            messages=messages,
+            model="qwen2.5vl:7b"
+        )
+        print(response["message"]["content"])
+
+import asyncio
+asyncio.run(analyze_image())
+```
+
+### Streaming Multimodal Responses
+
+Streaming works seamlessly with multimodal requests:
+
+```python
+import requests
+import base64
+import json
+
+with open("image.jpg", "rb") as f:
+    image_url = f"data:image/jpeg;base64,{base64.b64encode(f.read()).decode()}"
+
+response = requests.post(
+    "http://localhost:8000/api/v1/chat",
+    json={
+        "model": "qwen2.5vl:7b",
+        "stream": True,
+        "messages": [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": "Describe this image"},
+                    {"type": "image_url", "image_url": {"url": image_url}}
+                ]
+            }
+        ]
+    },
+    stream=True
+)
+
+for line in response.iter_lines():
+    if line and line.startswith(b'data: '):
+        chunk = json.loads(line[6:])
+        print(chunk['chunk'], end='', flush=True)
+        if chunk['done']:
+            print(f"\n\nCompleted in {chunk['latency_ms']}ms")
+```
+
+### Best Practices
+
+1. **Use Appropriate Models**: Always use `qwen2.5vl:7b` for vision tasks
+2. **Optimize Images**: Resize large images before encoding to reduce payload size
+3. **Error Handling**: Check for 422 (validation) errors for invalid image formats
+4. **Streaming**: Use streaming for long responses to improve UX
+5. **Rate Limits**: Be aware of 60 requests/minute rate limit for chat endpoint
+6. **Image Size**: Keep images under 10MB for best performance
+
+### Error Handling
+
+The API provides clear error messages for common issues:
+
+- **422 Unprocessable Entity**: Invalid image format (not base64, missing data URL prefix, etc.)
+- **400 Bad Request**: Invalid request structure
+- **503 Service Unavailable**: Ollama service not running
+- **504 Gateway Timeout**: Request timeout (may occur with very large images)
+
+Example error response:
+
+```json
+{
+  "error": "Image URL must start with 'data:image/'",
+  "error_type": "ValidationError",
+  "request_id": "abc-123-def"
+}
+```
 
 ## Project Structure
 

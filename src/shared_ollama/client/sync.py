@@ -488,17 +488,23 @@ class SharedOllamaClient:
 
     def chat(
         self,
-        messages: list[dict[str, str]],
+        messages: list[dict[str, Any]],
         model: str | None = None,
         stream: bool = False,
     ) -> dict[str, Any]:
         """Chat completion with multiple messages.
 
         Sends a chat completion request with a conversation history.
+        Supports both text-only and multimodal (text + images) content.
 
         Args:
             messages: List of chat messages. Each message must be a dict with
                 'role' ('user', 'assistant', or 'system') and 'content' keys.
+                Content can be:
+                - str: Text-only content (backward compatible)
+                - list[dict]: Multimodal content with parts:
+                  - {"type": "text", "text": "..."}
+                  - {"type": "image_url", "image_url": {"url": "data:image/..."}}
             model: Model name. If None, uses config.default_model.
             stream: Whether to stream the response. Note: streaming is not
                 implemented in the sync client.

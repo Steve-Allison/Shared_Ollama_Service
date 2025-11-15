@@ -581,7 +581,7 @@ class AsyncSharedOllamaClient:
 
     async def chat(
         self,
-        messages: list[dict[str, str]],
+        messages: list[dict[str, Any]],
         model: str | None = None,
         options: GenerateOptions | None = None,
         stream: bool = False,
@@ -589,10 +589,16 @@ class AsyncSharedOllamaClient:
         """Chat completion with multiple messages.
 
         Sends a chat completion request with a conversation history.
+        Supports both text-only and multimodal (text + images) content.
 
         Args:
             messages: List of chat messages. Each message must be a dict with
                 'role' ('user', 'assistant', or 'system') and 'content' keys.
+                Content can be:
+                - str: Text-only content (backward compatible)
+                - list[dict]: Multimodal content with parts:
+                  - {"type": "text", "text": "..."}
+                  - {"type": "image_url", "image_url": {"url": "data:image/..."}}
             model: Model name. If None, uses config.default_model.
             options: Generation options (temperature, top_p, etc.). If None,
                 uses model defaults.
@@ -923,7 +929,7 @@ class AsyncSharedOllamaClient:
 
     async def chat_stream(
         self,
-        messages: list[dict[str, str]],
+        messages: list[dict[str, Any]],
         model: str | None = None,
         options: GenerateOptions | None = None,
     ) -> AsyncIterator[dict[str, Any]]:
@@ -931,10 +937,16 @@ class AsyncSharedOllamaClient:
 
         Sends a streaming chat completion request and yields incremental message
         chunks as they are generated. Final chunk includes complete metrics.
+        Supports both text-only and multimodal (text + images) content.
 
         Args:
             messages: List of chat messages. Each message must be a dict with
                 'role' ('user', 'assistant', or 'system') and 'content' keys.
+                Content can be:
+                - str: Text-only content (backward compatible)
+                - list[dict]: Multimodal content with parts:
+                  - {"type": "text", "text": "..."}
+                  - {"type": "image_url", "image_url": {"url": "data:image/..."}}
             model: Model name. If None, uses config.default_model.
             options: Generation options (temperature, top_p, etc.). If None,
                 uses model defaults.

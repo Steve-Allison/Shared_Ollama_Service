@@ -130,19 +130,66 @@ class GenerationRequest:
 
 
 @dataclass(slots=True, frozen=True)
+class ImageContent:
+    """Image content for multimodal messages.
+
+    Represents an image in a multimodal message. Images are base64-encoded
+    with a data URL format.
+
+    Attributes:
+        url: Base64-encoded image data URL (data:image/<format>;base64,<data>).
+    """
+
+    url: str
+
+    def __post_init__(self) -> None:
+        """Validate image content."""
+        if not self.url.startswith("data:image/"):
+            raise ValueError("Image URL must start with 'data:image/'")
+        if ";base64," not in self.url:
+            raise ValueError("Image URL must contain ';base64,' separator")
+
+
+@dataclass(slots=True, frozen=True)
+class TextContent:
+    """Text content for multimodal messages.
+
+    Represents text in a multimodal message.
+
+    Attributes:
+        text: Text content.
+    """
+
+    text: str
+
+    def __post_init__(self) -> None:
+        """Validate text content."""
+        if not self.text or not self.text.strip():
+            raise ValueError("Text content cannot be empty")
+
+
+# ContentPart is a tuple: ("text", str) or ("image_url", ImageContent)
+
+
+@dataclass(slots=True, frozen=True)
 class ChatMessage:
     """A chat message with role and content.
 
     Pure domain entity representing a single message in a conversation.
-    Contains business rules for valid roles.
+    Supports both text-only and multimodal (text + images) content for
+    vision language models.
 
     Attributes:
         role: Message role. Must be "user", "assistant", or "system".
-        content: Message content. Must not be empty.
+        content: Message content. Can be:
+            - str: Text-only content (backward compatible)
+            - tuple[tuple[Literal["text"], str] | tuple[Literal["image_url"], ImageContent], ...]:
+              Multimodal content with text and/or images.
+              Each part is a tuple: ("text", text_str) or ("image_url", ImageContent)
     """
 
     role: Literal["user", "assistant", "system"]
-    content: str
+    content: str | tuple[tuple[Literal["text"], str] | tuple[Literal["image_url"], ImageContent], ...]
 
     def __post_init__(self) -> None:
         """Validate chat message.
@@ -152,8 +199,26 @@ class ChatMessage:
         """
         if self.role not in ("user", "assistant", "system"):
             raise ValueError(f"Invalid role '{self.role}'. Must be 'user', 'assistant', or 'system'")
-        if not self.content or not self.content.strip():
-            raise ValueError("Message content cannot be empty")
+        if isinstance(self.content, str):
+            if not self.content or not self.content.strip():
+                raise ValueError("Message content cannot be empty")
+        elif isinstance(self.content, tuple):
+            if not self.content:
+                raise ValueError("Content parts cannot be empty")
+            for part in self.content:
+                if not isinstance(part, tuple) or len(part) != 2:
+                    raise ValueError("Content part must be a tuple of (type, content)")
+                part_type, part_content = part
+                if part_type == "text":
+                    if not isinstance(part_content, str) or not part_content.strip():
+                        raise ValueError("Text content cannot be empty")
+                elif part_type == "image_url":
+                    if not isinstance(part_content, ImageContent):
+                        raise ValueError("Image content must be ImageContent instance")
+                else:
+                    raise ValueError(f"Unknown content part type: {part_type}")
+        else:
+            raise ValueError("Content must be a string or tuple of content parts")
 
 
 @dataclass(slots=True, frozen=True)

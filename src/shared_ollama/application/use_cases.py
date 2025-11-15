@@ -270,7 +270,26 @@ class ChatUseCase:
 
         try:
             # Convert domain entities to client format
-            messages = [{"role": msg.role, "content": msg.content} for msg in request.messages]
+            # Handle both text-only and multimodal content
+            messages: list[dict[str, Any]] = []
+            for msg in request.messages:
+                if isinstance(msg.content, str):
+                    # Text-only message (backward compatible)
+                    messages.append({"role": msg.role, "content": msg.content})
+                else:
+                    # Multimodal message - convert to Ollama format
+                    content_parts: list[dict[str, Any]] = []
+                    for part in msg.content:
+                        part_type, part_content = part
+                        if part_type == "text":
+                            content_parts.append({"type": "text", "text": part_content})
+                        elif part_type == "image_url":
+                            # part_content is ImageContent
+                            content_parts.append({
+                                "type": "image_url",
+                                "image_url": {"url": part_content.url}
+                            })
+                    messages.append({"role": msg.role, "content": content_parts})
             model_str = request.model.value if request.model else None
 
             # Convert options to dict format

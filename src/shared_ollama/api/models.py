@@ -70,49 +70,15 @@ class GenerateRequest(BaseModel):
     stop: list[str] | None = Field(None, description="Stop sequences")
 
 
-class ImageContentPart(BaseModel):
-    """Image content part for multimodal messages.
+class ChatMessage(BaseModel):
+    """A chat message with role and text content (native Ollama format).
 
-    Represents an image in a multimodal message. Images must be base64-encoded
-    with a data URL format: data:image/<format>;base64,<base64_data>
-
-    Attributes:
-        type: Content type, must be "image_url".
-        image_url: Image URL object containing the base64-encoded image.
-    """
-
-    model_config = ConfigDict(
-        validate_assignment=True,
-        extra="forbid",
-    )
-
-    type: Literal["image_url"] = Field(..., description="Content type: 'image_url'")
-    image_url: dict[str, str] = Field(
-        ..., description="Image URL object with 'url' key containing base64 data URL"
-    )
-
-    @field_validator("image_url")
-    @classmethod
-    def validate_image_url(cls, v: dict[str, str]) -> dict[str, str]:
-        """Validate image URL format."""
-        if "url" not in v:
-            raise ValueError("image_url must contain 'url' key")
-        url = v["url"]
-        if not url.startswith("data:image/"):
-            raise ValueError("Image URL must start with 'data:image/'")
-        if ";base64," not in url:
-            raise ValueError("Image URL must contain ';base64,' separator")
-        return v
-
-
-class TextContentPart(BaseModel):
-    """Text content part for multimodal messages.
-
-    Represents text in a multimodal message.
+    Simple text-only message for chat completion. For vision language models
+    with images, use the dedicated /api/v1/vlm endpoint with VLMRequest.
 
     Attributes:
-        type: Content type, must be "text".
-        text: Text content.
+        role: Message role. Must be "user", "assistant", or "system".
+        content: Text content of the message.
     """
 
     model_config = ConfigDict(
@@ -121,77 +87,10 @@ class TextContentPart(BaseModel):
         extra="forbid",
     )
 
-    type: Literal["text"] = Field(..., description="Content type: 'text'")
-    text: str = Field(..., min_length=1, description="Text content")
-
-
-ContentPart = Union[TextContentPart, ImageContentPart]
-
-
-class ChatMessage(BaseModel):
-    """A chat message with role and content.
-
-    Represents a single message in a conversation. Supports both text-only
-    and multimodal (text + images) content for vision language models.
-
-    For vision models (e.g., qwen2.5vl:7b), content can be:
-    - A string (text-only, backward compatible)
-    - An array of content parts (multimodal):
-      - {"type": "text", "text": "..."}
-      - {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64,..."}}
-
-    Attributes:
-        role: Message role. Must be "user", "assistant", or "system".
-        content: Message content. Can be:
-            - str: Text-only content (backward compatible)
-            - list[ContentPart]: Multimodal content with text and/or images
-    """
-
-    model_config = ConfigDict(
-        validate_assignment=True,
-        extra="forbid",
-    )
-
     role: Literal["user", "assistant", "system"] = Field(
         ..., description="Message role: 'user', 'assistant', or 'system'"
     )
-    content: Union[str, list[ContentPart]] = Field(
-        ...,
-        description=(
-            "Message content. Can be a string (text-only) or an array of content parts "
-            "(multimodal with text and/or images). For images, use base64-encoded data URLs: "
-            "data:image/<format>;base64,<base64_data>"
-        ),
-    )
-
-    @field_validator("content")
-    @classmethod
-    def validate_content(cls, v: Union[str, list[dict[str, Any]]]) -> Union[str, list[ContentPart]]:
-        """Validate and normalize content."""
-        if isinstance(v, str):
-            if not v.strip():
-                raise ValueError("Content cannot be empty")
-            return v
-        if isinstance(v, list):
-            if not v:
-                raise ValueError("Content array cannot be empty")
-            # Convert dicts to proper models
-            parts: list[ContentPart] = []
-            for part in v:
-                if isinstance(part, dict):
-                    part_type = part.get("type")
-                    if part_type == "text":
-                        parts.append(TextContentPart(**part))
-                    elif part_type == "image_url":
-                        parts.append(ImageContentPart(**part))
-                    else:
-                        raise ValueError(f"Unknown content part type: {part_type}")
-                elif isinstance(part, (TextContentPart, ImageContentPart)):
-                    parts.append(part)
-                else:
-                    raise ValueError(f"Invalid content part type: {type(part)}")
-            return parts
-        raise ValueError("Content must be a string or array of content parts")
+    content: str = Field(..., min_length=1, description="Text content of the message")
 
 
 class ChatRequest(BaseModel):
@@ -510,6 +409,379 @@ class QueueStatsResponse(BaseModel):
     max_concurrent: int = Field(..., ge=1, description="Maximum concurrent requests allowed")
     max_queue_size: int = Field(..., ge=1, description="Maximum queue size")
     default_timeout: float = Field(..., ge=0.0, description="Default queue timeout (seconds)")
+
+
+class VLMMessage(BaseModel):
+    """Simple text-only message for VLM requests (native Ollama format).
+
+    VLM requests use native Ollama format with separate images parameter.
+    Messages contain only text content - images are passed separately.
+
+    Attributes:
+        role: Message role. Must be "user", "assistant", or "system".
+        content: Text content of the message.
+    """
+
+    model_config = ConfigDict(
+        str_strip_whitespace=True,
+        validate_assignment=True,
+        extra="forbid",
+    )
+
+    role: Literal["user", "assistant", "system"] = Field(
+        ..., description="Message role: 'user', 'assistant', or 'system'"
+    )
+    content: str = Field(..., min_length=1, description="Text content of the message")
+
+
+class VLMRequest(BaseModel):
+    """Request model for VLM (Vision-Language Model) endpoint.
+
+    Uses native Ollama format with separate images parameter.
+    Vision-language model endpoint that requires at least one image.
+    For text-only requests, use /api/v1/chat instead.
+
+    Attributes:
+        messages: List of text-only chat messages. Required.
+        images: List of base64-encoded images (data URLs). Required, min 1 image.
+        model: VLM model name (default: qwen2.5vl:7b).
+        stream: Whether to stream the response. Defaults to False.
+        temperature: Sampling temperature (0.0-2.0). Optional.
+        top_p: Nucleus sampling parameter (0.0-1.0). Optional.
+        top_k: Top-k sampling parameter (>=1). Optional.
+        max_tokens: Maximum tokens to generate (>=1). Optional.
+        seed: Random seed for reproducibility. Optional.
+        stop: List of stop sequences. Optional.
+        image_compression: Enable image compression (recommended). Defaults to True.
+        max_dimension: Maximum image dimension for resizing (256-2048). Defaults to 1024.
+        compression_format: Image compression format (jpeg, png, or webp). Defaults to jpeg.
+    """
+
+    model_config = ConfigDict(
+        str_strip_whitespace=True,
+        validate_assignment=True,
+        extra="forbid",
+    )
+
+    messages: list[VLMMessage] = Field(
+        ..., min_length=1, description="List of text-only chat messages (native Ollama format)"
+    )
+    images: list[str] = Field(
+        ...,
+        min_length=1,
+        description="List of base64-encoded images as data URLs (data:image/...;base64,...)",
+    )
+    model: str | None = Field("qwen2.5vl:7b", description="VLM model (default: qwen2.5vl:7b)")
+    stream: bool = Field(False, description="Whether to stream the response")
+    temperature: float | None = Field(None, ge=0.0, le=2.0, description="Temperature for sampling")
+    top_p: float | None = Field(None, ge=0.0, le=1.0, description="Top-p sampling parameter")
+    top_k: int | None = Field(None, ge=1, description="Top-k sampling parameter")
+    max_tokens: int | None = Field(None, ge=1, description="Maximum tokens to generate")
+    seed: int | None = Field(None, description="Random seed for reproducibility")
+    stop: list[str] | None = Field(None, description="Stop sequences")
+    image_compression: bool = Field(True, description="Enable image compression (recommended)")
+    max_dimension: int = Field(1024, ge=256, le=2048, description="Maximum image dimension for resizing")
+    compression_format: Literal["jpeg", "png", "webp"] = Field(
+        "jpeg", description="Image compression format (jpeg, png, or webp)"
+    )
+
+    @field_validator("images")
+    @classmethod
+    def validate_images(cls, v: list[str]) -> list[str]:
+        """Validate image data URLs."""
+        for idx, img in enumerate(v):
+            if not img.startswith("data:image/"):
+                raise ValueError(f"Image {idx}: must start with 'data:image/'")
+            if ";base64," not in img:
+                raise ValueError(f"Image {idx}: must contain ';base64,' separator")
+        return v
+
+
+# ============================================================================
+# OpenAI-Compatible VLM Models (for Docling and other OpenAI-compatible clients)
+# ============================================================================
+
+
+class ImageURL(BaseModel):
+    """Image URL wrapper for OpenAI-compatible format.
+
+    Attributes:
+        url: Base64-encoded image data URL (data:image/...;base64,...).
+    """
+
+    model_config = ConfigDict(
+        str_strip_whitespace=True,
+        validate_assignment=True,
+        extra="forbid",
+    )
+
+    url: str = Field(..., min_length=1, description="Base64-encoded image data URL")
+
+    @field_validator("url")
+    @classmethod
+    def validate_url(cls, v: str) -> str:
+        """Validate image data URL format."""
+        if not v.startswith("data:image/"):
+            raise ValueError("Image URL must start with 'data:image/'")
+        if ";base64," not in v:
+            raise ValueError("Image URL must contain ';base64,' separator")
+        return v
+
+
+class ImageContentPart(BaseModel):
+    """Image content part for OpenAI-compatible multimodal messages.
+
+    Attributes:
+        type: Content type, must be "image_url".
+        image_url: Image URL object containing base64-encoded image.
+    """
+
+    model_config = ConfigDict(
+        validate_assignment=True,
+        extra="forbid",
+    )
+
+    type: Literal["image_url"] = Field(..., description="Content type: 'image_url'")
+    image_url: ImageURL = Field(..., description="Image URL object")
+
+
+class TextContentPart(BaseModel):
+    """Text content part for OpenAI-compatible multimodal messages.
+
+    Attributes:
+        type: Content type, must be "text".
+        text: Text content string.
+    """
+
+    model_config = ConfigDict(
+        str_strip_whitespace=True,
+        validate_assignment=True,
+        extra="forbid",
+    )
+
+    type: Literal["text"] = Field(..., description="Content type: 'text'")
+    text: str = Field(..., min_length=1, description="Text content")
+
+
+# Union type for content parts
+ContentPart = ImageContentPart | TextContentPart
+
+
+class ChatMessageOpenAI(BaseModel):
+    """OpenAI-compatible chat message with multimodal content support.
+
+    Supports both simple string content and multimodal content (text + images).
+    Used for OpenAI-compatible VLM endpoint.
+
+    Attributes:
+        role: Message role. Must be "user", "assistant", or "system".
+        content: Either a string (text-only) or list of content parts (multimodal).
+    """
+
+    model_config = ConfigDict(
+        str_strip_whitespace=True,
+        validate_assignment=True,
+        extra="forbid",
+    )
+
+    role: Literal["user", "assistant", "system"] = Field(
+        ..., description="Message role: 'user', 'assistant', or 'system'"
+    )
+    content: str | list[ContentPart] = Field(
+        ..., description="Message content: string (text-only) or list of content parts (multimodal)"
+    )
+
+    @field_validator("content")
+    @classmethod
+    def validate_content(cls, v: str | list[ContentPart]) -> str | list[ContentPart]:
+        """Validate content is not empty."""
+        if isinstance(v, str):
+            if not v.strip():
+                raise ValueError("Text content cannot be empty")
+        elif isinstance(v, list):
+            if not v:
+                raise ValueError("Content parts list cannot be empty")
+        return v
+
+
+class VLMRequestOpenAI(BaseModel):
+    """OpenAI-compatible VLM request model.
+
+    Uses OpenAI-compatible multimodal message format where images are embedded
+    in message content as image_url parts. Converted internally to native Ollama
+    format (separate images parameter) for processing.
+
+    For Docling and other OpenAI-compatible clients.
+
+    Attributes:
+        messages: List of OpenAI-compatible chat messages with multimodal content.
+        model: VLM model name (default: qwen2.5vl:7b).
+        stream: Whether to stream the response. Defaults to False.
+        temperature: Sampling temperature (0.0-2.0). Optional.
+        top_p: Nucleus sampling parameter (0.0-1.0). Optional.
+        top_k: Top-k sampling parameter (>=1). Optional.
+        max_tokens: Maximum tokens to generate (>=1). Optional.
+        seed: Random seed for reproducibility. Optional.
+        stop: List of stop sequences. Optional.
+        image_compression: Enable image compression (recommended). Defaults to True.
+        max_dimension: Maximum image dimension for resizing (256-2048). Defaults to 1024.
+        compression_format: Image compression format (jpeg, png, or webp). Defaults to jpeg.
+    """
+
+    model_config = ConfigDict(
+        str_strip_whitespace=True,
+        validate_assignment=True,
+        extra="forbid",
+    )
+
+    messages: list[ChatMessageOpenAI] = Field(
+        ..., min_length=1, description="List of OpenAI-compatible chat messages"
+    )
+    model: str | None = Field("qwen2.5vl:7b", description="VLM model (default: qwen2.5vl:7b)")
+    stream: bool = Field(False, description="Whether to stream the response")
+    temperature: float | None = Field(None, ge=0.0, le=2.0, description="Temperature for sampling")
+    top_p: float | None = Field(None, ge=0.0, le=1.0, description="Top-p sampling parameter")
+    top_k: int | None = Field(None, ge=1, description="Top-k sampling parameter")
+    max_tokens: int | None = Field(None, ge=1, description="Maximum tokens to generate")
+    seed: int | None = Field(None, description="Random seed for reproducibility")
+    stop: list[str] | None = Field(None, description="Stop sequences")
+    image_compression: bool = Field(True, description="Enable image compression (recommended)")
+    max_dimension: int = Field(1024, ge=256, le=2048, description="Maximum image dimension for resizing")
+    compression_format: Literal["jpeg", "png", "webp"] = Field(
+        "jpeg", description="Image compression format (jpeg, png, or webp)"
+    )
+
+    @field_validator("messages")
+    @classmethod
+    def validate_has_images(cls, v: list[ChatMessageOpenAI]) -> list[ChatMessageOpenAI]:
+        """Validate that at least one message contains an image."""
+        has_image = False
+        for msg in v:
+            if isinstance(msg.content, list):
+                for part in msg.content:
+                    if isinstance(part, ImageContentPart):
+                        has_image = True
+                        break
+            if has_image:
+                break
+
+        if not has_image:
+            raise ValueError(
+                "VLM requests must contain at least one image. "
+                "For text-only requests, use /api/v1/chat endpoint instead."
+            )
+        return v
+
+
+class VLMResponse(BaseModel):
+    """Response model for VLM endpoint.
+
+    Contains assistant's response message and VLM-specific performance metrics.
+    All time values are in milliseconds.
+
+    Attributes:
+        message: Assistant's response message.
+        model: Model used for generation.
+        request_id: Unique request identifier.
+        latency_ms: Request latency in milliseconds.
+        model_load_ms: Model load time in milliseconds. None if N/A.
+        model_warm_start: Whether model was already loaded.
+        images_processed: Number of images processed.
+        compression_savings_bytes: Bytes saved by compression. None if compression disabled.
+        prompt_eval_count: Number of prompt tokens evaluated. None if N/A.
+        generation_eval_count: Number of generation tokens produced. None if N/A.
+        total_duration_ms: Total generation duration in milliseconds. None if N/A.
+    """
+
+    model_config = ConfigDict(
+        validate_assignment=True,
+        extra="forbid",
+    )
+
+    message: ChatMessage = Field(..., description="Assistant's response message")
+    model: str = Field(..., description="Model used for generation")
+    request_id: str = Field(..., description="Unique request identifier")
+    latency_ms: float = Field(..., ge=0.0, description="Request latency in milliseconds")
+    model_load_ms: float | None = Field(None, ge=0.0, description="Model load time in milliseconds")
+    model_warm_start: bool = Field(..., description="Whether model was already loaded")
+    images_processed: int = Field(..., ge=1, description="Number of images processed")
+    compression_savings_bytes: int | None = Field(None, description="Bytes saved by compression")
+    prompt_eval_count: int | None = Field(None, ge=0, description="Number of prompt tokens evaluated")
+    generation_eval_count: int | None = Field(None, ge=0, description="Number of generation tokens evaluated")
+    total_duration_ms: float | None = Field(None, ge=0.0, description="Total generation duration in milliseconds")
+
+
+class BatchChatRequest(BaseModel):
+    """Request model for batch text-only chat processing.
+
+    Process multiple text-only chat requests concurrently.
+    Maximum 50 requests per batch for fairness.
+
+    Attributes:
+        requests: List of chat requests to process (1-50).
+    """
+
+    model_config = ConfigDict(
+        str_strip_whitespace=True,
+        validate_assignment=True,
+        extra="forbid",
+    )
+
+    requests: list[ChatRequest] = Field(
+        ..., min_length=1, max_length=50, description="List of chat requests (max 50)"
+    )
+
+
+class BatchVLMRequest(BaseModel):
+    """Request model for batch VLM processing.
+
+    Process multiple VLM requests concurrently.
+    Maximum 20 requests per batch due to image processing overhead.
+
+    Attributes:
+        requests: List of VLM requests to process (1-20).
+        compression_format: Image compression format for all requests.
+    """
+
+    model_config = ConfigDict(
+        str_strip_whitespace=True,
+        validate_assignment=True,
+        extra="forbid",
+    )
+
+    requests: list[VLMRequest] = Field(
+        ..., min_length=1, max_length=20, description="List of VLM requests (max 20)"
+    )
+    compression_format: Literal["jpeg", "png", "webp"] = Field(
+        "jpeg", description="Image compression format for all requests (jpeg, png, or webp)"
+    )
+
+
+class BatchResponse(BaseModel):
+    """Response model for batch processing endpoints.
+
+    Contains results for all requests in the batch with aggregate statistics.
+
+    Attributes:
+        batch_id: Unique batch identifier.
+        total_requests: Total requests in batch.
+        successful: Successfully processed requests.
+        failed: Failed requests.
+        total_time_ms: Total batch processing time in milliseconds.
+        results: Individual request results (index, success/failure, data/error).
+    """
+
+    model_config = ConfigDict(
+        validate_assignment=True,
+        extra="forbid",
+    )
+
+    batch_id: str = Field(..., description="Unique batch identifier")
+    total_requests: int = Field(..., ge=1, description="Total requests in batch")
+    successful: int = Field(..., ge=0, description="Successfully processed requests")
+    failed: int = Field(..., ge=0, description="Failed requests")
+    total_time_ms: float = Field(..., ge=0.0, description="Total batch processing time")
+    results: list[dict[str, Any]] = Field(..., description="Individual request results")
 
 
 @dataclass(slots=True, frozen=True)

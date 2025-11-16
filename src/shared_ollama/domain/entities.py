@@ -130,66 +130,19 @@ class GenerationRequest:
 
 
 @dataclass(slots=True, frozen=True)
-class ImageContent:
-    """Image content for multimodal messages.
-
-    Represents an image in a multimodal message. Images are base64-encoded
-    with a data URL format.
-
-    Attributes:
-        url: Base64-encoded image data URL (data:image/<format>;base64,<data>).
-    """
-
-    url: str
-
-    def __post_init__(self) -> None:
-        """Validate image content."""
-        if not self.url.startswith("data:image/"):
-            raise ValueError("Image URL must start with 'data:image/'")
-        if ";base64," not in self.url:
-            raise ValueError("Image URL must contain ';base64,' separator")
-
-
-@dataclass(slots=True, frozen=True)
-class TextContent:
-    """Text content for multimodal messages.
-
-    Represents text in a multimodal message.
-
-    Attributes:
-        text: Text content.
-    """
-
-    text: str
-
-    def __post_init__(self) -> None:
-        """Validate text content."""
-        if not self.text or not self.text.strip():
-            raise ValueError("Text content cannot be empty")
-
-
-# ContentPart is a tuple: ("text", str) or ("image_url", ImageContent)
-
-
-@dataclass(slots=True, frozen=True)
 class ChatMessage:
-    """A chat message with role and content.
+    """A chat message with role and text content (native Ollama format).
 
-    Pure domain entity representing a single message in a conversation.
-    Supports both text-only and multimodal (text + images) content for
-    vision language models.
+    Pure domain entity for text-only chat messages.
+    For VLM with images, use VLMRequest and VLMMessage.
 
     Attributes:
         role: Message role. Must be "user", "assistant", or "system".
-        content: Message content. Can be:
-            - str: Text-only content (backward compatible)
-            - tuple[tuple[Literal["text"], str] | tuple[Literal["image_url"], ImageContent], ...]:
-              Multimodal content with text and/or images.
-              Each part is a tuple: ("text", text_str) or ("image_url", ImageContent)
+        content: Text content of the message.
     """
 
     role: Literal["user", "assistant", "system"]
-    content: str | tuple[tuple[Literal["text"], str] | tuple[Literal["image_url"], ImageContent], ...]
+    content: str
 
     def __post_init__(self) -> None:
         """Validate chat message.
@@ -199,26 +152,8 @@ class ChatMessage:
         """
         if self.role not in ("user", "assistant", "system"):
             raise ValueError(f"Invalid role '{self.role}'. Must be 'user', 'assistant', or 'system'")
-        if isinstance(self.content, str):
-            if not self.content or not self.content.strip():
-                raise ValueError("Message content cannot be empty")
-        elif isinstance(self.content, tuple):
-            if not self.content:
-                raise ValueError("Content parts cannot be empty")
-            for part in self.content:
-                if not isinstance(part, tuple) or len(part) != 2:
-                    raise ValueError("Content part must be a tuple of (type, content)")
-                part_type, part_content = part
-                if part_type == "text":
-                    if not isinstance(part_content, str) or not part_content.strip():
-                        raise ValueError("Text content cannot be empty")
-                elif part_type == "image_url":
-                    if not isinstance(part_content, ImageContent):
-                        raise ValueError("Image content must be ImageContent instance")
-                else:
-                    raise ValueError(f"Unknown content part type: {part_type}")
-        else:
-            raise ValueError("Content must be a string or tuple of content parts")
+        if not self.content or not self.content.strip():
+            raise ValueError("Message content cannot be empty")
 
 
 @dataclass(slots=True, frozen=True)
@@ -249,4 +184,221 @@ class ChatRequest:
         total_length = sum(len(msg.content) for msg in self.messages)
         if total_length > 1_000_000:  # 1M characters
             raise ValueError("Total message content is too long. Maximum length is 1,000,000 characters")
+
+
+@dataclass(slots=True, frozen=True)
+class VLMMessage:
+    """Simple text-only message for VLM requests (native Ollama format).
+
+    Pure domain entity for VLM messages. Uses native Ollama format where
+    images are passed separately from message text content.
+
+    Attributes:
+        role: Message role. Must be "user", "assistant", or "system".
+        content: Text content of the message.
+    """
+
+    role: Literal["user", "assistant", "system"]
+    content: str
+
+    def __post_init__(self) -> None:
+        """Validate VLM message.
+
+        Raises:
+            ValueError: If role is invalid or content is empty.
+        """
+        if self.role not in ("user", "assistant", "system"):
+            raise ValueError(f"Invalid role '{self.role}'. Must be 'user', 'assistant', or 'system'")
+        if not self.content or not self.content.strip():
+            raise ValueError("Message content cannot be empty")
+
+
+@dataclass(slots=True, frozen=True)
+class VLMRequest:
+    """Domain entity for vision-language model requests.
+
+    Uses native Ollama format with separate images parameter.
+    Separates VLM requests from text-only chat for dedicated processing.
+
+    Attributes:
+        messages: Text-only chat messages (native Ollama format).
+        images: List of base64-encoded image data URLs.
+        model: Model name (should be VLM-capable like qwen2.5vl:7b).
+        options: Generation options.
+        image_compression: Whether to compress images (default: True).
+        max_dimension: Maximum image dimension for resizing (default: 1024).
+    """
+
+    messages: tuple[VLMMessage, ...]
+    images: tuple[str, ...]
+    model: ModelName | None = None
+    options: GenerationOptions | None = None
+    image_compression: bool = True
+    max_dimension: int = 1024
+
+    def __post_init__(self) -> None:
+        """Validate VLM request.
+
+        Raises:
+            ValueError: If messages/images are invalid or no images present.
+        """
+        if not self.messages:
+            raise ValueError("Messages list cannot be empty")
+
+        # Validate images
+        if not self.images:
+            raise ValueError(
+                "VLM request must contain at least one image. "
+                "Use ChatRequest for text-only requests."
+            )
+
+        # Validate max_dimension
+        if self.max_dimension < 256 or self.max_dimension > 2048:
+            raise ValueError("max_dimension must be between 256 and 2048")
+
+
+# ============================================================================
+# OpenAI-Compatible VLM Domain Entities (for Docling and other OpenAI-compatible clients)
+# ============================================================================
+
+
+@dataclass(slots=True, frozen=True)
+class ImageContent:
+    """Image content part for OpenAI-compatible multimodal messages.
+
+    Represents an image embedded in a multimodal message. Images are
+    base64-encoded data URLs.
+
+    Attributes:
+        type: Content type. Always "image_url".
+        image_url: Base64-encoded image data URL (data:image/...;base64,...).
+    """
+
+    type: Literal["image_url"] = "image_url"
+    image_url: str = ""
+
+    def __post_init__(self) -> None:
+        """Validate image content.
+
+        Raises:
+            ValueError: If image_url is invalid or empty.
+        """
+        if not self.image_url:
+            raise ValueError("Image URL cannot be empty")
+        if not self.image_url.startswith("data:image/"):
+            raise ValueError("Image URL must start with 'data:image/'")
+        if ";base64," not in self.image_url:
+            raise ValueError("Image URL must contain ';base64,' separator")
+
+
+@dataclass(slots=True, frozen=True)
+class TextContent:
+    """Text content part for OpenAI-compatible multimodal messages.
+
+    Represents text embedded in a multimodal message.
+
+    Attributes:
+        type: Content type. Always "text".
+        text: Text content string.
+    """
+
+    type: Literal["text"] = "text"
+    text: str = ""
+
+    def __post_init__(self) -> None:
+        """Validate text content.
+
+        Raises:
+            ValueError: If text is empty.
+        """
+        if not self.text or not self.text.strip():
+            raise ValueError("Text content cannot be empty")
+
+
+@dataclass(slots=True, frozen=True)
+class ChatMessageOpenAI:
+    """OpenAI-compatible chat message with multimodal content support.
+
+    Supports both simple string content and multimodal content (text + images).
+    Used for OpenAI-compatible VLM requests.
+
+    Attributes:
+        role: Message role. Must be "user", "assistant", or "system".
+        content: Either a string (text-only) or list of content parts (multimodal).
+    """
+
+    role: Literal["user", "assistant", "system"]
+    content: str | tuple[ImageContent | TextContent, ...]
+
+    def __post_init__(self) -> None:
+        """Validate OpenAI-compatible message.
+
+        Raises:
+            ValueError: If role is invalid or content is empty.
+        """
+        if self.role not in ("user", "assistant", "system"):
+            raise ValueError(f"Invalid role '{self.role}'. Must be 'user', 'assistant', or 'system'")
+
+        if isinstance(self.content, str):
+            if not self.content or not self.content.strip():
+                raise ValueError("Text content cannot be empty")
+        elif isinstance(self.content, tuple):
+            if not self.content:
+                raise ValueError("Content parts list cannot be empty")
+        else:
+            raise ValueError("Content must be either string or tuple of content parts")
+
+
+@dataclass(slots=True, frozen=True)
+class VLMRequestOpenAI:
+    """OpenAI-compatible VLM request domain entity.
+
+    Uses OpenAI-compatible multimodal message format where images are embedded
+    in message content. Converted internally to native Ollama format for processing.
+
+    For Docling and other OpenAI-compatible clients.
+
+    Attributes:
+        messages: OpenAI-compatible chat messages with multimodal content.
+        model: Model name (should be VLM-capable like qwen2.5vl:7b).
+        options: Generation options.
+        image_compression: Whether to compress images (default: True).
+        max_dimension: Maximum image dimension for resizing (default: 1024).
+    """
+
+    messages: tuple[ChatMessageOpenAI, ...]
+    model: ModelName | None = None
+    options: GenerationOptions | None = None
+    image_compression: bool = True
+    max_dimension: int = 1024
+
+    def __post_init__(self) -> None:
+        """Validate OpenAI-compatible VLM request.
+
+        Raises:
+            ValueError: If messages are invalid or no images present.
+        """
+        if not self.messages:
+            raise ValueError("Messages list cannot be empty")
+
+        # Validate that at least one message contains an image
+        has_image = False
+        for msg in self.messages:
+            if isinstance(msg.content, tuple):
+                for part in msg.content:
+                    if isinstance(part, ImageContent):
+                        has_image = True
+                        break
+            if has_image:
+                break
+
+        if not has_image:
+            raise ValueError(
+                "VLM request must contain at least one image. "
+                "Use ChatRequest for text-only requests."
+            )
+
+        # Validate max_dimension
+        if self.max_dimension < 256 or self.max_dimension > 2048:
+            raise ValueError("max_dimension must be between 256 and 2048")
 

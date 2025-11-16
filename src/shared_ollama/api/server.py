@@ -15,15 +15,22 @@ Key behaviors:
 Architecture:
     - FastAPI application with lifespan management
     - Global async client instance for Ollama operations
-    - Request queue for concurrency control
+    - Separate request queues for chat (6 concurrent) and VLM (3 concurrent)
+    - Image processing infrastructure with compression and caching
     - Helper functions for error handling and status code mapping
 
 Endpoints:
     - GET /api/v1/health - Health check
     - GET /api/v1/models - List available models
-    - GET /api/v1/queue/stats - Queue statistics
+    - GET /api/v1/queue/stats - Chat queue statistics
+    - GET /api/v1/metrics - Service metrics
+    - GET /api/v1/performance/stats - Performance statistics
+    - GET /api/v1/analytics - Analytics report
     - POST /api/v1/generate - Text generation (with streaming support)
-    - POST /api/v1/chat - Chat completion (with streaming support)
+    - POST /api/v1/chat - Text-only chat completion (with streaming support)
+    - POST /api/v1/vlm - Vision-Language Model chat (with image support)
+    - POST /api/v1/batch/chat - Batch text-only chat processing (max 50 requests)
+    - POST /api/v1/batch/vlm - Batch VLM processing (max 20 requests)
 """
 
 from __future__ import annotations
@@ -31,31 +38,39 @@ from __future__ import annotations
 import json
 import logging
 from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
 from typing import Any
 
 import httpx
-from fastapi import Depends, FastAPI, HTTPException, Request, Response, status
-from fastapi.exceptions import RequestValidationError
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, StreamingResponse
-from slowapi import Limiter, _rate_limit_exceeded_handler
-from slowapi.errors import RateLimitExceeded
-from slowapi.util import get_remote_address
+from fastapi import Depends, FastAPI, HTTPException, Request, status
+from fastapi.responses import StreamingResponse
+
+# Import modular components
+from shared_ollama.api.lifespan import lifespan_context
+from shared_ollama.api.middleware import limiter, setup_exception_handlers, setup_middleware
+from shared_ollama.api.routes import system_router
 
 from shared_ollama.api.dependencies import (
+    get_batch_chat_use_case,
+    get_batch_vlm_use_case,
+    get_chat_queue,
     get_chat_use_case,
     get_generate_use_case,
     get_list_models_use_case,
-    get_queue,
+    get_vlm_queue,
+    get_vlm_use_case,
     set_dependencies,
 )
 from shared_ollama.api.mappers import (
     api_to_domain_chat_request,
     api_to_domain_generation_request,
+    api_to_domain_vlm_request,
+    api_to_domain_vlm_request_openai,
     domain_to_api_model_info,
 )
 from shared_ollama.api.models import (
+    BatchChatRequest,
+    BatchResponse,
+    BatchVLMRequest,
     ChatMessage,
     ChatRequest,
     ChatResponse,
@@ -66,158 +81,53 @@ from shared_ollama.api.models import (
     ModelsResponse,
     QueueStatsResponse,
     RequestContext,
+    VLMMessage,
+    VLMRequest,
+    VLMRequestOpenAI,
+    VLMResponse,
+)
+from shared_ollama.application.batch_use_cases import (
+    BatchChatUseCase,
+    BatchVLMUseCase,
 )
 from shared_ollama.application.use_cases import (
     ChatUseCase,
     GenerateUseCase,
     ListModelsUseCase,
 )
-from shared_ollama.domain.exceptions import InvalidRequestError
+from shared_ollama.application.vlm_use_cases import VLMUseCase
 from shared_ollama.client import AsyncOllamaConfig, AsyncSharedOllamaClient
 from shared_ollama.core.ollama_manager import initialize_ollama_manager
 from shared_ollama.core.queue import RequestQueue
 from shared_ollama.core.utils import check_service_health, get_project_root
+from shared_ollama.domain.exceptions import InvalidRequestError
 from shared_ollama.infrastructure.adapters import (
     AsyncOllamaClientAdapter,
     MetricsCollectorAdapter,
     RequestLoggerAdapter,
 )
+from shared_ollama.infrastructure.image_cache import ImageCache
+from shared_ollama.infrastructure.image_processing import ImageProcessor
 
 logger = logging.getLogger(__name__)
 
-# Initialize rate limiter
-limiter = Limiter(key_func=get_remote_address)
-
-
-# Initialize FastAPI app with lifespan
-@asynccontextmanager
-async def lifespan_context(app: FastAPI):
-    """Manage application lifespan."""
-    global _client, _queue
-
-    # Debug: Log that lifespan is starting
-    print("LIFESPAN: Starting Shared Ollama Service API", flush=True)
-    logger.info("LIFESPAN: Starting Shared Ollama Service API")
-
-    # Initialize and start Ollama manager (manages Ollama process internally)
-    logger.info("LIFESPAN: Initializing Ollama manager")
-    try:
-        project_root = get_project_root()
-        log_dir = project_root / "logs"
-        log_dir.mkdir(exist_ok=True)
-
-        ollama_manager = initialize_ollama_manager(
-            base_url="http://localhost:11434",
-            log_dir=log_dir,
-            auto_detect_optimizations=True,
-        )
-
-        logger.info("LIFESPAN: Starting Ollama service (managed internally)")
-        ollama_started = await ollama_manager.start(wait_for_ready=True, max_wait_time=30)
-        if not ollama_started:
-            logger.error("LIFESPAN: Failed to start Ollama service")
-            raise RuntimeError("Failed to start Ollama service. Check logs for details.")
-        logger.info("LIFESPAN: Ollama service started successfully")
-        print("LIFESPAN: Ollama service started", flush=True)
-    except Exception as exc:
-        logger.error("LIFESPAN: Failed to start Ollama service: %s", exc, exc_info=True)
-        print(f"LIFESPAN ERROR: Failed to start Ollama: {exc}", flush=True)
-        import traceback
-
-        traceback.print_exc()
-        raise
-
-    # Initialize async client (connects to the managed Ollama service)
-    client: AsyncSharedOllamaClient | None = None
-    try:
-        config = AsyncOllamaConfig()
-        logger.info("LIFESPAN: Creating AsyncSharedOllamaClient")
-        # Don't verify on init - we'll do it manually to ensure it completes
-        client = AsyncSharedOllamaClient(config=config, verify_on_init=False)
-        logger.info("LIFESPAN: Client created, ensuring initialization")
-        # Ensure client is initialized and verified (async)
-        await client._ensure_client()
-        logger.info("LIFESPAN: Client ensured, verifying connection")
-        await client._verify_connection()
-        logger.info("LIFESPAN: Ollama async client initialized successfully")
-        print("LIFESPAN: Client initialized successfully", flush=True)
-    except Exception as exc:
-        logger.error("LIFESPAN: Failed to initialize Ollama async client: %s", exc, exc_info=True)
-        print(f"LIFESPAN ERROR: {exc}", flush=True)
-        import traceback
-
-        traceback.print_exc()
-        client = None
-        # Don't raise - allow server to start but client will be None
-        # This way we can see the error in logs
-
-    # Initialize infrastructure adapters
-    if client:
-        client_adapter = AsyncOllamaClientAdapter(client)
-        logger_adapter = RequestLoggerAdapter()
-        metrics_adapter = MetricsCollectorAdapter()
-    else:
-        client_adapter = None
-        logger_adapter = None
-        metrics_adapter = None
-
-    # Initialize request queue
-    logger.info("LIFESPAN: Initializing RequestQueue")
-    queue = RequestQueue(max_concurrent=3, max_queue_size=50, default_timeout=60.0)
-    logger.info("LIFESPAN: RequestQueue initialized (max_concurrent=3, max_queue_size=50)")
-    print("LIFESPAN: RequestQueue initialized", flush=True)
-
-    # Set dependencies for dependency injection
-    if client_adapter and logger_adapter and metrics_adapter:
-        set_dependencies(client_adapter, logger_adapter, metrics_adapter, queue)
-        logger.info("LIFESPAN: Dependencies initialized for dependency injection")
-
-    yield
-
-    # Shutdown
-    logger.info("Shutting down Shared Ollama Service API")
-    if client:
-        try:
-            # Close the async client properly (we're in an async context)
-            await client.close()
-        except Exception as exc:
-            logger.warning("Error closing async client: %s", exc)
-
-    # Stop Ollama service (managed internally)
-    try:
-        from shared_ollama.core.ollama_manager import get_ollama_manager
-
-        logger.info("LIFESPAN: Stopping Ollama service")
-        ollama_manager = get_ollama_manager()
-        await ollama_manager.stop(timeout=10)
-        logger.info("LIFESPAN: Ollama service stopped")
-        print("LIFESPAN: Ollama service stopped", flush=True)
-    except Exception as exc:
-        logger.warning("Error stopping Ollama service: %s", exc)
-
-
+# Create FastAPI app with modular lifespan
 app = FastAPI(
     title="Shared Ollama Service API",
-    description="RESTful API for the Shared Ollama Service - Language-agnostic access to Ollama models",
-    version="1.0.0",
+    description="RESTful API for the Shared Ollama Service - Unified text and VLM endpoints with batch support",
+    version="2.0.0",
     docs_url="/api/docs",
     redoc_url="/api/redoc",
     openapi_url="/api/openapi.json",
     lifespan=lifespan_context,
 )
 
-# Add rate limiter to app
-app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+# Setup middleware and exception handlers (modular)
+setup_middleware(app)
+setup_exception_handlers(app)
 
-# Add CORS middleware
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # Configure appropriately for production
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# Include modular routers
+app.include_router(system_router, prefix="/api/v1")
 
 
 # Request context extraction (moved to dependencies.py, kept here for backward compatibility)
@@ -359,16 +269,21 @@ async def health_check() -> HealthResponse:
     return HealthResponse(
         status="healthy" if is_healthy else "unhealthy",
         ollama_service=ollama_status,
-        version="1.0.0",
+        version="2.0.0",
     )
 
 
 @app.get("/api/v1/queue/stats", response_model=QueueStatsResponse, tags=["Queue"])
-async def get_queue_stats() -> QueueStatsResponse:
-    """Get request queue statistics.
+async def get_queue_stats(
+    queue: RequestQueue = Depends(get_chat_queue),
+) -> QueueStatsResponse:
+    """Get chat queue statistics.
 
-    Returns comprehensive queue metrics including current state, historical
-    counts, and performance statistics.
+    Returns comprehensive queue metrics for the chat queue including current state,
+    historical counts, and performance statistics.
+
+    Args:
+        queue: Chat request queue (injected via dependency injection).
 
     Returns:
         QueueStatsResponse with:
@@ -380,7 +295,6 @@ async def get_queue_stats() -> QueueStatsResponse:
     Side effects:
         Acquires asyncio.Lock briefly to read statistics atomically.
     """
-    queue = get_queue()
     stats = await queue.get_stats()
     config = queue.get_config()
 
@@ -398,6 +312,100 @@ async def get_queue_stats() -> QueueStatsResponse:
         max_queue_size=config["max_queue_size"],
         default_timeout=config["default_timeout"],
     )
+
+
+@app.get("/api/v1/metrics", tags=["Metrics"])
+async def get_metrics(
+    window_minutes: int | None = None,
+) -> dict[str, Any]:
+    """Get service metrics.
+
+    Returns comprehensive service metrics including request counts, latency
+    statistics, and error breakdowns. Supports optional time-window filtering.
+
+    Args:
+        window_minutes: Optional time window in minutes. If provided, only
+            metrics from the last N minutes are included. If None, returns
+            all metrics since service startup.
+
+    Returns:
+        Dictionary with metrics including:
+            - total_requests: Total number of requests
+            - successful_requests: Number of successful requests
+            - failed_requests: Number of failed requests
+            - requests_by_model: Request counts by model
+            - requests_by_operation: Request counts by operation
+            - average_latency_ms: Average request latency
+            - p50_latency_ms: 50th percentile (median) latency
+            - p95_latency_ms: 95th percentile latency
+            - p99_latency_ms: 99th percentile latency
+            - errors_by_type: Error counts by error type
+            - last_request_time: Timestamp of most recent request
+            - first_request_time: Timestamp of oldest request
+    """
+    from shared_ollama.telemetry.metrics import get_metrics_endpoint
+
+    return get_metrics_endpoint(window_minutes=window_minutes)
+
+
+@app.get("/api/v1/performance/stats", tags=["Performance"])
+async def get_performance_stats() -> dict[str, Any]:
+    """Get aggregated performance statistics.
+
+    Returns detailed performance metrics including token generation rates,
+    model load times, and generation times. Statistics are grouped by model.
+
+    Returns:
+        Dictionary with performance statistics including:
+            - avg_tokens_per_second: Overall average token generation rate
+            - avg_load_time_ms: Average model load time
+            - avg_generation_time_ms: Average generation time
+            - total_requests: Count of successful requests with performance data
+            - by_model: Per-model statistics with same structure plus request_count
+
+        Returns empty dict if no performance data is available.
+    """
+    from shared_ollama.telemetry.performance import get_performance_stats
+
+    return get_performance_stats()
+
+
+@app.get("/api/v1/analytics", tags=["Analytics"])
+async def get_analytics(
+    window_minutes: int | None = None,
+    project: str | None = None,
+) -> dict[str, Any]:
+    """Get comprehensive analytics report.
+
+    Returns project-based analytics with time-series data, latency percentiles,
+    and usage breakdowns. Supports filtering by time window and project.
+
+    Args:
+        window_minutes: Optional time window in minutes. If provided, only
+            analytics from the last N minutes are included. If None, returns
+            all analytics since service startup.
+        project: Optional project name filter. If provided, only analytics
+            for the specified project are returned. If None, returns analytics
+            for all projects.
+
+    Returns:
+        Dictionary with analytics including:
+            - total_requests: Total number of requests
+            - successful_requests: Number of successful requests
+            - failed_requests: Number of failed requests
+            - success_rate: Success rate (0.0 to 1.0)
+            - average_latency_ms: Average request latency
+            - p50_latency_ms, p95_latency_ms, p99_latency_ms: Latency percentiles
+            - requests_by_model: Request counts by model
+            - requests_by_operation: Request counts by operation
+            - requests_by_project: Request counts by project
+            - project_metrics: Detailed metrics per project
+            - hourly_metrics: Time-series data (hourly aggregation)
+            - start_time, end_time: Time range of data
+    """
+    from shared_ollama.telemetry.analytics import get_analytics_json
+
+    return get_analytics_json(window_minutes=window_minutes, project=project)
 
 
 @app.get("/api/v1/models", response_model=ModelsResponse, tags=["Models"])
@@ -476,7 +484,7 @@ async def list_models(
 async def generate(
     request: Request,
     use_case: GenerateUseCase = Depends(get_generate_use_case),
-    queue: RequestQueue = Depends(get_queue),
+    queue: RequestQueue = Depends(get_chat_queue),
 ) -> Response:
     """Generate text from a prompt.
 
@@ -534,30 +542,43 @@ async def generate(
             if api_req.stream:
                 logger.info("streaming_generate_requested: request_id=%s", ctx.request_id)
                 # Use case returns AsyncIterator for streaming
-                stream_iter = await use_case.execute(
+                result = await use_case.execute(
                     request=domain_req,
                     request_id=ctx.request_id,
                     client_ip=ctx.client_ip,
                     project_name=ctx.project_name,
                     stream=True,
                 )
+                # Type narrowing: stream=True returns AsyncIterator
+                assert not isinstance(result, dict)
                 return StreamingResponse(
-                    _stream_generate_sse(stream_iter, ctx),
+                    _stream_generate_sse(result, ctx),
                     media_type="text/event-stream",
                 )
 
             # Non-streaming: use case handles all business logic, logging, and metrics
-            result_dict = await use_case.execute(
+            result = await use_case.execute(
                 request=domain_req,
                 request_id=ctx.request_id,
                 client_ip=ctx.client_ip,
                 project_name=ctx.project_name,
                 stream=False,
             )
+            # Type narrowing: stream=False returns dict
+            assert isinstance(result, dict)
+            result_dict = result
 
             # Convert result dict to API response
-            load_ms = result_dict.get("load_duration", 0) / 1_000_000 if result_dict.get("load_duration") else 0.0
-            total_ms = result_dict.get("total_duration", 0) / 1_000_000 if result_dict.get("total_duration") else 0.0
+            load_ms = (
+                result_dict.get("load_duration", 0) / 1_000_000
+                if result_dict.get("load_duration")
+                else 0.0
+            )
+            total_ms = (
+                result_dict.get("total_duration", 0) / 1_000_000
+                if result_dict.get("total_duration")
+                else 0.0
+            )
 
             return GenerateResponse(
                 text=result_dict.get("text", ""),
@@ -610,7 +631,11 @@ async def generate(
             detail="Unable to connect to Ollama service. Please check if the service is running.",
         ) from exc
     except Exception as exc:
-        logger.exception("unexpected_error_generating_text: request_id=%s, error_type=%s", ctx.request_id, type(exc).__name__)
+        logger.exception(
+            "unexpected_error_generating_text: request_id=%s, error_type=%s",
+            ctx.request_id,
+            type(exc).__name__,
+        )
         # Include request_id in error response
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -623,7 +648,7 @@ async def generate(
 async def chat(
     request: Request,
     use_case: ChatUseCase = Depends(get_chat_use_case),
-    queue: RequestQueue = Depends(get_queue),
+    queue: RequestQueue = Depends(get_chat_queue),
 ) -> Response:
     """Chat completion endpoint.
 
@@ -682,26 +707,31 @@ async def chat(
             if api_req.stream:
                 logger.info("streaming_chat_requested: request_id=%s", ctx.request_id)
                 # Use case returns AsyncIterator for streaming
-                stream_iter = await use_case.execute(
+                result = await use_case.execute(
                     request=domain_req,
                     request_id=ctx.request_id,
                     client_ip=ctx.client_ip,
                     project_name=ctx.project_name,
                     stream=True,
                 )
+                # Type narrowing: stream=True returns AsyncIterator
+                assert not isinstance(result, dict)
                 return StreamingResponse(
-                    _stream_chat_sse(stream_iter, ctx),
+                    _stream_chat_sse(result, ctx),
                     media_type="text/event-stream",
                 )
 
             # Non-streaming: use case handles all business logic, logging, and metrics
-            result_dict = await use_case.execute(
+            result = await use_case.execute(
                 request=domain_req,
                 request_id=ctx.request_id,
                 client_ip=ctx.client_ip,
                 project_name=ctx.project_name,
                 stream=False,
             )
+            # Type narrowing: stream=False returns dict
+            assert isinstance(result, dict)
+            result_dict = result
 
             # Convert result dict to API response
             message_content = result_dict.get("message", {}).get("content", "")
@@ -765,7 +795,11 @@ async def chat(
             detail="Unable to connect to Ollama service. Please check if the service is running.",
         ) from exc
     except Exception as exc:
-        logger.exception("unexpected_error_chat_completion: request_id=%s, error_type=%s", ctx.request_id, type(exc).__name__)
+        logger.exception(
+            "unexpected_error_chat_completion: request_id=%s, error_type=%s",
+            ctx.request_id,
+            type(exc).__name__,
+        )
         # Include request_id in error response
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -773,107 +807,544 @@ async def chat(
         ) from exc
 
 
-@app.exception_handler(RequestValidationError)
-async def validation_exception_handler(
-    request: Request, exc: RequestValidationError
-) -> JSONResponse:
-    """Handle request validation errors.
+@app.post("/api/v1/vlm", tags=["VLM"])
+@limiter.limit("30/minute")
+async def vlm_chat(
+    request: Request,
+    use_case: VLMUseCase = Depends(get_vlm_use_case),
+    queue: RequestQueue = Depends(get_vlm_queue),
+) -> Response:
+    """Vision-Language Model (VLM) chat completion endpoint.
 
-    Global exception handler for Pydantic validation errors. Returns
-    structured error response with validation details.
-
-    Args:
-        request: FastAPI Request object.
-        exc: RequestValidationError with validation error details.
-
-    Returns:
-        JSONResponse with ErrorResponse containing validation error message
-        and request_id. Status code 422 (Unprocessable Entity).
-    """
-    ctx = get_request_context(request)
-    error_details = exc.errors()
-    logger.warning("validation_error: request_id=%s, errors=%s", ctx.request_id, error_details)
-    # Include full error details in response for debugging
-    if error_details:
-        first_error = error_details[0]
-        error_msg = f"Validation error: {first_error.get('msg', 'Invalid request')} at {first_error.get('loc', [])}"
-    else:
-        error_msg = "Invalid request parameters"
-    return JSONResponse(
-        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-        content=ErrorResponse(
-            error=error_msg,
-            error_type="ValidationError",
-            request_id=ctx.request_id,
-        ).model_dump(),
-    )
-
-
-@app.exception_handler(RateLimitExceeded)
-async def rate_limit_exception_handler(request: Request, exc: RateLimitExceeded) -> JSONResponse:
-    """Handle rate limit exceeded errors.
-
-    Global exception handler for rate limiting. Returns structured error
-    response with Retry-After header.
+    Processes multimodal conversations with images and text, returning the assistant's
+    response. Supports image compression and caching for optimal performance.
+    Rate limited to 30 requests per minute per IP address.
 
     Args:
-        request: FastAPI Request object.
-        exc: RateLimitExceeded exception.
+        request: FastAPI Request object (injected). Body must contain
+            VLMRequest JSON with at least one image.
+        use_case: VLMUseCase instance (injected via dependency injection).
+        queue: VLM request queue (injected via dependency injection).
 
     Returns:
-        JSONResponse with ErrorResponse. Status code 429 (Too Many Requests).
-        Includes Retry-After header set to 60 seconds.
-    """
-    ctx = get_request_context(request)
-    logger.warning(
-        "rate_limit_exceeded: request_id=%s, client_ip=%s", ctx.request_id, ctx.client_ip
-    )
-    return JSONResponse(
-        status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-        content=ErrorResponse(
-            error="Rate limit exceeded. Please try again later.",
-            error_type="RateLimitExceeded",
-            request_id=ctx.request_id,
-        ).model_dump(),
-        headers={"Retry-After": "60"},
-    )
+        - VLMResponse (JSON) if stream=False
+        - StreamingResponse (text/event-stream) if stream=True
 
-
-@app.exception_handler(Exception)
-async def global_exception_handler(request: Request, exc: Exception) -> JSONResponse:
-    """Global exception handler for unexpected errors.
-
-    Catches any unhandled exceptions and returns a generic error response
-    without exposing internal error details to clients.
-
-    Args:
-        request: FastAPI Request object.
-        exc: Exception that was not handled by other handlers.
-
-    Returns:
-        JSONResponse with ErrorResponse containing generic error message.
-        Status code 500 (Internal Server Error).
+    Raises:
+        HTTPException: With appropriate status code for various error conditions:
+            - 422: Invalid request body or validation error
+            - 400: Invalid messages, missing images, or invalid image format
+            - 503: Ollama service unavailable
+            - 504: Request timeout (120s for VLM)
+            - 500: Internal server error
 
     Side effects:
-        Logs full exception traceback for debugging.
+        - Parses request body JSON
+        - Validates at least one image present
+        - Processes and compresses images (if enabled)
+        - Checks image cache for duplicates
+        - Acquires VLM queue slot (may wait or timeout)
+        - Makes HTTP request to Ollama service
+        - Logs request with VLM-specific metrics
+        - Records metrics and analytics
     """
     ctx = get_request_context(request)
-    logger.exception(
-        "unhandled_exception: request_id=%s, error_type=%s, error=%s",
-        ctx.request_id,
-        type(exc).__name__,
-        str(exc),
-    )
-    return JSONResponse(
-        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        content=ErrorResponse(
-            error="An unexpected error occurred. Please try again later.",
-            error_type=type(exc).__name__,
-            request_id=ctx.request_id,
-        ).model_dump(),
-    )
+
+    # Parse request body
+    try:
+        body = await request.json()
+        api_req = VLMRequest(**body)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Invalid JSON in request body: {e!s}",
+        ) from e
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Request validation failed: {e!s}",
+        ) from e
+
+    try:
+        # Convert API model to domain entity (validation happens here)
+        domain_req = api_to_domain_vlm_request(api_req)
+
+        # Acquire VLM queue slot for request processing
+        async with queue.acquire(request_id=ctx.request_id):
+            # Handle streaming if requested
+            if api_req.stream:
+                logger.info("streaming_vlm_requested: request_id=%s", ctx.request_id)
+                # Use case returns AsyncIterator for streaming
+                result = await use_case.execute(
+                    request=domain_req,
+                    request_id=ctx.request_id,
+                    client_ip=ctx.client_ip,
+                    project_name=ctx.project_name,
+                    stream=True,
+                    target_format=api_req.compression_format,
+                )
+                # Type narrowing: stream=True returns AsyncIterator
+                assert not isinstance(result, dict)
+                return StreamingResponse(
+                    _stream_chat_sse(result, ctx),
+                    media_type="text/event-stream",
+                )
+
+            # Non-streaming: use case handles all business logic, logging, and metrics
+            result = await use_case.execute(
+                request=domain_req,
+                request_id=ctx.request_id,
+                client_ip=ctx.client_ip,
+                project_name=ctx.project_name,
+                stream=False,
+                target_format=api_req.compression_format,
+            )
+            # Type narrowing: stream=False returns dict
+            assert isinstance(result, dict)
+            result_dict = result
+
+            # Convert result dict to API response
+            message_content = result_dict.get("message", {}).get("content", "")
+            model_used = result_dict.get("model", "unknown")
+            prompt_eval_count = result_dict.get("prompt_eval_count", 0)
+            eval_count = result_dict.get("eval_count", 0)
+            total_duration = result_dict.get("total_duration", 0)
+            load_duration = result_dict.get("load_duration", 0)
+
+            load_ms = load_duration / 1_000_000 if load_duration else 0.0
+            total_ms = total_duration / 1_000_000 if total_duration else 0.0
+
+            return VLMResponse(
+                message=ChatMessage(role="assistant", content=message_content),
+                model=model_used,
+                request_id=ctx.request_id,
+                latency_ms=0.0,  # Use case handles latency tracking internally
+                model_load_ms=round(load_ms, 3) if load_ms else None,
+                model_warm_start=load_ms == 0.0,
+                images_processed=len(api_req.images),
+                compression_savings_bytes=None,  # TODO: Get from use case result
+                prompt_eval_count=prompt_eval_count,
+                generation_eval_count=eval_count,
+                total_duration_ms=round(total_ms, 3) if total_ms else None,
+            )
+
+    except HTTPException:
+        # Re-raise HTTPException (from parsing or other validation)
+        raise
+    except (InvalidRequestError, ValueError) as exc:
+        # ValueError from domain validation or InvalidRequestError from use case
+        logger.warning("vlm_validation_error: request_id=%s, error=%s", ctx.request_id, str(exc))
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid VLM request: {exc!s}",
+        ) from exc
+    except ConnectionError as exc:
+        logger.error("vlm_connection_error: request_id=%s, error=%s", ctx.request_id, str(exc))
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Ollama service is unavailable. Please check if the service is running.",
+        ) from exc
+    except TimeoutError as exc:
+        logger.error("vlm_timeout_error: request_id=%s, error=%s", ctx.request_id, str(exc))
+        raise HTTPException(
+            status_code=status.HTTP_504_GATEWAY_TIMEOUT,
+            detail="VLM request timed out. Large images may take longer to process.",
+        ) from exc
+    except httpx.HTTPStatusError as exc:
+        status_code = exc.response.status_code if exc.response else None
+        http_status, error_msg = _map_http_status_code(status_code)
+        logger.error(
+            "vlm_http_status_error: request_id=%s, status_code=%s, error=%s",
+            ctx.request_id,
+            status_code,
+            str(exc),
+        )
+        raise HTTPException(status_code=http_status, detail=error_msg) from exc
+    except httpx.RequestError as exc:
+        logger.error("vlm_request_error: request_id=%s, error=%s", ctx.request_id, str(exc))
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Unable to connect to Ollama service. Please check if the service is running.",
+        ) from exc
+    except Exception as exc:
+        logger.exception(
+            "unexpected_error_vlm_completion: request_id=%s, error_type=%s",
+            ctx.request_id,
+            type(exc).__name__,
+        )
+        # Include request_id in error response
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"An internal error occurred (request_id: {ctx.request_id}). Please try again later or contact support.",
+        ) from exc
 
 
+@app.post("/api/v1/vlm/openai", tags=["VLM"])
+@limiter.limit("30/minute")
+async def vlm_chat_openai(
+    request: Request,
+    use_case: VLMUseCase = Depends(get_vlm_use_case),
+    queue: RequestQueue = Depends(get_vlm_queue),
+) -> Response:
+    """OpenAI-compatible Vision-Language Model (VLM) chat completion endpoint.
+
+    Processes multimodal conversations with OpenAI-compatible message format
+    (images embedded in message content). For Docling and other OpenAI-compatible clients.
+    Converted internally to native Ollama format for processing.
+    Rate limited to 30 requests per minute per IP address.
+
+    Args:
+        request: FastAPI Request object (injected). Body must contain
+            VLMRequestOpenAI JSON with at least one image in message content.
+        use_case: VLMUseCase instance (injected via dependency injection).
+        queue: VLM request queue (injected via dependency injection).
+
+    Returns:
+        - VLMResponse (JSON) if stream=False
+        - StreamingResponse (text/event-stream) if stream=True
+
+    Raises:
+        HTTPException: With appropriate status code for various error conditions:
+            - 422: Invalid request body or validation error
+            - 400: Invalid messages, missing images, or invalid image format
+            - 503: Ollama service unavailable
+            - 504: Request timeout (120s for VLM)
+            - 500: Internal server error
+
+    Side effects:
+        - Parses request body JSON
+        - Converts OpenAI format to native Ollama format
+        - Validates at least one image present
+        - Processes and compresses images (if enabled)
+        - Checks image cache for duplicates
+        - Acquires VLM queue slot (may wait or timeout)
+        - Makes HTTP request to Ollama service
+        - Logs request with VLM-specific metrics
+        - Records metrics and analytics
+    """
+    ctx = get_request_context(request)
+
+    # Parse request body (OpenAI-compatible format)
+    try:
+        body = await request.json()
+        api_req = VLMRequestOpenAI(**body)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Invalid JSON in request body: {e!s}",
+        ) from e
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Request validation failed: {e!s}",
+        ) from e
+
+    try:
+        # Convert OpenAI-compatible API model to native Ollama domain entity
+        domain_req = api_to_domain_vlm_request_openai(api_req)
+
+        # Count images for response metrics
+        image_count = len(domain_req.images)
+
+        # Acquire VLM queue slot for request processing
+        async with queue.acquire(request_id=ctx.request_id):
+            # Handle streaming if requested
+            if api_req.stream:
+                logger.info("streaming_vlm_openai_requested: request_id=%s", ctx.request_id)
+                # Use case returns AsyncIterator for streaming
+                result = await use_case.execute(
+                    request=domain_req,
+                    request_id=ctx.request_id,
+                    client_ip=ctx.client_ip,
+                    project_name=ctx.project_name,
+                    stream=True,
+                    target_format=api_req.compression_format,
+                )
+                # Type narrowing: stream=True returns AsyncIterator
+                assert not isinstance(result, dict)
+                return StreamingResponse(
+                    _stream_chat_sse(result, ctx),
+                    media_type="text/event-stream",
+                )
+
+            # Non-streaming: use case handles all business logic, logging, and metrics
+            result = await use_case.execute(
+                request=domain_req,
+                request_id=ctx.request_id,
+                client_ip=ctx.client_ip,
+                project_name=ctx.project_name,
+                stream=False,
+                target_format=api_req.compression_format,
+            )
+            # Type narrowing: stream=False returns dict
+            assert isinstance(result, dict)
+            result_dict = result
+
+            # Convert result dict to API response
+            message_content = result_dict.get("message", {}).get("content", "")
+            model_used = result_dict.get("model", "unknown")
+            prompt_eval_count = result_dict.get("prompt_eval_count", 0)
+            eval_count = result_dict.get("eval_count", 0)
+            total_duration = result_dict.get("total_duration", 0)
+            load_duration = result_dict.get("load_duration", 0)
+
+            load_ms = load_duration / 1_000_000 if load_duration else 0.0
+            total_ms = total_duration / 1_000_000 if total_duration else 0.0
+
+            return VLMResponse(
+                message=ChatMessage(role="assistant", content=message_content),
+                model=model_used,
+                request_id=ctx.request_id,
+                latency_ms=0.0,  # Use case handles latency tracking internally
+                model_load_ms=round(load_ms, 3) if load_ms else None,
+                model_warm_start=load_ms == 0.0,
+                images_processed=image_count,
+                compression_savings_bytes=None,  # TODO: Get from use case result
+                prompt_eval_count=prompt_eval_count,
+                generation_eval_count=eval_count,
+                total_duration_ms=round(total_ms, 3) if total_ms else None,
+            )
+
+    except HTTPException:
+        # Re-raise HTTPException (from parsing or other validation)
+        raise
+    except (InvalidRequestError, ValueError) as exc:
+        # ValueError from domain validation or InvalidRequestError from use case
+        logger.warning("vlm_openai_validation_error: request_id=%s, error=%s", ctx.request_id, str(exc))
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid VLM request (OpenAI format): {exc!s}",
+        ) from exc
+    except ConnectionError as exc:
+        logger.error("vlm_openai_connection_error: request_id=%s, error=%s", ctx.request_id, str(exc))
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Ollama service is unavailable. Please check if the service is running.",
+        ) from exc
+    except TimeoutError as exc:
+        logger.error("vlm_openai_timeout_error: request_id=%s, error=%s", ctx.request_id, str(exc))
+        raise HTTPException(
+            status_code=status.HTTP_504_GATEWAY_TIMEOUT,
+            detail="VLM request timed out. Large images may take longer to process.",
+        ) from exc
+    except httpx.HTTPStatusError as exc:
+        status_code = exc.response.status_code if exc.response else None
+        http_status, error_msg = _map_http_status_code(status_code)
+        logger.error(
+            "vlm_openai_http_status_error: request_id=%s, status_code=%s, error=%s",
+            ctx.request_id,
+            status_code,
+            str(exc),
+        )
+        raise HTTPException(status_code=http_status, detail=error_msg) from exc
+    except httpx.RequestError as exc:
+        logger.error("vlm_openai_request_error: request_id=%s, error=%s", ctx.request_id, str(exc))
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Unable to connect to Ollama service. Please check if the service is running.",
+        ) from exc
+    except Exception as exc:
+        logger.exception(
+            "unexpected_error_vlm_openai_completion: request_id=%s, error_type=%s",
+            ctx.request_id,
+            type(exc).__name__,
+        )
+        # Include request_id in error response
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"An internal error occurred (request_id: {ctx.request_id}). Please try again later or contact support.",
+        ) from exc
+
+
+@app.post("/api/v1/batch/chat", tags=["Batch"])
+@limiter.limit("10/minute")
+async def batch_chat(
+    request: Request,
+    use_case: BatchChatUseCase = Depends(get_batch_chat_use_case),
+) -> BatchResponse:
+    """Batch text-only chat completion endpoint.
+
+    Processes multiple chat requests in parallel, returning all results in a single
+    response. Rate limited to 10 requests per minute per IP address.
+
+    Args:
+        request: FastAPI Request object (injected). Body must contain
+            BatchChatRequest JSON with list of chat requests (max 50).
+        use_case: BatchChatUseCase instance (injected via dependency injection).
+
+    Returns:
+        BatchResponse with:
+            - batch_id: Unique batch identifier
+            - total_requests: Number of requests in batch
+            - successful: Count of successful requests
+            - failed: Count of failed requests
+            - total_time_ms: Total batch processing time
+            - results: List of individual results with success/error status
+
+    Raises:
+        HTTPException: With appropriate status code for various error conditions:
+            - 422: Invalid request body or validation error
+            - 400: Too many requests in batch (>50)
+            - 500: Internal server error
+
+    Side effects:
+        - Parses request body JSON
+        - Processes up to 5 requests concurrently
+        - Logs all individual requests
+        - Records batch-level metrics
+    """
+    ctx = get_request_context(request)
+
+    # Parse request body
+    try:
+        body = await request.json()
+        api_req = BatchChatRequest(**body)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Invalid JSON in request body: {e!s}",
+        ) from e
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Request validation failed: {e!s}",
+        ) from e
+
+    try:
+        # Convert API requests to domain entities
+        domain_requests = [api_to_domain_chat_request(req) for req in api_req.requests]
+
+        # Execute batch
+        logger.info(
+            "batch_chat_requested: request_id=%s, count=%d", ctx.request_id, len(domain_requests)
+        )
+        result = await use_case.execute(
+            requests=domain_requests,
+            client_ip=ctx.client_ip,
+            project_name=ctx.project_name,
+        )
+
+        return BatchResponse(**result)
+
+    except HTTPException:
+        # Re-raise HTTPException
+        raise
+    except (InvalidRequestError, ValueError) as exc:
+        logger.warning(
+            "batch_chat_validation_error: request_id=%s, error=%s", ctx.request_id, str(exc)
+        )
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid batch chat request: {exc!s}",
+        ) from exc
+    except Exception as exc:
+        logger.exception(
+            "unexpected_error_batch_chat: request_id=%s, error_type=%s",
+            ctx.request_id,
+            type(exc).__name__,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"An internal error occurred (request_id: {ctx.request_id}). Please try again later or contact support.",
+        ) from exc
+
+
+@app.post("/api/v1/batch/vlm", tags=["Batch"])
+@limiter.limit("5/minute")
+async def batch_vlm(
+    request: Request,
+    use_case: BatchVLMUseCase = Depends(get_batch_vlm_use_case),
+) -> BatchResponse:
+    """Batch VLM chat completion endpoint.
+
+    Processes multiple VLM requests in parallel, with image compression and caching.
+    Rate limited to 5 requests per minute per IP address due to resource intensity.
+
+    Args:
+        request: FastAPI Request object (injected). Body must contain
+            BatchVLMRequest JSON with list of VLM requests (max 20).
+        use_case: BatchVLMUseCase instance (injected via dependency injection).
+
+    Returns:
+        BatchResponse with:
+            - batch_id: Unique batch identifier
+            - total_requests: Number of requests in batch
+            - successful: Count of successful requests
+            - failed: Count of failed requests
+            - total_time_ms: Total batch processing time
+            - results: List of individual results with success/error status
+
+    Raises:
+        HTTPException: With appropriate status code for various error conditions:
+            - 422: Invalid request body or validation error
+            - 400: Too many requests in batch (>20) or invalid images
+            - 500: Internal server error
+
+    Side effects:
+        - Parses request body JSON
+        - Processes up to 3 VLM requests concurrently (resource-intensive)
+        - Compresses and caches images
+        - Logs all individual requests with VLM metrics
+        - Records batch-level metrics
+    """
+    ctx = get_request_context(request)
+
+    # Parse request body
+    try:
+        body = await request.json()
+        api_req = BatchVLMRequest(**body)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Invalid JSON in request body: {e!s}",
+        ) from e
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Request validation failed: {e!s}",
+        ) from e
+
+    try:
+        # Convert API requests to domain entities
+        domain_requests = [api_to_domain_vlm_request(req) for req in api_req.requests]
+
+        # Execute batch
+        logger.info(
+            "batch_vlm_requested: request_id=%s, count=%d", ctx.request_id, len(domain_requests)
+        )
+        result = await use_case.execute(
+            requests=domain_requests,
+            client_ip=ctx.client_ip,
+            project_name=ctx.project_name,
+            target_format=api_req.compression_format,
+        )
+
+        return BatchResponse(**result)
+
+    except HTTPException:
+        # Re-raise HTTPException
+        raise
+    except (InvalidRequestError, ValueError) as exc:
+        logger.warning(
+            "batch_vlm_validation_error: request_id=%s, error=%s", ctx.request_id, str(exc)
+        )
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid batch VLM request: {exc!s}",
+        ) from exc
+    except Exception as exc:
+        logger.exception(
+            "unexpected_error_batch_vlm: request_id=%s, error_type=%s",
+            ctx.request_id,
+            type(exc).__name__,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"An internal error occurred (request_id: {ctx.request_id}). Please try again later or contact support.",
+        ) from exc
+
+
+# Root endpoint
 @app.get("/", tags=["Root"])
 async def root() -> dict[str, str]:
     """Root endpoint with API information.
@@ -890,7 +1361,7 @@ async def root() -> dict[str, str]:
     """
     return {
         "service": "Shared Ollama Service API",
-        "version": "1.0.0",
+        "version": "2.0.0",
         "docs": "/api/docs",
         "health": "/api/v1/health",
     }

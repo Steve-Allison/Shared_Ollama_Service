@@ -1,6 +1,11 @@
-# Shared Ollama Service
+# Shared Ollama Service v2.0
 
-A centralized Ollama instance for all AI projects to reduce duplication and improve resource management.
+**Native Ollama API** - Centralized Ollama instance with VLM support (dual format), batch processing, and image compression.
+
+⭐ **v2.0 Features**:
+- **Primary**: Native Ollama format (simple, efficient, direct)
+- **Secondary**: OpenAI-compatible format for Docling integration
+- **Breaking Change**: Default endpoints use native Ollama format (v1.x used different format)
 
 **📚 Documentation**: See [docs/README.md](docs/README.md) for complete documentation index.
 
@@ -23,12 +28,12 @@ This service provides a single Ollama instance accessible on port `11434` that a
 
 - **Primary**: `qwen2.5vl:7b` (7B parameters, vision-language model) ⭐ **VLM SUPPORTED**
   - **Full multimodal capabilities**: Process images + text in the same request
-  - **Native API support**: Uses Ollama's OpenAI-compatible multimodal format
+  - **Dual format support**: Native Ollama format (primary) + OpenAI-compatible format (for Docling)
   - **Image analysis**: Describe, analyze, and answer questions about images
   - **Visual understanding**: Extract text, context, and information from images
   - Excellent performance for both vision and text tasks
   - Loaded into memory when requested (~6 GB RAM)
-  - **See VLM Support section below for usage examples**
+  - **See VLM Support section below for detailed usage and format examples**
 - **Standard**: `qwen2.5:7b` (7B parameters, text-only model)
   - Efficient text-only model with excellent performance
   - Fast inference for text generation tasks
@@ -47,44 +52,74 @@ This service provides a single Ollama instance accessible on port `11434` that a
 
 Models remain in memory for 5 minutes after last use (OLLAMA_KEEP_ALIVE), then are automatically unloaded to free memory. Switching between models requires a brief load time (~2-3 seconds).
 
-## Vision Language Model (VLM) Support
+## Vision Language Model (VLM) Support ⭐ v2.0
 
-The service **fully supports** vision-language models with multimodal capabilities, specifically optimized for `qwen2.5vl:7b`. You can send images alongside text prompts for image analysis, visual question answering, and multimodal understanding.
+The service **fully supports** vision-language models with **both native Ollama and OpenAI-compatible formats**. Choose the format that works best for your use case:
+
+- **Native Ollama Format** (`/api/v1/vlm`): Simple, efficient, direct integration with Ollama
+- **OpenAI-Compatible Format** (`/api/v1/vlm/openai`): For Docling and other OpenAI-compatible clients
+
+Both endpoints are optimized for `qwen2.5vl:7b` and share the same image processing pipeline.
 
 ### VLM Capabilities
 
-- ✅ **Image Analysis**: Describe, analyze, and answer questions about images
-- ✅ **Multimodal Chat**: Combine text and images in conversation
-- ✅ **Visual Question Answering**: Ask questions about image content
-- ✅ **Image Understanding**: Extract information, text, and context from images
-- ✅ **Native API Format**: Uses Ollama's native OpenAI-compatible multimodal format
+- ✅ **Dual Format Support**: Native Ollama **and** OpenAI-compatible formats
+- ✅ **Dedicated VLM Endpoints**: `/api/v1/vlm` (native) and `/api/v1/vlm/openai` (OpenAI-compatible)
+- ✅ **Image Compression**: Automatic JPEG/PNG/WebP compression for faster processing
+- ✅ **Image Caching**: LRU cache with 1-hour TTL for deduplicated images
+- ✅ **Batch Processing**: `/api/v1/batch/vlm` for multiple VLM requests (max 20)
+- ✅ **Separate Queues**: VLM queue (3 concurrent, 120s timeout) separate from text chat
+- ✅ **Full Streaming Support**: Stream VLM responses with images
 
-### Service Expectations
+### Endpoints
 
-**Model Requirements:**
+| Endpoint | Format | Purpose | Max Concurrent | Timeout | Rate Limit |
+|----------|--------|---------|----------------|---------|------------|
+| `/api/v1/chat` | Native Ollama | Text-only chat | 6 | 60s | 60/min |
+| `/api/v1/vlm` | Native Ollama | VLM with images | 3 | 120s | 30/min |
+| `/api/v1/vlm/openai` | OpenAI-compatible | VLM with images | 3 | 120s | 30/min |
+| `/api/v1/batch/chat` | Native Ollama | Batch text chat | 5 | 60s | 10/min |
+| `/api/v1/batch/vlm` | Native Ollama | Batch VLM | 3 | 120s | 5/min |
 
-- Use `qwen2.5vl:7b` for vision-language tasks (primary model)
-- Text-only models (`qwen2.5:7b`, `qwen2.5:14b`) do NOT support images
-- Images are processed by the VLM model's vision encoder
+### Native Ollama Format
 
-**Image Format Requirements:**
+**Pure Ollama API - Separate Images Parameter:**
 
-- **Format**: Base64-encoded data URLs
-- **Pattern**: `data:image/<format>;base64,<base64_encoded_data>`
-- **Supported Formats**: JPEG, PNG, GIF, WebP (any format supported by Ollama)
-- **Size Limits**: Recommended max 10MB per image (larger images may timeout)
-- **Validation**: Automatic validation of image format and encoding
+```json
+{
+  "model": "qwen2.5vl:7b",
+  "messages": [
+    {"role": "user", "content": "What's in this image?"}
+  ],
+  "images": ["data:image/jpeg;base64,/9j/4AAQ..."]
+}
+```
 
-**API Behavior:**
+**Key Features:**
 
-- **Backward Compatible**: Text-only messages still work as strings
-- **Multimodal Messages**: Use array format for text + images
-- **Streaming**: Fully supported for multimodal requests
-- **Error Handling**: Clear error messages for invalid image formats
+- ✅ **Text-only messages**: Simple `{"role": "user", "content": "text"}` format
+- ✅ **Images as separate parameter**: Native Ollama `images` array
+- ✅ **No conversion layer**: Direct pass-through to Ollama
+- ✅ **Image compression**: Optional JPEG/PNG/WebP compression (default: JPEG, quality 85)
+- ✅ **Image caching**: SHA-256-based LRU cache, 1-hour TTL
+
+### Model Requirements
+
+- **VLM Model**: Use `qwen2.5vl:7b` for vision tasks (images + text)
+- **Text-Only**: Use `/api/v1/chat` with `qwen2.5:7b` or `qwen2.5:14b`
+- **Image Support**: Only `qwen2.5vl:7b` supports images
+
+### Image Format
+
+- **Format**: Base64-encoded data URLs: `data:image/<format>;base64,<data>`
+- **Supported**: JPEG, PNG, WebP (any format Ollama supports)
+- **Compression**: JPEG (quality 85), PNG (level 6), WebP (quality 85, method 6)
+- **Size**: Recommended max 10MB per image
+- **Validation**: Automatic format validation
 
 ### Using VLM with REST API
 
-**Text-Only Chat (Backward Compatible):**
+**Text-Only Chat (`/api/v1/chat`):**
 
 ```python
 import requests
@@ -92,67 +127,168 @@ import requests
 response = requests.post(
     "http://localhost:8000/api/v1/chat",
     json={
-        "model": "qwen2.5vl:7b",
+        "model": "qwen2.5:7b",  # Text-only model
         "messages": [
-            {"role": "user", "content": "Hello, how are you?"}
+            {"role": "user", "content": "Hello!"}
         ]
     }
 )
 print(response.json()["message"]["content"])
 ```
 
-**Multimodal Chat with Images:**
+**VLM with Images (`/api/v1/vlm` - Native Ollama Format):**
 
 ```python
 import requests
 import base64
 
 # Read and encode image
-with open("image.jpg", "rb") as f:
-    image_data = base64.b64encode(f.read()).decode()
-    image_url = f"data:image/jpeg;base64,{image_data}"
+with open("photo.jpg", "rb") as f:
+    img_data = base64.b64encode(f.read()).decode()
 
-# Send multimodal request
+# Native Ollama format: images as separate parameter
 response = requests.post(
-    "http://localhost:8000/api/v1/chat",
+    "http://localhost:8000/api/v1/vlm",
     json={
         "model": "qwen2.5vl:7b",
         "messages": [
-            {
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": "What's in this image? Describe it in detail."},
-                    {
-                        "type": "image_url",
-                        "image_url": {"url": image_url}
-                    }
-                ]
-            }
-        ]
+            {"role": "user", "content": "What's in this image?"}
+        ],
+        "images": [f"data:image/jpeg;base64,{img_data}"],
+        "image_compression": True,  # Optional: compress images (default)
+        "compression_format": "jpeg"  # Optional: jpeg/png/webp (default: jpeg)
     }
 )
-print(response.json()["message"]["content"])
+result = response.json()
+print(result["message"]["content"])
+print(f"Images processed: {result['images_processed']}")
 ```
 
-**Multiple Images in One Message:**
+**Multiple Images (Native Ollama):**
 
 ```python
 import requests
 import base64
 
-def encode_image(image_path):
-    with open(image_path, "rb") as f:
-        return f"data:image/jpeg;base64,{base64.b64encode(f.read()).decode()}"
+def encode_image(path):
+    with open(path, "rb") as f:
+        data = base64.b64encode(f.read()).decode()
+        return f"data:image/jpeg;base64,{data}"
 
+# Native Ollama: all images in separate array
 response = requests.post(
-    "http://localhost:8000/api/v1/chat",
+    "http://localhost:8000/api/v1/vlm",
+    json={
+        "model": "qwen2.5vl:7b",
+        "messages": [
+            {"role": "user", "content": "Compare these images"}
+        ],
+        "images": [
+            encode_image("image1.jpg"),
+            encode_image("image2.jpg")
+        ]
+    }
+)
+```
+
+### OpenAI-Compatible Format
+
+For **Docling** and other **OpenAI-compatible clients**, use `/api/v1/vlm/openai` with multimodal messages (images embedded in message content). Converted internally to native Ollama format for processing.
+
+**OpenAI-Compatible Format - Images in Message Content:**
+
+```json
+{
+  "model": "qwen2.5vl:7b",
+  "messages": [
+    {
+      "role": "user",
+      "content": [
+        {
+          "type": "text",
+          "text": "What's in this image?"
+        },
+        {
+          "type": "image_url",
+          "image_url": {
+            "url": "data:image/jpeg;base64,/9j/4AAQ..."
+          }
+        }
+      ]
+    }
+  ]
+}
+```
+
+**Key Differences:**
+
+- ✅ **Multimodal messages**: Images embedded in message `content` array
+- ✅ **Content parts**: Each message can have multiple `text` and `image_url` parts
+- ✅ **OpenAI compatibility**: Works with Docling and other OpenAI-compatible clients
+- ✅ **Automatic conversion**: Internally converted to native Ollama format
+
+**Using OpenAI-Compatible Format with Python:**
+
+```python
+import requests
+import base64
+
+# Read and encode image
+with open("photo.jpg", "rb") as f:
+    img_data = base64.b64encode(f.read()).decode()
+
+# OpenAI-compatible format: images in message content
+response = requests.post(
+    "http://localhost:8000/api/v1/vlm/openai",
     json={
         "model": "qwen2.5vl:7b",
         "messages": [
             {
                 "role": "user",
                 "content": [
-                    {"type": "text", "text": "Compare these two images:"},
+                    {
+                        "type": "text",
+                        "text": "What's in this image?"
+                    },
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:image/jpeg;base64,{img_data}"
+                        }
+                    }
+                ]
+            }
+        ],
+        "image_compression": True,  # Optional: compress images (default)
+        "compression_format": "jpeg"  # Optional: jpeg/png/webp (default: jpeg)
+    }
+)
+result = response.json()
+print(result["message"]["content"])
+print(f"Images processed: {result['images_processed']}")
+```
+
+**Multiple Images (OpenAI-Compatible):**
+
+```python
+import requests
+import base64
+
+def encode_image(path):
+    with open(path, "rb") as f:
+        data = base64.b64encode(f.read()).decode()
+        return f"data:image/jpeg;base64,{data}"
+
+# OpenAI format: all images in message content parts
+response = requests.post(
+    "http://localhost:8000/api/v1/vlm/openai",
+    json={
+        "model": "qwen2.5vl:7b",
+        "messages": [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": "Compare these images"},
                     {"type": "image_url", "image_url": {"url": encode_image("image1.jpg")}},
                     {"type": "image_url", "image_url": {"url": encode_image("image2.jpg")}}
                 ]
@@ -162,31 +298,106 @@ response = requests.post(
 )
 ```
 
-**TypeScript/JavaScript Example:**
+**Docling Integration Example:**
+
+```python
+import requests
+import base64
+from docling import DocumentConverter  # Hypothetical Docling import
+
+# Use Docling to extract document images
+converter = DocumentConverter()
+doc_images = converter.extract_images("document.pdf")
+
+# Process with OpenAI-compatible VLM endpoint
+for idx, image in enumerate(doc_images):
+    # Encode image
+    img_data = base64.b64encode(image).decode()
+
+    # Call OpenAI-compatible VLM endpoint
+    response = requests.post(
+        "http://localhost:8000/api/v1/vlm/openai",
+        json={
+            "model": "qwen2.5vl:7b",
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": "Extract text from this document page"},
+                        {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{img_data}"}}
+                    ]
+                }
+            ]
+        }
+    )
+    print(f"Page {idx}: {response.json()['message']['content']}")
+```
+
+**Which Format Should I Use?**
+
+| Use Case | Recommended Format | Endpoint |
+|----------|-------------------|----------|
+| **Docling integration** | OpenAI-compatible | `/api/v1/vlm/openai` |
+| **OpenAI-compatible clients** | OpenAI-compatible | `/api/v1/vlm/openai` |
+| **Direct Ollama integration** | Native Ollama | `/api/v1/vlm` |
+| **Simple use cases** | Native Ollama | `/api/v1/vlm` |
+| **Batch processing** | Native Ollama | `/api/v1/batch/vlm` |
+
+**Batch VLM Processing:**
+
+```python
+import requests
+import base64
+
+# Encode multiple images
+images = []
+for path in ["photo1.jpg", "photo2.jpg", "photo3.jpg"]:
+    with open(path, "rb") as f:
+        data = base64.b64encode(f.read()).decode()
+        images.append(f"data:image/jpeg;base64,{data}")
+
+# Batch VLM request (max 20 requests)
+response = requests.post(
+    "http://localhost:8000/api/v1/batch/vlm",
+    json={
+        "requests": [
+            {
+                "messages": [{"role": "user", "content": "Describe this"}],
+                "images": [img],
+                "model": "qwen2.5vl:7b"
+            }
+            for img in images
+        ],
+        "compression_format": "webp"  # Use WebP for all requests
+    }
+)
+
+batch_result = response.json()
+print(f"Processed: {batch_result['successful']}/{batch_result['total_requests']}")
+for idx, result in enumerate(batch_result['results']):
+    if result['success']:
+        print(f"Image {idx}: {result['data']['message']['content'][:100]}...")
+```
+
+**TypeScript/JavaScript (Native Ollama):**
 
 ```typescript
 import fs from 'fs';
 
-// Read and encode image
-const imageBuffer = fs.readFileSync('image.jpg');
-const imageBase64 = imageBuffer.toString('base64');
-const imageUrl = `data:image/jpeg;base64,${imageBase64}`;
+// Encode image
+const imgBuffer = fs.readFileSync('photo.jpg');
+const imgB64 = imgBuffer.toString('base64');
 
-// Send multimodal request
-const response = await fetch('http://localhost:8000/api/v1/chat', {
+// Native Ollama format
+const response = await fetch('http://localhost:8000/api/v1/vlm', {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify({
     model: 'qwen2.5vl:7b',
     messages: [
-      {
-        role: 'user',
-        content: [
-          { type: 'text', text: 'What do you see in this image?' },
-          { type: 'image_url', image_url: { url: imageUrl } }
-        ]
-      }
-    ]
+      { role: 'user', content: 'What do you see?' }
+    ],
+    images: [`data:image/jpeg;base64,${imgB64}`]
   })
 });
 
@@ -194,36 +405,28 @@ const data = await response.json();
 console.log(data.message.content);
 ```
 
-**Python Client Example:**
+**Batch Text Chat:**
 
 ```python
-from shared_ollama import AsyncSharedOllamaClient
-import base64
+import requests
 
-async def analyze_image():
-    async with AsyncSharedOllamaClient() as client:
-        # Encode image
-        with open("image.jpg", "rb") as f:
-            image_data = base64.b64encode(f.read()).decode()
-            image_url = f"data:image/jpeg;base64,{image_data}"
+# Batch chat request (max 50 requests)
+response = requests.post(
+    "http://localhost:8000/api/v1/batch/chat",
+    json={
+        "requests": [
+            {
+                "messages": [{"role": "user", "content": f"Question {i}?"}],
+                "model": "qwen2.5:7b"
+            }
+            for i in range(10)
+        ]
+    }
+)
 
-        # Send multimodal request
-        messages = [{
-            "role": "user",
-            "content": [
-                {"type": "text", "text": "Analyze this image"},
-                {"type": "image_url", "image_url": {"url": image_url}}
-            ]
-        }]
-
-        response = await client.chat(
-            messages=messages,
-            model="qwen2.5vl:7b"
-        )
-        print(response["message"]["content"])
-
-import asyncio
-asyncio.run(analyze_image())
+batch_result = response.json()
+print(f"Completed: {batch_result['successful']}/{batch_result['total_requests']}")
+print(f"Total time: {batch_result['total_time_ms']:.0f}ms")
 ```
 
 ### Streaming Multimodal Responses
@@ -272,6 +475,8 @@ for line in response.iter_lines():
 4. **Streaming**: Use streaming for long responses to improve UX
 5. **Rate Limits**: Be aware of 60 requests/minute rate limit for chat endpoint
 6. **Image Size**: Keep images under 10MB for best performance
+7. **Native Format**: The service uses Ollama's native API format internally - no custom formats or proprietary code
+8. **Project Tracking**: Include `X-Project-Name` header for project-based analytics and usage tracking
 
 ### Error Handling
 
@@ -449,8 +654,22 @@ pip install -e ".[dev]" -c constraints.txt
 **REST API:**
 
 ```bash
-./scripts/start_api.sh          # Start async REST API server (port 8000)
+./scripts/start.sh              # Start REST API server (port 8000)
 curl http://localhost:8000/api/v1/health  # Health check
+
+# Core Endpoints
+curl http://localhost:8000/api/v1/models  # List available models
+curl http://localhost:8000/api/v1/chat    # Text-only chat (native Ollama)
+curl http://localhost:8000/api/v1/vlm     # VLM with images (native Ollama)
+curl http://localhost:8000/api/v1/vlm/openai  # VLM with images (OpenAI-compatible, for Docling)
+
+# Monitoring & Analytics Endpoints
+curl http://localhost:8000/api/v1/metrics  # Service metrics
+curl http://localhost:8000/api/v1/performance/stats  # Performance statistics
+curl http://localhost:8000/api/v1/analytics  # Analytics report
+curl "http://localhost:8000/api/v1/analytics?project=Docling_Machine"  # Project-specific analytics
+curl http://localhost:8000/api/v1/queue/stats  # Queue statistics
+
 # Visit http://localhost:8000/api/docs for interactive API docs
 # Fully async implementation for maximum concurrency
 ```
@@ -1198,7 +1417,7 @@ ollama serve
 
 - HTTP request logs: `logs/ollama.log`
 - Error logs: `logs/ollama.error.log`
-- Performance logs: `logs/performance.jsonl` (if using performance tracking)
+- Performance logs: `logs/performance.jsonl` (detailed performance metrics)
 - Structured request events (model timings, load durations): `logs/requests.jsonl`
 
 **Performance Analysis**:
@@ -1222,6 +1441,110 @@ python scripts/performance_report.py --window 60
 - **Resource usage**: `top -pid $(pgrep ollama)` or Activity Monitor
 
 **Note**: See `PERFORMANCE_MONITORING.md` for detailed performance tracking capabilities.
+
+### API Monitoring Endpoints
+
+The service provides comprehensive monitoring endpoints for metrics, performance, and analytics:
+
+#### Service Metrics (`GET /api/v1/metrics`)
+
+Get comprehensive service metrics including request counts, latency statistics, and error breakdowns:
+
+```bash
+# Get all metrics
+curl http://localhost:8000/api/v1/metrics
+
+# Get metrics from last hour
+curl "http://localhost:8000/api/v1/metrics?window_minutes=60"
+```
+
+**Response includes**:
+- Total requests, successful/failed counts
+- Latency percentiles (P50, P95, P99)
+- Requests by model and operation
+- Error breakdowns by type
+- First/last request timestamps
+
+#### Performance Statistics (`GET /api/v1/performance/stats`)
+
+Get detailed performance metrics including token generation rates and timing breakdowns:
+
+```bash
+curl http://localhost:8000/api/v1/performance/stats
+```
+
+**Response includes**:
+- Average tokens per second (generation throughput)
+- Average model load time
+- Average generation time
+- Per-model breakdowns with request counts
+
+#### Analytics (`GET /api/v1/analytics`)
+
+Get comprehensive analytics with project-level tracking and time-series data:
+
+```bash
+# Get all analytics
+curl http://localhost:8000/api/v1/analytics
+
+# Get analytics for specific project
+curl "http://localhost:8000/api/v1/analytics?project=Docling_Machine"
+
+# Get analytics from last hour
+curl "http://localhost:8000/api/v1/analytics?window_minutes=60"
+
+# Combined filters
+curl "http://localhost:8000/api/v1/analytics?window_minutes=60&project=Docling_Machine"
+```
+
+**Response includes**:
+- Total requests, success rates
+- Latency percentiles (P50, P95, P99)
+- Requests by model, operation, and project
+- Project-level metrics (detailed breakdowns per project)
+- Hourly time-series metrics
+- Time range (start_time, end_time)
+
+**Project Tracking**: Projects are identified via the `X-Project-Name` header in requests. Analytics automatically tracks usage by project.
+
+#### Queue Statistics (`GET /api/v1/queue/stats`)
+
+Get real-time queue performance metrics:
+
+```bash
+curl http://localhost:8000/api/v1/queue/stats
+```
+
+**Response includes**:
+- Current queue state (queued, in_progress)
+- Historical counts (completed, failed, rejected, timeout)
+- Wait time statistics (total, max, average)
+- Configuration (max_concurrent, max_queue_size, timeout)
+
+### Performance Data Collection
+
+The service collects comprehensive performance data:
+
+**Structured Logs** (`logs/requests.jsonl`):
+- Request-level metrics (latency, model, operation, status)
+- Model load times (`model_load_ms`)
+- Warm start indicators (`model_warm_start`)
+- Project names (from `X-Project-Name` header)
+- Client IP addresses
+- Error information
+
+**Performance Logs** (`logs/performance.jsonl`):
+- Detailed timing breakdowns (load, prompt eval, generation)
+- Token-level metrics (tokens/second, prompt tokens/second)
+- Per-model performance statistics
+- Comprehensive performance data for analysis
+
+**In-Memory Metrics**:
+- Real-time aggregations (via `/api/v1/metrics`)
+- Project-based analytics (via `/api/v1/analytics`)
+- Performance statistics (via `/api/v1/performance/stats`)
+
+**See**: `docs/PERFORMANCE_DATA_COLLECTED.md` for complete details on all collected metrics.
 
 ## Cost and Resource Management
 
@@ -1370,8 +1693,25 @@ asyncio.run(main())
 
 ### Monitoring & Metrics
 
-Track usage, latency, and errors across all projects:
+**✅ FULLY ENABLED** - Comprehensive monitoring and analytics:
 
+**Via API** (Recommended):
+```bash
+# Service metrics
+curl http://localhost:8000/api/v1/metrics
+
+# Performance statistics
+curl http://localhost:8000/api/v1/performance/stats
+
+# Analytics (with project tracking)
+curl http://localhost:8000/api/v1/analytics
+curl "http://localhost:8000/api/v1/analytics?project=Docling_Machine&window_minutes=60"
+
+# Queue statistics
+curl http://localhost:8000/api/v1/queue/stats
+```
+
+**Via Python**:
 ```python
 from shared_ollama import MetricsCollector, track_request
 
@@ -1383,7 +1723,10 @@ with track_request("qwen2.5vl:7b", "generate"):
 metrics = MetricsCollector.get_metrics()
 print(f"Total requests: {metrics.total_requests}")
 print(f"Average latency: {metrics.average_latency_ms:.2f}ms")
+print(f"P95 latency: {metrics.p95_latency_ms:.2f}ms")
 ```
+
+**See**: [API Monitoring Endpoints](#api-monitoring-endpoints) section for complete details.
 
 ### Enhanced Resilience
 
@@ -1412,22 +1755,60 @@ See `IMPLEMENTED_ENHANCEMENTS.md` for full details.
 
 ### Enhanced Analytics
 
-Advanced analytics with project-level tracking and time-series analysis:
+**✅ NOW FULLY ENABLED** - Project-based analytics with time-series analysis:
 
+**Via API** (Recommended):
+```bash
+# Get all analytics
+curl http://localhost:8000/api/v1/analytics
+
+# Get analytics for specific project
+curl "http://localhost:8000/api/v1/analytics?project=Docling_Machine"
+
+# Get analytics from last hour
+curl "http://localhost:8000/api/v1/analytics?window_minutes=60"
+
+# Combined filters
+curl "http://localhost:8000/api/v1/analytics?window_minutes=60&project=Docling_Machine"
+```
+
+**Via Python**:
 ```python
-from shared_ollama import AnalyticsCollector, track_request_with_project
+from shared_ollama import AnalyticsCollector, get_analytics_json
 
-# Track with project identifier
-with track_request_with_project("qwen2.5vl:7b", "generate", project="knowledge_machine"):
-    response = client.generate("Hello!")
-
-# View analytics dashboard
-python scripts/view_analytics.py
+# Get analytics report
+analytics = get_analytics_json(window_minutes=60, project="Docling_Machine")
+print(f"Total requests: {analytics['total_requests']}")
+print(f"Success rate: {analytics['success_rate']:.2%}")
+print(f"Average latency: {analytics['average_latency_ms']:.2f}ms")
+print(f"P95 latency: {analytics['p95_latency_ms']:.2f}ms")
 
 # Export analytics
 AnalyticsCollector.export_json("analytics.json")
 AnalyticsCollector.export_csv("analytics.csv")
 ```
+
+**Project Tracking**: Automatically enabled! Include `X-Project-Name` header in requests:
+```python
+import requests
+
+response = requests.post(
+    "http://localhost:8000/api/v1/chat",
+    headers={"X-Project-Name": "Docling_Machine"},
+    json={"model": "qwen2.5vl:7b", "messages": [...]}
+)
+```
+
+**Features**:
+- ✅ Project-level usage tracking (automatic with `X-Project-Name` header)
+- ✅ Hourly time-series metrics
+- ✅ Latency percentiles (P50, P95, P99)
+- ✅ Success rates and error breakdowns
+- ✅ JSON/CSV export capabilities
+- ✅ Time-window filtering
+- ✅ Per-project detailed metrics
+
+**See**: [API Monitoring Endpoints](#api-monitoring-endpoints) section for complete API documentation.
 
 ### API Documentation
 

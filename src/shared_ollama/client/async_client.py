@@ -377,11 +377,12 @@ class AsyncSharedOllamaClient:
         options: GenerateOptions | None = None,
         stream: bool = False,
         format: str | dict[str, Any] | None = None,
+        tools: list[dict[str, Any]] | None = None,
     ) -> GenerateResponse:
         """Generate text from a prompt.
 
         Sends a text generation request to the Ollama service and returns
-        the generated text with performance metrics.
+        the generated text with performance metrics. Supports tool calling (POML).
 
         Args:
             prompt: Text prompt for generation. Must not be empty.
@@ -395,9 +396,11 @@ class AsyncSharedOllamaClient:
                 - "json" for JSON mode
                 - dict with JSON schema for structured output
                 - None for default text output
+            tools: List of tools/functions the model can call (POML compatible).
 
         Returns:
             GenerateResponse with generated text and performance metrics.
+            May include tool_calls if model calls tools.
 
         Raises:
             RuntimeError: If client is not initialized.
@@ -427,6 +430,8 @@ class AsyncSharedOllamaClient:
             payload["system"] = system
         if format:
             payload["format"] = format
+        if tools:
+            payload["tools"] = tools
 
         options_dict = self._build_options_dict(options)
         if options_dict:
@@ -784,11 +789,14 @@ class AsyncSharedOllamaClient:
         model: str | None = None,
         system: str | None = None,
         options: GenerateOptions | None = None,
+        format: str | dict[str, Any] | None = None,
+        tools: list[dict[str, Any]] | None = None,
     ) -> AsyncIterator[dict[str, Any]]:
         """Stream text generation from Ollama.
 
         Sends a streaming generation request and yields incremental text chunks
         as they are generated. Final chunk includes complete metrics.
+        Supports tool calling (POML).
 
         Args:
             prompt: Text prompt for generation. Must not be empty.
@@ -796,6 +804,8 @@ class AsyncSharedOllamaClient:
             system: Optional system message to set model behavior.
             options: Generation options (temperature, top_p, etc.). If None,
                 uses model defaults.
+            format: Output format specification. Can be "json" or JSON schema dict.
+            tools: List of tools/functions the model can call (POML compatible).
 
         Yields:
             Dictionary chunks with keys:
@@ -837,6 +847,10 @@ class AsyncSharedOllamaClient:
 
         if system:
             payload["system"] = system
+        if format:
+            payload["format"] = format
+        if tools:
+            payload["tools"] = tools
 
         options_dict = self._build_options_dict(options)
         if options_dict:

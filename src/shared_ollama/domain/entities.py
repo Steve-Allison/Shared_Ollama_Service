@@ -208,6 +208,7 @@ class GenerationRequest:
             - "json" for JSON mode
             - dict with JSON schema for structured output
             - None for default text output
+        tools: List of tools/functions the model can call (POML compatible).
     """
 
     prompt: Prompt
@@ -215,6 +216,7 @@ class GenerationRequest:
     system: SystemMessage | None = None
     options: GenerationOptions | None = None
     format: str | dict[str, object] | None = None
+    tools: tuple[Tool, ...] | None = None
 
     def __post_init__(self) -> None:
         """Validate generation request.

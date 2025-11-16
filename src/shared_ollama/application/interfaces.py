@@ -48,8 +48,9 @@ class OllamaClientInterface(Protocol):
         options: dict[str, Any] | None = None,
         stream: bool = False,
         format: str | dict[str, Any] | None = None,
+        tools: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any] | AsyncIterator[dict[str, Any]]:
-        """Generate text from a prompt.
+        """Generate text from a prompt with tool calling support.
 
         Args:
             prompt: Text prompt for generation.
@@ -57,7 +58,8 @@ class OllamaClientInterface(Protocol):
             system: System message. Optional.
             options: Generation options. Optional.
             stream: Whether to stream the response.
-            format: Output format. Optional.
+            format: Output format ("json" or JSON schema dict). Optional.
+            tools: List of tools/functions the model can call (POML compatible). Optional.
 
         Returns:
             - dict with generation result if stream=False

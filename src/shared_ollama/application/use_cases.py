@@ -110,7 +110,22 @@ class GenerateUseCase:
                 # Remove None values
                 options_dict = {k: v for k, v in options_dict.items() if v is not None}
 
-            # Call client
+            # Convert tools to dict format (POML compatible)
+            tools_list: list[dict[str, Any]] | None = None
+            if request.tools:
+                tools_list = [
+                    {
+                        "type": tool.type,
+                        "function": {
+                            "name": tool.function.name,
+                            "description": tool.function.description,
+                            "parameters": tool.function.parameters,
+                        },
+                    }
+                    for tool in request.tools
+                ]
+
+            # Call client with format and tools support
             result = await self._client.generate(
                 prompt=prompt_str,
                 model=model_str,
@@ -118,6 +133,7 @@ class GenerateUseCase:
                 options=options_dict,
                 stream=stream,
                 format=request.format,
+                tools=tools_list,
             )
 
             latency_ms = (time.perf_counter() - start_time) * 1000

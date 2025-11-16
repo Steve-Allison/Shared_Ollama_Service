@@ -127,12 +127,18 @@ def api_to_domain_generation_request(api_req: APIGenerateRequest) -> GenerationR
             stop=api_req.stop,
         )
 
+    # Convert tools if present
+    tools = None
+    if api_req.tools:
+        tools = tuple(api_to_domain_tool(t) for t in api_req.tools)
+
     return GenerationRequest(
         prompt=prompt,
         model=model,
         system=system,
         options=options,
         format=api_req.format,
+        tools=tools,
     )
 
 

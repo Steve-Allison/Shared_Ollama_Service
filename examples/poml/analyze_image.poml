@@ -1,0 +1,19 @@
+<poml>
+  <task>Analyze the image and extract structured information.</task>
+  <human-msg>{{ question }}</human-msg>
+
+  <output-schema>
+  {
+    "type": "object",
+    "properties": {
+      "objects": { "type": "array", "items": { "type": "string" } },
+      "text_detected": { "type": "string" },
+      "dominant_colors": { "type": "array", "items": { "type": "string" } },
+      "scene_type": { "type": "string" }
+    },
+    "required": ["objects", "scene_type"]
+  }
+  </output-schema>
+
+  <runtime model="qwen2.5vl:7b" max-tokens="500"/>
+</poml>

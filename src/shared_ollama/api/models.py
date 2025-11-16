@@ -25,6 +25,104 @@ from typing import Any, Literal, Union
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
+# ============================================================================
+# Tool/Function Calling Models (for POML and OpenAI compatibility)
+# ============================================================================
+
+
+class ToolFunction(BaseModel):
+    """Function definition for tool calling.
+
+    Defines a function that the model can call, including its schema.
+    Compatible with both POML <tool-definition> and OpenAI function calling.
+
+    Attributes:
+        name: Function name. Must be valid identifier.
+        description: Function description to help model understand when to call it.
+        parameters: JSON schema defining function parameters (JSON Schema format).
+    """
+
+    model_config = ConfigDict(
+        str_strip_whitespace=True,
+        validate_assignment=True,
+        extra="forbid",
+    )
+
+    name: str = Field(..., min_length=1, description="Function name")
+    description: str | None = Field(None, description="Function description")
+    parameters: dict[str, Any] = Field(
+        default_factory=dict, description="JSON schema for function parameters"
+    )
+
+
+class Tool(BaseModel):
+    """Tool definition for function calling.
+
+    Wrapper around ToolFunction following OpenAI's tool format.
+    Used in chat/VLM requests to define available tools.
+
+    Attributes:
+        type: Tool type. Currently only "function" is supported.
+        function: Function definition (ToolFunction).
+    """
+
+    model_config = ConfigDict(
+        validate_assignment=True,
+        extra="forbid",
+    )
+
+    type: Literal["function"] = Field(default="function", description="Tool type (only 'function' supported)")
+    function: ToolFunction = Field(..., description="Function definition")
+
+
+class ToolCallFunction(BaseModel):
+    """Function call details in a tool call.
+
+    Contains the function name and arguments for a tool call made by the model.
+
+    Attributes:
+        name: Name of the function being called.
+        arguments: JSON string containing function arguments.
+    """
+
+    model_config = ConfigDict(
+        str_strip_whitespace=True,
+        validate_assignment=True,
+        extra="forbid",
+    )
+
+    name: str = Field(..., min_length=1, description="Function name")
+    arguments: str = Field(..., description="JSON string of function arguments")
+
+
+class ToolCall(BaseModel):
+    """Tool call made by the model.
+
+    Represents a function call that the model wants to make.
+    Corresponds to POML's <tool-request> element.
+
+    Attributes:
+        id: Unique identifier for this tool call.
+        type: Tool call type. Currently only "function" is supported.
+        function: Function call details (ToolCallFunction).
+    """
+
+    model_config = ConfigDict(
+        str_strip_whitespace=True,
+        validate_assignment=True,
+        extra="forbid",
+    )
+
+    id: str = Field(..., min_length=1, description="Unique tool call ID")
+    type: Literal["function"] = Field(default="function", description="Tool call type")
+    function: ToolCallFunction = Field(..., description="Function call details")
+
+
+# ============================================================================
+# Request/Response Models
+# ============================================================================
+
+
 class GenerateRequest(BaseModel):
     """Request model for text generation endpoint.
 
@@ -76,9 +174,13 @@ class ChatMessage(BaseModel):
     Simple text-only message for chat completion. For vision language models
     with images, use the dedicated /api/v1/vlm endpoint with VLMRequest.
 
+    Supports tool calls for function calling workflows (POML compatible).
+
     Attributes:
-        role: Message role. Must be "user", "assistant", or "system".
-        content: Text content of the message.
+        role: Message role. Must be "user", "assistant", "system", or "tool".
+        content: Text content of the message. Optional when tool_calls present.
+        tool_calls: List of tool calls made by the assistant. Optional.
+        tool_call_id: ID of the tool call this message is responding to (for role="tool"). Optional.
     """
 
     model_config = ConfigDict(
@@ -87,10 +189,21 @@ class ChatMessage(BaseModel):
         extra="forbid",
     )
 
-    role: Literal["user", "assistant", "system"] = Field(
-        ..., description="Message role: 'user', 'assistant', or 'system'"
+    role: Literal["user", "assistant", "system", "tool"] = Field(
+        ..., description="Message role: 'user', 'assistant', 'system', or 'tool'"
     )
-    content: str = Field(..., min_length=1, description="Text content of the message")
+    content: str | None = Field(None, description="Text content of the message (optional if tool_calls present)")
+    tool_calls: list[ToolCall] | None = Field(None, description="Tool calls made by the assistant")
+    tool_call_id: str | None = Field(None, description="Tool call ID this message responds to (for role='tool')")
+
+    @field_validator("content", mode="after")
+    @classmethod
+    def validate_content_or_tool_calls(cls, v: str | None, info: Any) -> str | None:
+        """Validate that either content or tool_calls is present."""
+        tool_calls = info.data.get("tool_calls")
+        if v is None and not tool_calls:
+            raise ValueError("Message must have either content or tool_calls")
+        return v
 
 
 class ChatRequest(BaseModel):
@@ -102,6 +215,11 @@ class ChatRequest(BaseModel):
         messages: List of chat messages. Required, must contain at least one.
         model: Model name. Optional, defaults to service default.
         stream: Whether to stream the response. Defaults to False.
+        format: Output format specification. Can be:
+            - "json" for JSON mode
+            - dict with JSON schema for structured output
+            - None for default text output
+        tools: List of tools/functions the model can call. Optional (POML compatible).
         temperature: Sampling temperature (0.0-2.0). Optional.
         top_p: Nucleus sampling parameter (0.0-1.0). Optional.
         top_k: Top-k sampling parameter (>=1). Optional.
@@ -121,6 +239,11 @@ class ChatRequest(BaseModel):
     )
     model: str | None = Field(None, description="Model to use (defaults to service default)")
     stream: bool = Field(False, description="Whether to stream the response")
+    format: str | dict[str, Any] | None = Field(
+        None,
+        description="Output format: 'json' for JSON mode, or JSON schema object for structured output",
+    )
+    tools: list[Tool] | None = Field(None, description="Tools/functions the model can call (POML compatible)")
     temperature: float | None = Field(None, ge=0.0, le=2.0, description="Temperature for sampling")
     top_p: float | None = Field(None, ge=0.0, le=1.0, description="Top-p sampling parameter")
     top_k: int | None = Field(None, ge=1, description="Top-k sampling parameter")
@@ -417,9 +540,13 @@ class VLMMessage(BaseModel):
     VLM requests use native Ollama format with separate images parameter.
     Messages contain only text content - images are passed separately.
 
+    Supports tool calls for function calling workflows (POML compatible).
+
     Attributes:
-        role: Message role. Must be "user", "assistant", or "system".
-        content: Text content of the message.
+        role: Message role. Must be "user", "assistant", "system", or "tool".
+        content: Text content of the message. Optional when tool_calls present.
+        tool_calls: List of tool calls made by the assistant. Optional.
+        tool_call_id: ID of the tool call this message is responding to (for role="tool"). Optional.
     """
 
     model_config = ConfigDict(
@@ -428,10 +555,21 @@ class VLMMessage(BaseModel):
         extra="forbid",
     )
 
-    role: Literal["user", "assistant", "system"] = Field(
-        ..., description="Message role: 'user', 'assistant', or 'system'"
+    role: Literal["user", "assistant", "system", "tool"] = Field(
+        ..., description="Message role: 'user', 'assistant', 'system', or 'tool'"
     )
-    content: str = Field(..., min_length=1, description="Text content of the message")
+    content: str | None = Field(None, description="Text content of the message (optional if tool_calls present)")
+    tool_calls: list[ToolCall] | None = Field(None, description="Tool calls made by the assistant")
+    tool_call_id: str | None = Field(None, description="Tool call ID this message responds to (for role='tool')")
+
+    @field_validator("content", mode="after")
+    @classmethod
+    def validate_content_or_tool_calls(cls, v: str | None, info: Any) -> str | None:
+        """Validate that either content or tool_calls is present."""
+        tool_calls = info.data.get("tool_calls")
+        if v is None and not tool_calls:
+            raise ValueError("Message must have either content or tool_calls")
+        return v
 
 
 class VLMRequest(BaseModel):
@@ -446,6 +584,11 @@ class VLMRequest(BaseModel):
         images: List of base64-encoded images (data URLs). Required, min 1 image.
         model: VLM model name (default: qwen2.5vl:7b).
         stream: Whether to stream the response. Defaults to False.
+        format: Output format specification. Can be:
+            - "json" for JSON mode
+            - dict with JSON schema for structured output
+            - None for default text output
+        tools: List of tools/functions the model can call. Optional (POML compatible).
         temperature: Sampling temperature (0.0-2.0). Optional.
         top_p: Nucleus sampling parameter (0.0-1.0). Optional.
         top_k: Top-k sampling parameter (>=1). Optional.
@@ -473,6 +616,11 @@ class VLMRequest(BaseModel):
     )
     model: str | None = Field("qwen2.5vl:7b", description="VLM model (default: qwen2.5vl:7b)")
     stream: bool = Field(False, description="Whether to stream the response")
+    format: str | dict[str, Any] | None = Field(
+        None,
+        description="Output format: 'json' for JSON mode, or JSON schema object for structured output",
+    )
+    tools: list[Tool] | None = Field(None, description="Tools/functions the model can call (POML compatible)")
     temperature: float | None = Field(None, ge=0.0, le=2.0, description="Temperature for sampling")
     top_p: float | None = Field(None, ge=0.0, le=1.0, description="Top-p sampling parameter")
     top_k: int | None = Field(None, ge=1, description="Top-k sampling parameter")

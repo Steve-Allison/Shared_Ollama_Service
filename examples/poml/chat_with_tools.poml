@@ -1,0 +1,47 @@
+<poml>
+  <system-msg>You are a helpful assistant with access to tools.</system-msg>
+  <human-msg>{{ user_question }}</human-msg>
+
+  <!-- Define available tools -->
+  <tool-definition name="get_weather" description="Get current weather for a location">
+  {
+    "type": "object",
+    "properties": {
+      "location": {
+        "type": "string",
+        "description": "City name or location"
+      },
+      "unit": {
+        "type": "string",
+        "enum": ["celsius", "fahrenheit"],
+        "description": "Temperature unit"
+      }
+    },
+    "required": ["location"]
+  }
+  </tool-definition>
+
+  <tool-definition name="calculate" description="Perform mathematical calculations">
+  {
+    "type": "object",
+    "properties": {
+      "expression": {
+        "type": "string",
+        "description": "Mathematical expression to evaluate"
+      }
+    },
+    "required": ["expression"]
+  }
+  </tool-definition>
+
+  <!-- Handle tool interactions -->
+  <tool-request if="tool_request" id="{{ tool_request.id }}"
+                name="{{ tool_request.name }}"
+                parameters="{{ tool_request.parameters }}" />
+  <tool-response if="tool_response" id="{{ tool_response.id }}"
+                 name="{{ tool_response.name }}">
+    <object data="{{ tool_response.result }}"/>
+  </tool-response>
+
+  <runtime model="qwen2.5:14b" temperature="0.7"/>
+</poml>

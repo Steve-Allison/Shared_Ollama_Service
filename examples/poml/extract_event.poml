@@ -1,0 +1,19 @@
+<poml>
+  <system-msg>Extract event information from the text.</system-msg>
+  <human-msg>{{ text }}</human-msg>
+
+  <output-schema>
+  {
+    "type": "object",
+    "properties": {
+      "name": { "type": "string" },
+      "date": { "type": "string" },
+      "participants": { "type": "array", "items": { "type": "string" } },
+      "location": { "type": "string" }
+    },
+    "required": ["name", "date", "participants"]
+  }
+  </output-schema>
+
+  <runtime model="qwen2.5:14b"/>
+</poml>

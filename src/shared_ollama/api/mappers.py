@@ -15,6 +15,10 @@ from shared_ollama.api.models import (
     ChatRequest as APIChatRequest,
     GenerateRequest as APIGenerateRequest,
     ModelInfo as APIModelInfo,
+    Tool as APITool,
+    ToolCall as APIToolCall,
+    ToolCallFunction as APIToolCallFunction,
+    ToolFunction as APIToolFunction,
 )
 from shared_ollama.domain.entities import (
     ChatMessage,
@@ -22,8 +26,71 @@ from shared_ollama.domain.entities import (
     GenerationOptions,
     GenerationRequest,
     ModelInfo,
+    Tool,
+    ToolCall,
+    ToolCallFunction,
+    ToolFunction,
 )
 from shared_ollama.domain.value_objects import ModelName, Prompt, SystemMessage
+
+
+# ============================================================================
+# Tool Calling Mappers
+# ============================================================================
+
+
+def api_to_domain_tool(api_tool: APITool) -> Tool:
+    """Convert API Tool to domain Tool.
+
+    Args:
+        api_tool: API Tool model.
+
+    Returns:
+        Domain Tool entity.
+    """
+    function = ToolFunction(
+        name=api_tool.function.name,
+        description=api_tool.function.description,
+        parameters=api_tool.function.parameters,
+    )
+    return Tool(function=function, type=api_tool.type)
+
+
+def api_to_domain_tool_call(api_tool_call: APIToolCall) -> ToolCall:
+    """Convert API ToolCall to domain ToolCall.
+
+    Args:
+        api_tool_call: API ToolCall model.
+
+    Returns:
+        Domain ToolCall entity.
+    """
+    function = ToolCallFunction(
+        name=api_tool_call.function.name,
+        arguments=api_tool_call.function.arguments,
+    )
+    return ToolCall(id=api_tool_call.id, function=function, type=api_tool_call.type)
+
+
+def domain_to_api_tool_call(domain_tool_call: ToolCall) -> APIToolCall:
+    """Convert domain ToolCall to API ToolCall.
+
+    Args:
+        domain_tool_call: Domain ToolCall entity.
+
+    Returns:
+        API ToolCall model.
+    """
+    function = APIToolCallFunction(
+        name=domain_tool_call.function.name,
+        arguments=domain_tool_call.function.arguments,
+    )
+    return APIToolCall(id=domain_tool_call.id, function=function, type=domain_tool_call.type)
+
+
+# ============================================================================
+# Generation Request Mappers
+# ============================================================================
 
 
 def api_to_domain_generation_request(api_req: APIGenerateRequest) -> GenerationRequest:
@@ -81,10 +148,22 @@ def api_to_domain_chat_request(api_req: APIChatRequest) -> ChatRequest:
     Raises:
         ValueError: If request validation fails (handled by domain entity).
     """
-    # Convert text-only messages (native Ollama format)
+    # Convert messages with tool calling support
     domain_messages: list[ChatMessage] = []
     for api_msg in api_req.messages:
-        domain_messages.append(ChatMessage(role=api_msg.role, content=api_msg.content))
+        # Convert tool calls if present
+        tool_calls = None
+        if api_msg.tool_calls:
+            tool_calls = tuple(api_to_domain_tool_call(tc) for tc in api_msg.tool_calls)
+
+        domain_messages.append(
+            ChatMessage(
+                role=api_msg.role,
+                content=api_msg.content,
+                tool_calls=tool_calls,
+                tool_call_id=api_msg.tool_call_id,
+            )
+        )
 
     messages = tuple(domain_messages)
     model = ModelName(value=api_req.model) if api_req.model else None
@@ -107,10 +186,17 @@ def api_to_domain_chat_request(api_req: APIChatRequest) -> ChatRequest:
             stop=api_req.stop,
         )
 
+    # Convert tools if present
+    tools = None
+    if api_req.tools:
+        tools = tuple(api_to_domain_tool(t) for t in api_req.tools)
+
     return ChatRequest(
         messages=messages,
         model=model,
         options=options,
+        format=api_req.format,
+        tools=tools,
     )
 
 
@@ -133,10 +219,20 @@ def api_to_domain_vlm_request(api_req: Any) -> Any:  # VLMRequest from models
         VLMRequest,
     )
 
-    # Convert API messages to domain messages (text-only, native Ollama format)
+    # Convert API messages to domain messages with tool calling support
     messages: list[VLMMessage] = []
     for msg in api_req.messages:
-        domain_msg = VLMMessage(role=msg.role, content=msg.content)
+        # Convert tool calls if present
+        tool_calls = None
+        if msg.tool_calls:
+            tool_calls = tuple(api_to_domain_tool_call(tc) for tc in msg.tool_calls)
+
+        domain_msg = VLMMessage(
+            role=msg.role,
+            content=msg.content,
+            tool_calls=tool_calls,
+            tool_call_id=msg.tool_call_id,
+        )
         messages.append(domain_msg)
 
     # Convert model name
@@ -163,6 +259,11 @@ def api_to_domain_vlm_request(api_req: Any) -> Any:  # VLMRequest from models
             stop=api_req.stop,
         )
 
+    # Convert tools if present
+    tools = None
+    if api_req.tools:
+        tools = tuple(api_to_domain_tool(t) for t in api_req.tools)
+
     return VLMRequest(
         messages=tuple(messages),
         images=tuple(api_req.images),  # Native Ollama format: separate images
@@ -170,6 +271,8 @@ def api_to_domain_vlm_request(api_req: Any) -> Any:  # VLMRequest from models
         options=options,
         image_compression=api_req.image_compression,
         max_dimension=api_req.max_dimension,
+        format=api_req.format,
+        tools=tools,
     )
 
 
@@ -186,10 +289,8 @@ def api_to_domain_vlm_request_openai(api_req: Any) -> Any:
         Domain VLMRequest in native Ollama format (text-only messages + separate images).
     """
     from shared_ollama.api.models import (
-        ChatMessageOpenAI,
         ImageContentPart,
         TextContentPart,
-        VLMRequestOpenAI,
     )
     from shared_ollama.domain.entities import (
         GenerationOptions,
@@ -250,6 +351,11 @@ def api_to_domain_vlm_request_openai(api_req: Any) -> Any:
             stop=api_req.stop,
         )
 
+    # Convert tools if present
+    tools = None
+    if api_req.tools:
+        tools = tuple(api_to_domain_tool(t) for t in api_req.tools)
+
     # Return native Ollama format (text-only messages + separate images)
     return VLMRequest(
         messages=tuple(messages),
@@ -258,6 +364,8 @@ def api_to_domain_vlm_request_openai(api_req: Any) -> Any:
         options=options,
         image_compression=api_req.image_compression,
         max_dimension=api_req.max_dimension,
+        format=api_req.format,
+        tools=tools,
     )
 
 

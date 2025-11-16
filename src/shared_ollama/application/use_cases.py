@@ -128,16 +128,24 @@ class GenerateUseCase:
                 return result
             else:
                 # Non-streaming: log immediately
+                model_used = result.get("model", model_str or "unknown")
+                # Extract performance metrics from Ollama response
+                load_duration = result.get("load_duration", 0)
+                model_load_ms = round(load_duration / 1_000_000, 3) if load_duration else None
+                model_warm_start = (load_duration == 0) if load_duration is not None else None
+
                 self._logger.log_request({
                     "event": "api_request",
                     "client_type": "rest_api",
                     "operation": "generate",
                     "status": "success",
-                    "model": result.get("model", model_str or "unknown"),
+                    "model": model_used,
                     "request_id": request_id,
                     "client_ip": client_ip,
                     "project_name": project_name,
                     "latency_ms": round(latency_ms, 3),
+                    "model_load_ms": model_load_ms,
+                    "model_warm_start": model_warm_start,
                 })
 
                 self._metrics.record_request(
@@ -145,6 +153,26 @@ class GenerateUseCase:
                     operation="generate",
                     latency_ms=latency_ms,
                     success=True,
+                )
+
+                # Record project-based analytics
+                from shared_ollama.telemetry.analytics import AnalyticsCollector
+                AnalyticsCollector.record_request_with_project(
+                    model=model_used,
+                    operation="generate",
+                    latency_ms=latency_ms,
+                    success=True,
+                    project=project_name,
+                )
+
+                # Record detailed performance metrics
+                from shared_ollama.telemetry.performance import PerformanceCollector
+                PerformanceCollector.record_performance(
+                    model=model_used,
+                    operation="generate",
+                    total_latency_ms=latency_ms,
+                    success=True,
+                    response=result,  # Pass dict - PerformanceCollector now handles it
                 )
 
                 return result
@@ -175,6 +203,17 @@ class GenerateUseCase:
                 error="ValueError",
             )
 
+            # Record project-based analytics for errors too
+            from shared_ollama.telemetry.analytics import AnalyticsCollector
+            AnalyticsCollector.record_request_with_project(
+                model=model_str,
+                operation="generate",
+                latency_ms=latency_ms,
+                success=False,
+                project=project_name,
+                error="ValueError",
+            )
+
             raise InvalidRequestError(f"Invalid request: {exc!s}") from exc
         except Exception as exc:
             latency_ms = (time.perf_counter() - start_time) * 1000
@@ -199,6 +238,17 @@ class GenerateUseCase:
                 operation="generate",
                 latency_ms=latency_ms,
                 success=False,
+                error=type(exc).__name__,
+            )
+
+            # Record project-based analytics for errors too
+            from shared_ollama.telemetry.analytics import AnalyticsCollector
+            AnalyticsCollector.record_request_with_project(
+                model=model_str,
+                operation="generate",
+                latency_ms=latency_ms,
+                success=False,
+                project=project_name,
                 error=type(exc).__name__,
             )
 
@@ -269,27 +319,37 @@ class ChatUseCase:
         start_time = time.perf_counter()
 
         try:
-            # Convert domain entities to client format
-            # Handle both text-only and multimodal content
+            # Convert domain entities to client format with tool calling support
             messages: list[dict[str, Any]] = []
+
             for msg in request.messages:
-                if isinstance(msg.content, str):
-                    # Text-only message (backward compatible)
-                    messages.append({"role": msg.role, "content": msg.content})
-                else:
-                    # Multimodal message - convert to Ollama format
-                    content_parts: list[dict[str, Any]] = []
-                    for part in msg.content:
-                        part_type, part_content = part
-                        if part_type == "text":
-                            content_parts.append({"type": "text", "text": part_content})
-                        elif part_type == "image_url":
-                            # part_content is ImageContent
-                            content_parts.append({
-                                "type": "image_url",
-                                "image_url": {"url": part_content.url}
-                            })
-                    messages.append({"role": msg.role, "content": content_parts})
+                # Build message dict with tool calling support
+                message_dict: dict[str, Any] = {"role": msg.role}
+
+                # Add content if present
+                if msg.content is not None:
+                    message_dict["content"] = msg.content
+
+                # Add tool_calls if present
+                if msg.tool_calls:
+                    message_dict["tool_calls"] = [
+                        {
+                            "id": tc.id,
+                            "type": tc.type,
+                            "function": {
+                                "name": tc.function.name,
+                                "arguments": tc.function.arguments,
+                            },
+                        }
+                        for tc in msg.tool_calls
+                    ]
+
+                # Add tool_call_id if present (for tool response messages)
+                if msg.tool_call_id:
+                    message_dict["tool_call_id"] = msg.tool_call_id
+
+                messages.append(message_dict)
+
             model_str = request.model.value if request.model else None
 
             # Convert options to dict format
@@ -307,12 +367,29 @@ class ChatUseCase:
                 # Remove None values
                 options_dict = {k: v for k, v in options_dict.items() if v is not None}
 
-            # Call client
+            # Convert tools to dict format (POML compatible)
+            tools_list: list[dict[str, Any]] | None = None
+            if request.tools:
+                tools_list = [
+                    {
+                        "type": tool.type,
+                        "function": {
+                            "name": tool.function.name,
+                            "description": tool.function.description,
+                            "parameters": tool.function.parameters,
+                        },
+                    }
+                    for tool in request.tools
+                ]
+
+            # Call client with format and tools support
             result = await self._client.chat(
                 messages=messages,
                 model=model_str,
                 options=options_dict,
                 stream=stream,
+                format=request.format,
+                tools=tools_list,
             )
 
             latency_ms = (time.perf_counter() - start_time) * 1000
@@ -324,6 +401,11 @@ class ChatUseCase:
             else:
                 # Non-streaming: log immediately
                 model_used = result.get("model", model_str or "unknown")
+                # Extract performance metrics from Ollama response
+                load_duration = result.get("load_duration", 0)
+                model_load_ms = round(load_duration / 1_000_000, 3) if load_duration else None
+                model_warm_start = (load_duration == 0) if load_duration is not None else None
+
                 self._logger.log_request({
                     "event": "api_request",
                     "client_type": "rest_api",
@@ -334,6 +416,8 @@ class ChatUseCase:
                     "client_ip": client_ip,
                     "project_name": project_name,
                     "latency_ms": round(latency_ms, 3),
+                    "model_load_ms": model_load_ms,
+                    "model_warm_start": model_warm_start,
                 })
 
                 self._metrics.record_request(
@@ -341,6 +425,26 @@ class ChatUseCase:
                     operation="chat",
                     latency_ms=latency_ms,
                     success=True,
+                )
+
+                # Record project-based analytics
+                from shared_ollama.telemetry.analytics import AnalyticsCollector
+                AnalyticsCollector.record_request_with_project(
+                    model=model_used,
+                    operation="chat",
+                    latency_ms=latency_ms,
+                    success=True,
+                    project=project_name,
+                )
+
+                # Record detailed performance metrics
+                from shared_ollama.telemetry.performance import PerformanceCollector
+                PerformanceCollector.record_performance(
+                    model=model_used,
+                    operation="chat",
+                    total_latency_ms=latency_ms,
+                    success=True,
+                    response=result,  # Pass dict - PerformanceCollector now handles it
                 )
 
                 return result
@@ -371,6 +475,17 @@ class ChatUseCase:
                 error="ValueError",
             )
 
+            # Record project-based analytics for errors too
+            from shared_ollama.telemetry.analytics import AnalyticsCollector
+            AnalyticsCollector.record_request_with_project(
+                model=model_str,
+                operation="chat",
+                latency_ms=latency_ms,
+                success=False,
+                project=project_name,
+                error="ValueError",
+            )
+
             raise InvalidRequestError(f"Invalid request: {exc!s}") from exc
         except Exception as exc:
             latency_ms = (time.perf_counter() - start_time) * 1000
@@ -395,6 +510,17 @@ class ChatUseCase:
                 operation="chat",
                 latency_ms=latency_ms,
                 success=False,
+                error=type(exc).__name__,
+            )
+
+            # Record project-based analytics for errors too
+            from shared_ollama.telemetry.analytics import AnalyticsCollector
+            AnalyticsCollector.record_request_with_project(
+                model=model_str,
+                operation="chat",
+                latency_ms=latency_ms,
+                success=False,
+                project=project_name,
                 error=type(exc).__name__,
             )
 

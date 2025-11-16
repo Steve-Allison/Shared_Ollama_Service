@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Literal
+from typing import Any, Literal
 
 from shared_ollama.domain.value_objects import ModelName, Prompt, SystemMessage
 
@@ -47,6 +47,105 @@ class ModelInfo:
     name: str
     size: int | None = None
     modified_at: str | None = None
+
+
+# ============================================================================
+# Tool Calling Domain Entities (POML Support)
+# ============================================================================
+
+
+@dataclass(slots=True, frozen=True)
+class ToolFunction:
+    """Function definition for tool calling.
+
+    Compatible with both POML <tool-definition> and OpenAI function calling.
+
+    Attributes:
+        name: Function name (must be non-empty).
+        description: Function description (optional).
+        parameters: JSON schema for function parameters.
+    """
+
+    name: str
+    description: str | None = None
+    parameters: dict[str, Any] | None = None
+
+    def __post_init__(self) -> None:
+        """Validate tool function.
+
+        Raises:
+            ValueError: If name is empty.
+        """
+        if not self.name or not self.name.strip():
+            raise ValueError("Function name cannot be empty")
+
+
+@dataclass(slots=True, frozen=True)
+class Tool:
+    """Tool definition for function calling.
+
+    Attributes:
+        type: Tool type. Always "function".
+        function: Function definition.
+    """
+
+    function: ToolFunction
+    type: Literal["function"] = "function"
+
+
+@dataclass(slots=True, frozen=True)
+class ToolCallFunction:
+    """Function call details in a tool call.
+
+    Attributes:
+        name: Function name being called.
+        arguments: JSON string of function arguments.
+    """
+
+    name: str
+    arguments: str
+
+    def __post_init__(self) -> None:
+        """Validate tool call function.
+
+        Raises:
+            ValueError: If name or arguments are empty.
+        """
+        if not self.name or not self.name.strip():
+            raise ValueError("Function name cannot be empty")
+        if not self.arguments:
+            raise ValueError("Function arguments cannot be empty")
+
+
+@dataclass(slots=True, frozen=True)
+class ToolCall:
+    """Tool call made by the model.
+
+    Corresponds to POML's <tool-request> element.
+
+    Attributes:
+        id: Unique tool call ID.
+        type: Tool call type. Always "function".
+        function: Function call details.
+    """
+
+    id: str
+    function: ToolCallFunction
+    type: Literal["function"] = "function"
+
+    def __post_init__(self) -> None:
+        """Validate tool call.
+
+        Raises:
+            ValueError: If id is empty.
+        """
+        if not self.id or not self.id.strip():
+            raise ValueError("Tool call ID cannot be empty")
+
+
+# ============================================================================
+# Generation Options and Requests
+# ============================================================================
 
 
 @dataclass(slots=True, frozen=True)
@@ -133,27 +232,41 @@ class GenerationRequest:
 class ChatMessage:
     """A chat message with role and text content (native Ollama format).
 
-    Pure domain entity for text-only chat messages.
+    Pure domain entity for chat messages with tool calling support.
     For VLM with images, use VLMRequest and VLMMessage.
 
     Attributes:
-        role: Message role. Must be "user", "assistant", or "system".
-        content: Text content of the message.
+        role: Message role. Must be "user", "assistant", "system", or "tool".
+        content: Text content of the message (optional if tool_calls present).
+        tool_calls: Tool calls made by assistant (POML compatible).
+        tool_call_id: Tool call ID this message responds to (for role="tool").
     """
 
-    role: Literal["user", "assistant", "system"]
-    content: str
+    role: Literal["user", "assistant", "system", "tool"]
+    content: str | None = None
+    tool_calls: tuple[ToolCall, ...] | None = None
+    tool_call_id: str | None = None
 
     def __post_init__(self) -> None:
         """Validate chat message.
 
         Raises:
-            ValueError: If role is invalid or content is empty.
+            ValueError: If role is invalid or neither content nor tool_calls present.
         """
-        if self.role not in ("user", "assistant", "system"):
-            raise ValueError(f"Invalid role '{self.role}'. Must be 'user', 'assistant', or 'system'")
-        if not self.content or not self.content.strip():
-            raise ValueError("Message content cannot be empty")
+        if self.role not in ("user", "assistant", "system", "tool"):
+            raise ValueError(f"Invalid role '{self.role}'. Must be 'user', 'assistant', 'system', or 'tool'")
+
+        # Validate that either content or tool_calls is present
+        if self.content is None and not self.tool_calls:
+            raise ValueError("Message must have either content or tool_calls")
+
+        # Validate tool messages have tool_call_id
+        if self.role == "tool" and not self.tool_call_id:
+            raise ValueError("Tool messages must have tool_call_id")
+
+        # Validate content is not empty if provided
+        if self.content is not None and (not self.content or not self.content.strip()):
+            raise ValueError("Message content cannot be empty string")
 
 
 @dataclass(slots=True, frozen=True)
@@ -167,11 +280,18 @@ class ChatRequest:
         messages: List of chat messages. Must not be empty.
         model: Model name. Optional, defaults to service default.
         options: Generation options. Optional.
+        format: Output format specification. Can be:
+            - "json" for JSON mode
+            - dict with JSON schema for structured output
+            - None for default text output
+        tools: List of tools/functions the model can call (POML compatible).
     """
 
     messages: tuple[ChatMessage, ...]
     model: ModelName | None = None
     options: GenerationOptions | None = None
+    format: str | dict[str, Any] | None = None
+    tools: tuple[Tool, ...] | None = None
 
     def __post_init__(self) -> None:
         """Validate chat request.
@@ -181,36 +301,52 @@ class ChatRequest:
         """
         if not self.messages:
             raise ValueError("Messages list cannot be empty")
-        total_length = sum(len(msg.content) for msg in self.messages)
+        total_length = sum(
+            len(msg.content) if msg.content else 0 for msg in self.messages
+        )
         if total_length > 1_000_000:  # 1M characters
             raise ValueError("Total message content is too long. Maximum length is 1,000,000 characters")
 
 
 @dataclass(slots=True, frozen=True)
 class VLMMessage:
-    """Simple text-only message for VLM requests (native Ollama format).
+    """Message for VLM requests with tool calling support (native Ollama format).
 
     Pure domain entity for VLM messages. Uses native Ollama format where
     images are passed separately from message text content.
 
     Attributes:
-        role: Message role. Must be "user", "assistant", or "system".
-        content: Text content of the message.
+        role: Message role. Must be "user", "assistant", "system", or "tool".
+        content: Text content of the message (optional if tool_calls present).
+        tool_calls: Tool calls made by assistant (POML compatible).
+        tool_call_id: Tool call ID this message responds to (for role="tool").
     """
 
-    role: Literal["user", "assistant", "system"]
-    content: str
+    role: Literal["user", "assistant", "system", "tool"]
+    content: str | None = None
+    tool_calls: tuple[ToolCall, ...] | None = None
+    tool_call_id: str | None = None
 
     def __post_init__(self) -> None:
         """Validate VLM message.
 
         Raises:
-            ValueError: If role is invalid or content is empty.
+            ValueError: If role is invalid or neither content nor tool_calls present.
         """
-        if self.role not in ("user", "assistant", "system"):
-            raise ValueError(f"Invalid role '{self.role}'. Must be 'user', 'assistant', or 'system'")
-        if not self.content or not self.content.strip():
-            raise ValueError("Message content cannot be empty")
+        if self.role not in ("user", "assistant", "system", "tool"):
+            raise ValueError(f"Invalid role '{self.role}'. Must be 'user', 'assistant', 'system', or 'tool'")
+
+        # Validate that either content or tool_calls is present
+        if self.content is None and not self.tool_calls:
+            raise ValueError("Message must have either content or tool_calls")
+
+        # Validate tool messages have tool_call_id
+        if self.role == "tool" and not self.tool_call_id:
+            raise ValueError("Tool messages must have tool_call_id")
+
+        # Validate content is not empty if provided
+        if self.content is not None and (not self.content or not self.content.strip()):
+            raise ValueError("Message content cannot be empty string")
 
 
 @dataclass(slots=True, frozen=True)
@@ -227,6 +363,11 @@ class VLMRequest:
         options: Generation options.
         image_compression: Whether to compress images (default: True).
         max_dimension: Maximum image dimension for resizing (default: 1024).
+        format: Output format specification. Can be:
+            - "json" for JSON mode
+            - dict with JSON schema for structured output
+            - None for default text output
+        tools: List of tools/functions the model can call (POML compatible).
     """
 
     messages: tuple[VLMMessage, ...]
@@ -235,6 +376,8 @@ class VLMRequest:
     options: GenerationOptions | None = None
     image_compression: bool = True
     max_dimension: int = 1024
+    format: str | dict[str, Any] | None = None
+    tools: tuple[Tool, ...] | None = None
 
     def __post_init__(self) -> None:
         """Validate VLM request.
@@ -364,6 +507,11 @@ class VLMRequestOpenAI:
         options: Generation options.
         image_compression: Whether to compress images (default: True).
         max_dimension: Maximum image dimension for resizing (default: 1024).
+        format: Output format specification. Can be:
+            - "json" for JSON mode
+            - dict with JSON schema for structured output
+            - None for default text output
+        tools: List of tools/functions the model can call (POML compatible).
     """
 
     messages: tuple[ChatMessageOpenAI, ...]
@@ -371,6 +519,8 @@ class VLMRequestOpenAI:
     options: GenerationOptions | None = None
     image_compression: bool = True
     max_dimension: int = 1024
+    format: str | dict[str, Any] | None = None
+    tools: tuple[Tool, ...] | None = None
 
     def __post_init__(self) -> None:
         """Validate OpenAI-compatible VLM request.

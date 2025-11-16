@@ -71,18 +71,25 @@ class OllamaClientInterface(Protocol):
 
     async def chat(
         self,
-        messages: list[dict[str, str]],
+        messages: list[dict[str, Any]],
         model: str | None = None,
         options: dict[str, Any] | None = None,
         stream: bool = False,
+        images: list[str] | None = None,
+        format: str | dict[str, Any] | None = None,
+        tools: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any] | AsyncIterator[dict[str, Any]]:
-        """Chat completion.
+        """Chat completion with multimodal and tool calling support.
 
         Args:
-            messages: List of message dicts with 'role' and 'content' keys.
+            messages: List of message dicts with 'role', optional 'content',
+                'tool_calls', and 'tool_call_id' keys. Supports tool calling.
             model: Model name. Optional.
             options: Generation options. Optional.
             stream: Whether to stream the response.
+            images: List of base64-encoded images (native Ollama format). Optional.
+            format: Output format ("json" or JSON schema dict). Optional.
+            tools: List of tools/functions the model can call (POML compatible). Optional.
 
         Returns:
             - dict with chat result if stream=False

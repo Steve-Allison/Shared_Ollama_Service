@@ -585,29 +585,32 @@ class AsyncSharedOllamaClient:
         model: str | None = None,
         options: GenerateOptions | None = None,
         stream: bool = False,
+        images: list[str] | None = None,
+        format: str | dict[str, Any] | None = None,
+        tools: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
         """Chat completion with multiple messages.
 
         Sends a chat completion request with a conversation history.
-        Supports both text-only and multimodal (text + images) content.
+        Supports text-only, multimodal (text + images), and tool calling (POML).
 
         Args:
             messages: List of chat messages. Each message must be a dict with
-                'role' ('user', 'assistant', or 'system') and 'content' keys.
-                Content can be:
-                - str: Text-only content (backward compatible)
-                - list[dict]: Multimodal content with parts:
-                  - {"type": "text", "text": "..."}
-                  - {"type": "image_url", "image_url": {"url": "data:image/..."}}
+                'role' and optional 'content', 'tool_calls', 'tool_call_id' keys.
+                Supports tool calling for POML workflows.
             model: Model name. If None, uses config.default_model.
             options: Generation options (temperature, top_p, etc.). If None,
                 uses model defaults.
             stream: Whether to stream the response. Note: use chat_stream()
                 method for actual streaming.
+            images: List of base64-encoded images (native Ollama format).
+            format: Output format. Can be "json" or a JSON schema dict.
+            tools: List of tools/functions the model can call (POML compatible).
 
         Returns:
             Dictionary with chat response. Contains 'message' dict with 'role'
             and 'content', plus metadata (model, eval_count, etc.).
+            May include 'tool_calls' in message if model calls tools.
 
         Raises:
             RuntimeError: If client is not initialized.
@@ -633,6 +636,18 @@ class AsyncSharedOllamaClient:
             "messages": messages,
             "stream": stream,
         }
+
+        # Add images parameter if provided (Ollama's native format for vision models)
+        if images:
+            payload["images"] = images
+
+        # Add format parameter if provided (JSON schema support / POML)
+        if format is not None:
+            payload["format"] = format
+
+        # Add tools parameter if provided (tool calling / POML)
+        if tools:
+            payload["tools"] = tools
 
         options_dict = self._build_options_dict(options)
         if options_dict:
@@ -932,24 +947,26 @@ class AsyncSharedOllamaClient:
         messages: list[dict[str, Any]],
         model: str | None = None,
         options: GenerateOptions | None = None,
+        images: list[str] | None = None,
+        format: str | dict[str, Any] | None = None,
+        tools: list[dict[str, Any]] | None = None,
     ) -> AsyncIterator[dict[str, Any]]:
         """Stream chat completion from Ollama.
 
         Sends a streaming chat completion request and yields incremental message
         chunks as they are generated. Final chunk includes complete metrics.
-        Supports both text-only and multimodal (text + images) content.
+        Supports text-only, multimodal (text + images), and tool calling (POML).
 
         Args:
             messages: List of chat messages. Each message must be a dict with
-                'role' ('user', 'assistant', or 'system') and 'content' keys.
-                Content can be:
-                - str: Text-only content (backward compatible)
-                - list[dict]: Multimodal content with parts:
-                  - {"type": "text", "text": "..."}
-                  - {"type": "image_url", "image_url": {"url": "data:image/..."}}
+                'role' and optional 'content', 'tool_calls', 'tool_call_id' keys.
+                Supports tool calling for POML workflows.
             model: Model name. If None, uses config.default_model.
             options: Generation options (temperature, top_p, etc.). If None,
                 uses model defaults.
+            images: List of base64-encoded images (native Ollama format).
+            format: Output format. Can be "json" or a JSON schema dict.
+            tools: List of tools/functions the model can call (POML compatible).
 
         Yields:
             Dictionary chunks with keys:
@@ -989,6 +1006,18 @@ class AsyncSharedOllamaClient:
             "messages": messages,
             "stream": True,
         }
+
+        # Add images parameter if provided (Ollama's native format for vision models)
+        if images:
+            payload["images"] = images
+
+        # Add format parameter if provided (JSON schema support / POML)
+        if format is not None:
+            payload["format"] = format
+
+        # Add tools parameter if provided (tool calling / POML)
+        if tools:
+            payload["tools"] = tools
 
         options_dict = self._build_options_dict(options)
         if options_dict:

@@ -1008,6 +1008,8 @@ pip install -e ".[dev]" -c constraints.txt
 
 ```bash
 ./scripts/start.sh              # Start REST API server (port 8000)
+                                 # Automatically runs verify_setup.sh to check/generate optimal config
+./scripts/start.sh --skip-verify # Skip verification (faster startup)
 curl http://localhost:8000/api/v1/health  # Health check
 
 # Core Endpoints
@@ -1454,12 +1456,47 @@ export OLLAMA_PORT="11434"
 
 **For Service Configuration** (create `.env` file in project root):
 
+**Automatic Configuration Generation** (Recommended):
+
+```bash
+# Auto-detect hardware and generate optimal .env configuration
+./scripts/generate_optimal_config.sh
+
+# This script:
+# - Detects CPU, GPU, RAM, chip type
+# - Calculates optimal OLLAMA_MAX_RAM based on model requirements
+# - Reserves memory for RAG systems (default: 8GB)
+# - Configures GPU acceleration (Metal for Apple Silicon)
+# - Sets optimal parallel model count
+# - Configures network access (default: localhost for security)
+```
+
+**Manual Configuration** (if needed):
+
 ```env
-OLLAMA_HOST=0.0.0.0
-OLLAMA_ORIGINS=*
-OLLAMA_KEEP_ALIVE=5m  # How long models stay loaded after last use (see Keep-Alive section below)
+# Network Configuration (default: localhost for security)
+OLLAMA_HOST=localhost          # localhost = local only, 0.0.0.0 = network accessible
+API_HOST=0.0.0.0              # REST API host (can be network accessible)
+
+# Memory Configuration (auto-calculated by generate_optimal_config.sh)
+OLLAMA_MAX_RAM=44GB           # Based on model requirements + RAG reserves
+OLLAMA_NUM_PARALLEL=3         # Number of parallel models (max 3)
+
+# GPU Configuration (auto-detected for Apple Silicon)
+OLLAMA_METAL=1                # Metal acceleration (Apple Silicon)
+OLLAMA_NUM_GPU=-1             # Use all GPU cores
+OLLAMA_NUM_THREAD=14          # CPU threads
+
+# Model Keep-Alive
+OLLAMA_KEEP_ALIVE=30m         # How long models stay loaded after last use
 OLLAMA_DEBUG=false
 ```
+
+**Network Access:**
+
+- **Default**: `OLLAMA_HOST=localhost` (local access only, more secure)
+- **Network Access**: Set `OLLAMA_HOST=0.0.0.0` to allow connections from other machines on the network
+- **REST API**: `API_HOST=0.0.0.0` allows network access to the REST API (port 8000) while keeping Ollama local-only
 
 The client automatically discovers the service URL from these environment variables, so projects don't need hardcoded URLs.
 
@@ -1506,14 +1543,24 @@ Or set it when starting Ollama manually (launchd not recommended)
 ### Automated Health Check
 
 ```bash
+# Comprehensive setup verification (recommended)
+./scripts/verify_setup.sh
+
+# This checks:
+# - Generates optimal configuration if .env is missing
+# - Ollama installation
+# - Service status
+# - Model availability
+# - Downloads missing models
+# - Health checks (tests all models)
+
+# Quick health check
 ./scripts/health_check.sh
-```
 
-This checks:
-
-- Ollama service is running
-- All models are available
-- API is responding
+# This checks:
+# - Ollama service is running
+# - All models are available
+# - API is responding
 
 ### Manual Testing
 
@@ -1718,6 +1765,15 @@ ollama serve
 
 The Ollama service is **not exposed to the internet** by default. Only localhost connections are allowed.
 
+**Default Configuration:**
+- `OLLAMA_HOST=localhost` - Ollama service accessible only from localhost (secure default)
+- `API_HOST=0.0.0.0` - REST API can be network-accessible (port 8000) if needed
+
+**To Enable Network Access:**
+- Set `OLLAMA_HOST=0.0.0.0` in `.env` to allow connections from other machines on the same network
+- Run `./scripts/generate_optimal_config.sh` to update configuration
+- **Security Note**: Only enable network access on trusted networks. Consider firewall rules for untrusted networks.
+
 ### Model Access Control
 
 Models are stored locally: `~/.ollama/models`
@@ -1909,6 +1965,24 @@ The service collects comprehensive performance data:
 - **Models can run simultaneously** if you have sufficient RAM
 
 **Behavior**: Models are automatically loaded when requested and unloaded after 5 minutes of inactivity. Both models can be active at the same time if needed, reducing switching delays.
+
+**Memory Configuration:**
+
+The service uses **model-based memory calculation** (not percentage-based) to ensure adequate memory for RAG systems and other services running on the same machine:
+
+- **Calculation**: Based on actual model requirements (largest model × parallel count + inference buffer + overhead)
+- **Reserves**: Automatically reserves memory for:
+  - System overhead: 8GB
+  - RAG systems: 8GB (configurable via `RAG_RESERVE_GB` environment variable)
+  - Safety buffer: 4GB
+- **Automatic Configuration**: Run `./scripts/generate_optimal_config.sh` to auto-detect hardware and generate optimal `.env` settings
+- **Customization**: Adjust RAG reserve if needed:
+  ```bash
+  export RAG_RESERVE_GB=12  # For larger RAG systems
+  ./scripts/calculate_memory_limit.sh
+  ```
+
+See `scripts/calculate_memory_limit.sh` for detailed memory calculation logic.
 
 ### Performance
 

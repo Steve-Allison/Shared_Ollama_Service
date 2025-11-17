@@ -30,40 +30,6 @@ config = AsyncOllamaConfig(
 client = AsyncSharedOllamaClient(config=config, verify_on_init=False)
 ```
 
-## Locust Load Test (Async)
-
-1. Install optional tooling (preferably in a dedicated environment):
-
-   ```bash
-   pip install locust httpx -c constraints.txt
-   ```
-
-2. Create `load_test_locust.py`:
-
-   ```python
-   from locust import HttpUser, task, between
-
-   class OllamaUser(HttpUser):
-       wait_time = between(1, 5)
-
-       @task
-       def generate(self):
-           payload = {
-               "model": "qwen2.5:7b",
-               "prompt": "Explain streaming APIs in plain terms.",
-               "stream": False,
-           }
-           self.client.post("/api/generate", json=payload)
-   ```
-
-3. Run Locust pointing at the shared service:
-
-   ```bash
-   locust -f load_test_locust.py --host http://localhost:11434
-   ```
-
-4. Observe metrics and adjust `max_connections` / `max_concurrent_requests` to keep latency under targets.
-
 ## Headless CLI Load Test Script
 
 For automated sweeps or CI usage, run the included script:
@@ -109,7 +75,7 @@ Output artifacts can be archived (e.g. in `logs/perf_reports/`) for trend analys
 ## Rolling Out Changes Safely
 
 1. Apply new async config limits in staging.
-2. Run synthetic load (Locust + performance report).
+2. Run synthetic load (performance report).
 3. Compare latency distribution and GPU/CPU usage.
 4. Roll to production with staged rollout (if applicable).
 5. Monitor dashboards for at least one evaluation window.

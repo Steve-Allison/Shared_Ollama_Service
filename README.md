@@ -1051,9 +1051,6 @@ pytest tests/test_api_server.py -v
 # Run async load test script (headless)
 python scripts/async_load_test.py --requests 200 --workers 20
 
-# Optional: run async load test (requires locust)
-locust -f load_test_locust.py --host http://localhost:11434
-
 # Or use Makefile (if available)
 make lint        # Run linter
 make format      # Format code

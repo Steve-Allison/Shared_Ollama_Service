@@ -13,7 +13,7 @@ from typing import Any
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 
 from shared_ollama.api.dependencies import (
     get_request_context,
@@ -106,13 +106,13 @@ async def _stream_chat_sse(
         logger.exception("Error during VLM streaming: %s", exc)
 
 
-@router.post("/vlm", tags=["VLM"])
+@router.post("/vlm", tags=["VLM"], response_model=None)
 @limiter.limit("30/minute")
 async def vlm_chat(
     request: Request,
     use_case: VLMUseCase = Depends(get_vlm_use_case),
     queue: RequestQueue = Depends(get_vlm_queue),
-) -> VLMResponse | StreamingResponse:
+) -> Response:
     """Vision-Language Model (VLM) chat completion endpoint.
 
     Processes multimodal conversations with images and text, returning the assistant's
@@ -213,7 +213,7 @@ async def vlm_chat(
             load_ms = load_duration / 1_000_000 if load_duration else 0.0
             total_ms = total_duration / 1_000_000 if total_duration else 0.0
 
-            return VLMResponse(
+            response = VLMResponse(
                 message=ChatMessage(role="assistant", content=message_content),
                 model=model_used,
                 request_id=ctx.request_id,
@@ -226,6 +226,7 @@ async def vlm_chat(
                 generation_eval_count=eval_count,
                 total_duration_ms=round(total_ms, 3) if total_ms else None,
             )
+            return JSONResponse(content=response.model_dump())
 
     except HTTPException:
         # Re-raise HTTPException (from parsing or other validation)
@@ -278,13 +279,13 @@ async def vlm_chat(
         ) from exc
 
 
-@router.post("/vlm/openai", tags=["VLM"])
+@router.post("/vlm/openai", tags=["VLM"], response_model=None)
 @limiter.limit("30/minute")
 async def vlm_chat_openai(
     request: Request,
     use_case: VLMUseCase = Depends(get_vlm_use_case),
     queue: RequestQueue = Depends(get_vlm_queue),
-) -> VLMResponse | StreamingResponse:
+) -> Response:
     """OpenAI-compatible Vision-Language Model (VLM) chat completion endpoint.
 
     Processes multimodal conversations with OpenAI-compatible message format
@@ -390,7 +391,7 @@ async def vlm_chat_openai(
             load_ms = load_duration / 1_000_000 if load_duration else 0.0
             total_ms = total_duration / 1_000_000 if total_duration else 0.0
 
-            return VLMResponse(
+            response = VLMResponse(
                 message=ChatMessage(role="assistant", content=message_content),
                 model=model_used,
                 request_id=ctx.request_id,
@@ -403,6 +404,7 @@ async def vlm_chat_openai(
                 generation_eval_count=eval_count,
                 total_duration_ms=round(total_ms, 3) if total_ms else None,
             )
+            return JSONResponse(content=response.model_dump())
 
     except HTTPException:
         # Re-raise HTTPException (from parsing or other validation)

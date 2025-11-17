@@ -76,15 +76,54 @@ if [ -z "$MODELS_LIST" ] || [ "$MODELS_LIST" = "" ]; then
     fi
 fi
 
+# Function to test if a model is actually usable (not just listed)
+test_model_usable() {
+    local model=$1
+    TEST_PROMPT="{\"model\": \"${model}\", \"prompt\": \"OK\", \"stream\": false}"
+    
+    TEST_RESPONSE=$(curl -s -X POST "${API_ENDPOINT}/generate" \
+        -H "Content-Type: application/json" \
+        -d "$TEST_PROMPT" 2>/dev/null)
+    
+    # Check for error field (model corrupted, missing files, etc.)
+    if echo "$TEST_RESPONSE" | jq -e '.error' > /dev/null 2>&1; then
+        return 1  # Model is not usable
+    # Check for successful response
+    elif echo "$TEST_RESPONSE" | jq -e '.response' > /dev/null 2>&1; then
+        return 0  # Model is usable
+    else
+        return 1  # Invalid response
+    fi
+}
+
 MISSING_MODELS=()
+CORRUPTED_MODELS=()
 for model in "${REQUIRED_MODELS[@]}"; do
     if echo "$MODELS_LIST" | grep -q "^${model}$"; then
-        echo -e "${GREEN}  ✓ ${model}${NC}"
+        # Model is listed - test if it's actually usable
+        if test_model_usable "$model"; then
+            echo -e "${GREEN}  ✓ ${model} (available and usable)${NC}"
+        else
+            echo -e "${RED}  ✗ ${model} (listed but CORRUPTED)${NC}"
+            CORRUPTED_MODELS+=("$model")
+        fi
     else
         echo -e "${YELLOW}  ⚠ ${model} not found${NC}"
         MISSING_MODELS+=("$model")
     fi
 done
+
+if [ ${#CORRUPTED_MODELS[@]} -gt 0 ]; then
+    echo ""
+    echo -e "${RED}✗ Some models are corrupted or missing files${NC}"
+    echo "Models may appear in list but cannot generate responses."
+    echo ""
+    echo "To fix corrupted models:"
+    for model in "${CORRUPTED_MODELS[@]}"; do
+        echo "  ollama rm ${model} && ollama pull ${model}"
+    done
+    exit 1
+fi
 
 if [ ${#MISSING_MODELS[@]} -gt 0 ]; then
     echo ""
@@ -92,28 +131,6 @@ if [ ${#MISSING_MODELS[@]} -gt 0 ]; then
     echo "Download with: ./scripts/preload_models.sh"
     echo ""
     echo "Continuing anyway (models will be downloaded on first use)..."
-fi
-
-# Quick health test
-echo ""
-echo "Running health test..."
-TEST_RESPONSE=$(curl -s -X POST "${API_ENDPOINT}/generate" \
-    -H "Content-Type: application/json" \
-    -d '{"model": "qwen2.5vl:7b", "prompt": "Say OK", "stream": false}' \
-    2>/dev/null || echo "")
-
-# Check for error field first (model not found, etc.)
-if echo "$TEST_RESPONSE" | jq -e '.error' > /dev/null 2>&1; then
-    ERROR_MSG=$(echo "$TEST_RESPONSE" | jq -r '.error' 2>/dev/null || echo "unknown error")
-    echo -e "${RED}✗ Health test failed: ${ERROR_MSG}${NC}"
-    echo "    Model is listed but not usable. Try: ollama pull qwen2.5vl:7b"
-    exit 1
-# Check for successful response
-elif echo "$TEST_RESPONSE" | jq -e '.response' > /dev/null 2>&1; then
-    echo -e "${GREEN}✓ Health test passed${NC}"
-else
-    echo -e "${YELLOW}⚠ Health test incomplete (model may still be loading)${NC}"
-    echo "    Response: $(echo "$TEST_RESPONSE" | head -c 100)"
 fi
 
 echo ""

@@ -12,7 +12,7 @@ from typing import Any
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 
 from shared_ollama.api.dependencies import (
     get_chat_queue,
@@ -94,13 +94,13 @@ async def _stream_generate_sse(
         logger.exception("Error during generate streaming: %s", exc)
 
 
-@router.post("/generate", tags=["Generation"])
+@router.post("/generate", tags=["Generation"], response_model=None)
 @limiter.limit("60/minute")
 async def generate(
     request: Request,
     use_case: GenerateUseCase = Depends(get_generate_use_case),
     queue: RequestQueue = Depends(get_chat_queue),
-) -> GenerateResponse | StreamingResponse:
+) -> Response:
     """Generate text from a prompt.
 
     Sends a text generation request to the Ollama service. Supports both
@@ -197,7 +197,7 @@ async def generate(
                 else 0.0
             )
 
-            return GenerateResponse(
+            response = GenerateResponse(
                 text=result_dict.get("text", ""),
                 model=result_dict.get("model", "unknown"),
                 request_id=ctx.request_id,
@@ -208,6 +208,7 @@ async def generate(
                 generation_eval_count=result_dict.get("eval_count", 0),
                 total_duration_ms=round(total_ms, 3) if total_ms else None,
             )
+            return JSONResponse(content=response.model_dump())
 
     except HTTPException:
         # Re-raise HTTPException (from parsing or other validation)

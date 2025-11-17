@@ -28,6 +28,20 @@ echo ""
 echo -e "${GRAY}Note: The REST API will automatically start and manage Ollama internally${NC}"
 echo ""
 
+# Check for flags
+RESTART=false
+SKIP_VERIFY=false
+for arg in "$@"; do
+    case $arg in
+        --restart|-r)
+            RESTART=true
+            ;;
+        --skip-verify|--no-verify)
+            SKIP_VERIFY=true
+            ;;
+    esac
+done
+
 # Check if Ollama is installed
 if ! command -v ollama &> /dev/null; then
     echo -e "${RED}✗ Ollama is not installed${NC}"
@@ -35,10 +49,36 @@ if ! command -v ollama &> /dev/null; then
     exit 1
 fi
 
-# Check for restart flag
-RESTART=false
-if [ "$1" = "--restart" ] || [ "$1" = "-r" ]; then
-    RESTART=true
+# ============================================================================
+# Step 0: Verify Setup and Generate Optimal Configuration
+# ============================================================================
+if [ "$SKIP_VERIFY" = false ]; then
+    echo -e "${BLUE}[Setup]${NC} Verifying configuration and setup..."
+    if [ -f "$SCRIPT_DIR/verify_setup.sh" ]; then
+        # Run verify_setup.sh - it will auto-generate .env if needed
+        # Don't fail the start process if verification has minor issues
+        # (verify_setup.sh will still auto-fix what it can)
+        VERIFY_OUTPUT=$(bash "$SCRIPT_DIR/verify_setup.sh" 2>&1) || VERIFY_EXIT=$?
+        
+        # Check if config was generated or already exists
+        if echo "$VERIFY_OUTPUT" | grep -q "Optimal configuration generated\|Configuration file exists"; then
+            echo -e "${GREEN}✓ Configuration verified/generated${NC}"
+        fi
+        
+        # Show summary but don't block startup
+        if echo "$VERIFY_OUTPUT" | grep -q "All checks passed"; then
+            echo -e "${GREEN}✓ Setup verification passed${NC}"
+        elif [ "${VERIFY_EXIT:-0}" -ne 0 ]; then
+            echo -e "${YELLOW}⚠ Setup verification found issues (continuing anyway)${NC}"
+            echo -e "${GRAY}Run './scripts/verify_setup.sh' manually for full details${NC}"
+        fi
+    else
+        echo -e "${YELLOW}⚠ verify_setup.sh not found - skipping verification${NC}"
+    fi
+    echo ""
+else
+    echo -e "${GRAY}⏭ Skipping setup verification (--skip-verify flag)${NC}"
+    echo ""
 fi
 
 # Check if REST API is already running
@@ -61,6 +101,11 @@ echo -e "${BLUE}Configuration:${NC}"
 echo "  ✓ REST API Port: ${API_PORT}"
 echo "  ✓ Logs: ${LOG_DIR}/"
 echo "  ✓ Ollama: Managed internally by REST API"
+if [ -f "$PROJECT_ROOT/.env" ]; then
+    echo "  ✓ Configuration: .env file loaded"
+else
+    echo "  ⚠ Configuration: Using defaults (no .env file)"
+fi
 echo ""
 
 # Start REST API server (manages Ollama internally)

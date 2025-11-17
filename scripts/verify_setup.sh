@@ -29,6 +29,13 @@ echo -e "${BLUE}🚀 Ollama Service - Complete Setup Verification${NC}"
 echo "=================================================="
 echo ""
 
+# Get project root directory
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+ENV_FILE="$PROJECT_ROOT/.env"
+DETECT_SCRIPT="$SCRIPT_DIR/detect_system.sh"
+MEMORY_SCRIPT="$SCRIPT_DIR/calculate_memory_limit.sh"
+
 # Function to print status
 print_status() {
     if [ $1 -eq 0 ]; then
@@ -49,9 +56,42 @@ print_warning() {
 }
 
 # ============================================================================
+# Step 0: Generate Optimal Configuration (if needed)
+# ============================================================================
+echo -e "${BLUE}[0/7]${NC} Checking and generating optimal configuration..."
+
+# Check if .env exists and has key settings
+NEEDS_CONFIG=false
+if [ ! -f "$ENV_FILE" ]; then
+    NEEDS_CONFIG=true
+    print_info ".env file not found - will generate optimal configuration"
+elif ! grep -q "^OLLAMA_MAX_RAM=" "$ENV_FILE" 2>/dev/null; then
+    NEEDS_CONFIG=true
+    print_info ".env missing OLLAMA_MAX_RAM - will update configuration"
+fi
+
+if [ "$NEEDS_CONFIG" = true ]; then
+    if [ -f "$SCRIPT_DIR/generate_optimal_config.sh" ]; then
+        print_info "Generating optimal configuration based on system hardware..."
+        if bash "$SCRIPT_DIR/generate_optimal_config.sh" > /dev/null 2>&1; then
+            print_status 0 "Optimal configuration generated"
+            AUTO_FIXED=$((AUTO_FIXED + 1))
+        else
+            print_status 1 "Failed to generate configuration (continuing anyway)"
+        fi
+    else
+        print_warning "generate_optimal_config.sh not found - skipping config generation"
+    fi
+else
+    print_status 0 "Configuration file exists with key settings"
+fi
+
+echo ""
+
+# ============================================================================
 # Step 1: Check Ollama Installation
 # ============================================================================
-echo -e "${BLUE}[1/6]${NC} Checking Ollama installation..."
+echo -e "${BLUE}[1/7]${NC} Checking Ollama installation..."
 if command -v ollama &> /dev/null; then
     OLLAMA_VERSION=$(ollama --version 2>&1 | head -n 1 || echo "installed")
     print_status 0 "Ollama is installed ($OLLAMA_VERSION)"
@@ -83,7 +123,7 @@ fi
 # Step 2: Check/Start Ollama Service
 # ============================================================================
 echo ""
-echo -e "${BLUE}[2/6]${NC} Checking Ollama service status..."
+echo -e "${BLUE}[2/7]${NC} Checking Ollama service status..."
 if curl -f -s "${API_ENDPOINT}/tags" > /dev/null 2>&1; then
     print_status 0 "Ollama service is running"
 else
@@ -126,7 +166,7 @@ fi
 # Step 3: Check Model Availability
 # ============================================================================
 echo ""
-echo -e "${BLUE}[3/6]${NC} Checking model availability..."
+echo -e "${BLUE}[3/7]${NC} Checking model availability..."
 MODELS_JSON=$(curl -s "${API_ENDPOINT}/tags" 2>/dev/null || echo "")
 MODELS_LIST=$(echo "$MODELS_JSON" | jq -r '.models[].name' 2>/dev/null || echo "")
 
@@ -151,7 +191,7 @@ done
 MODELS_DOWNLOADED=false
 if [ ${#MISSING_MODELS[@]} -gt 0 ]; then
     echo ""
-    echo -e "${BLUE}[4/6]${NC} Downloading missing models..."
+    echo -e "${BLUE}[4/7]${NC} Downloading missing models..."
     print_info "Found ${#MISSING_MODELS[@]} missing model(s)"
 
     for model in "${MISSING_MODELS[@]}"; do
@@ -185,7 +225,7 @@ if [ ${#MISSING_MODELS[@]} -gt 0 ]; then
     done
 else
     echo ""
-    echo -e "${BLUE}[4/6]${NC} All models already downloaded - skipping"
+    echo -e "${BLUE}[4/7]${NC} All models already downloaded - skipping"
     print_status 0 "No models to download"
 fi
 
@@ -230,7 +270,7 @@ test_model_usable() {
 # Step 5: Verify All Required Models (existence AND usability)
 # ============================================================================
 echo ""
-echo -e "${BLUE}[5/6]${NC} Verifying all required models (checking files are intact)..."
+echo -e "${BLUE}[5/7]${NC} Verifying all required models (checking files are intact)..."
 ALL_MODELS_PRESENT=true
 ALL_MODELS_USABLE=true
 for model in "${REQUIRED_MODELS[@]}"; do
@@ -254,7 +294,7 @@ done
 # Step 6: Health Check - Test Model Generation (all models)
 # ============================================================================
 echo ""
-echo -e "${BLUE}[6/6]${NC} Running comprehensive health check (testing all models)..."
+echo -e "${BLUE}[6/7]${NC} Running comprehensive health check (testing all models)..."
 MODELS_TESTED=0
 MODELS_PASSED=0
 MODELS_FAILED=0

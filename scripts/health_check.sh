@@ -86,41 +86,43 @@ else
     done
 fi
 
-# Check 3: Verify required models
+# Function to test if a model is actually usable (not just listed)
+test_model_usable() {
+    local model=$1
+    TEST_PROMPT="{\"model\": \"${model}\", \"prompt\": \"OK\", \"stream\": false}"
+    
+    TEST_RESPONSE=$(curl -s -X POST "${API_ENDPOINT}/generate" \
+        -H "Content-Type: application/json" \
+        -d "$TEST_PROMPT" 2>/dev/null)
+    
+    # Check for error field (model corrupted, missing files, etc.)
+    if echo "$TEST_RESPONSE" | jq -e '.error' > /dev/null 2>&1; then
+        return 1  # Model is not usable
+    # Check for successful response
+    elif echo "$TEST_RESPONSE" | jq -e '.response' > /dev/null 2>&1; then
+        return 0  # Model is usable
+    else
+        return 1  # Invalid response
+    fi
+}
+
+# Check 3: Verify required models exist AND are usable
 echo ""
-echo "Checking required models..."
+echo "Checking required models (verifying files are intact)..."
 for model in "${REQUIRED_MODELS[@]}"; do
     if echo "$MODELS_LIST" | grep -q "^${model}$"; then
-        print_status 0 "Model '${model}' is available"
+        # Model is listed - now test if it's actually usable
+        if test_model_usable "$model"; then
+            print_status 0 "Model '${model}' is available and usable"
+        else
+            print_status 1 "Model '${model}' is listed but CORRUPTED or missing files"
+            echo "    Model appears in list but cannot generate. Try: ollama rm ${model} && ollama pull ${model}"
+        fi
     else
         print_status 1 "Model '${model}' is NOT available"
         echo "    Pull with: ollama pull ${model}"
     fi
 done
-
-# Check 4: Test model generation (quick smoke test)
-if echo "$MODELS_LIST" | grep -q "qwen2.5vl:7b"; then
-    echo ""
-    echo "Testing model generation with qwen2.5vl:7b..."
-    TEST_PROMPT='{"model": "qwen2.5vl:7b", "prompt": "Say hello", "stream": false}'
-
-    TEST_RESPONSE=$(curl -s -X POST "${API_ENDPOINT}/generate" \
-        -H "Content-Type: application/json" \
-        -d "$TEST_PROMPT" 2>/dev/null)
-
-    # Check for error field first (model not found, etc.)
-    if echo "$TEST_RESPONSE" | jq -e '.error' > /dev/null 2>&1; then
-        ERROR_MSG=$(echo "$TEST_RESPONSE" | jq -r '.error' 2>/dev/null || echo "unknown error")
-        print_status 1 "Model generation test failed: $ERROR_MSG"
-        echo "    Model is listed but not usable. Try: ollama pull qwen2.5vl:7b"
-    # Check for successful response
-    elif echo "$TEST_RESPONSE" | jq -e '.response' > /dev/null 2>&1; then
-        print_status 0 "Model generation test passed"
-    else
-        print_status 1 "Model generation test failed: Invalid response format"
-        echo "    Response: $(echo "$TEST_RESPONSE" | head -c 200)"
-    fi
-fi
 
 # Summary
 echo ""

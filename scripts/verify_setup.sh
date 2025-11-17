@@ -206,50 +206,75 @@ if [ -z "$MODELS_LIST" ] || [ "$MODELS_LIST" = "" ]; then
     MODELS_LIST=$(ollama list 2>/dev/null | awk 'NR>1 {print $1}' || echo "")
 fi
 
+# Function to test if a model is actually usable (not just listed)
+test_model_usable() {
+    local model=$1
+    TEST_PROMPT="{\"model\": \"${model}\", \"prompt\": \"OK\", \"stream\": false}"
+    
+    TEST_RESPONSE=$(curl -s -X POST "${API_ENDPOINT}/generate" \
+        -H "Content-Type: application/json" \
+        -d "$TEST_PROMPT" 2>/dev/null)
+    
+    # Check for error field (model corrupted, missing files, etc.)
+    if echo "$TEST_RESPONSE" | jq -e '.error' > /dev/null 2>&1; then
+        return 1  # Model is not usable
+    # Check for successful response
+    elif echo "$TEST_RESPONSE" | jq -e '.response' > /dev/null 2>&1; then
+        return 0  # Model is usable
+    else
+        return 1  # Invalid response
+    fi
+}
+
 # ============================================================================
-# Step 5: Verify All Required Models
+# Step 5: Verify All Required Models (existence AND usability)
 # ============================================================================
 echo ""
-echo -e "${BLUE}[5/6]${NC} Verifying all required models..."
+echo -e "${BLUE}[5/6]${NC} Verifying all required models (checking files are intact)..."
 ALL_MODELS_PRESENT=true
+ALL_MODELS_USABLE=true
 for model in "${REQUIRED_MODELS[@]}"; do
     if echo "$MODELS_LIST" | grep -q "^${model}$"; then
-        print_status 0 "Model '${model}' verified"
+        # Model is listed - now test if it's actually usable
+        if test_model_usable "$model"; then
+            print_status 0 "Model '${model}' verified and usable"
+        else
+            print_status 1 "Model '${model}' is listed but CORRUPTED or missing files"
+            print_warning "Model appears in list but cannot generate. Try: ollama rm ${model} && ollama pull ${model}"
+            ALL_MODELS_USABLE=false
+        fi
     else
         print_status 1 "Model '${model}' still missing"
         ALL_MODELS_PRESENT=false
+        ALL_MODELS_USABLE=false
     fi
 done
 
 # ============================================================================
-# Step 6: Health Check - Test Model Generation
+# Step 6: Health Check - Test Model Generation (all models)
 # ============================================================================
 echo ""
-echo -e "${BLUE}[6/6]${NC} Running health check (model generation test)..."
-if echo "$MODELS_LIST" | grep -q "qwen2.5vl:7b"; then
-    print_info "Testing model generation with qwen2.5vl:7b..."
-    TEST_PROMPT='{"model": "qwen2.5vl:7b", "prompt": "Say hello in one word", "stream": false}'
+echo -e "${BLUE}[6/6]${NC} Running comprehensive health check (testing all models)..."
+MODELS_TESTED=0
+MODELS_PASSED=0
+MODELS_FAILED=0
 
-    RESPONSE=$(curl -s -X POST "${API_ENDPOINT}/generate" \
-        -H "Content-Type: application/json" \
-        -d "$TEST_PROMPT" 2>/dev/null)
-
-    # Check for error field first (model not found, etc.)
-    if echo "$RESPONSE" | jq -e '.error' > /dev/null 2>&1; then
-        ERROR_MSG=$(echo "$RESPONSE" | jq -r '.error' 2>/dev/null || echo "unknown error")
-        print_status 1 "Model generation test failed: $ERROR_MSG"
-        print_warning "Model is listed but not usable. Try: ollama pull qwen2.5vl:7b"
-    # Check for successful response
-    elif echo "$RESPONSE" | jq -e '.response' > /dev/null 2>&1; then
-        MODEL_RESPONSE=$(echo "$RESPONSE" | jq -r '.response' | head -c 50)
-        print_status 0 "Model generation test passed"
-        print_info "Response preview: ${MODEL_RESPONSE}..."
-    else
-        print_status 1 "Model generation test failed: Invalid response format"
-        print_warning "Response: $(echo "$RESPONSE" | head -c 200)"
+for model in "${REQUIRED_MODELS[@]}"; do
+    if echo "$MODELS_LIST" | grep -q "^${model}$"; then
+        ((MODELS_TESTED++))
+        print_info "Testing ${model}..."
+        if test_model_usable "$model"; then
+            print_status 0 "${model} generation test passed"
+            ((MODELS_PASSED++))
+        else
+            print_status 1 "${model} generation test failed - model is corrupted"
+            ((MODELS_FAILED++))
+        fi
     fi
-else
-    print_warning "Cannot test generation - primary model not available"
+done
+
+if [ $MODELS_TESTED -eq 0 ]; then
+    print_warning "No models available to test"
 fi
 
 # ============================================================================
@@ -292,7 +317,7 @@ if curl -f -s "${API_ENDPOINT}/tags" > /dev/null 2>&1; then
 fi
 
 echo ""
-if [ $STEPS_FAILED -eq 0 ]; then
+if [ $STEPS_FAILED -eq 0 ] && [ "$ALL_MODELS_USABLE" = true ]; then
     echo -e "${GREEN}✓✓✓ All checks passed! Ollama service is ready to use.${NC}"
     echo ""
     echo "Next steps:"
@@ -301,7 +326,16 @@ if [ $STEPS_FAILED -eq 0 ]; then
     echo "  - View logs: tail -f ./logs/ollama.log"
     exit 0
 else
-    echo -e "${RED}✗ Some checks failed. Please review above and fix issues.${NC}"
+    if [ "$ALL_MODELS_USABLE" = false ]; then
+        echo -e "${RED}✗ Some models are corrupted or missing files.${NC}"
+        echo -e "${YELLOW}⚠ Models may appear in 'ollama list' but cannot generate responses.${NC}"
+        echo ""
+        echo "To fix corrupted models:"
+        echo "  ollama rm <model_name>"
+        echo "  ollama pull <model_name>"
+    else
+        echo -e "${RED}✗ Some checks failed. Please review above and fix issues.${NC}"
+    fi
     exit 1
 fi
 

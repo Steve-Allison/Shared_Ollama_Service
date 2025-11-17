@@ -1,96 +1,15 @@
 {
-  // Python Configuration
-  "python.defaultInterpreterPath": "${workspaceFolder}/.venv/bin/python",
-  "python.analysis.typeCheckingMode": "standard",
-  "python.analysis.autoImportCompletions": true,
-  "python.analysis.diagnosticMode": "workspace",
-  "python.analysis.stubPath": "${workspaceFolder}",
-  "python.analysis.extraPaths": [
-    "${workspaceFolder}"
-  ],
-
-  // Ruff Configuration
-  "[python]": {
-    "editor.defaultFormatter": "charliermarsh.ruff",
-    "editor.formatOnSave": true,
-    "editor.codeActionsOnSave": {
-      "source.fixAll": "explicit",
-      "source.organizeImports": "explicit"
-    }
-  },
-
-  // Ruff Extension Settings
-  "ruff.enable": true,
-  "ruff.organizeImports": true,
-  "ruff.fixAll": true,
-  "ruff.lint.enable": true,
-  "ruff.format.args": [
-    "--line-length=100"
-  ],
-
-  // Pyright Configuration
-  "pyrightconfig.json": "${workspaceFolder}/pyproject.toml",
-
-  // File Associations
-  "files.associations": {
-    "*.pyi": "python"
-  },
-
-  // Editor Settings
-  "editor.rulers": [100],
-  "editor.tabSize": 4,
-  "editor.insertSpaces": true,
-  "editor.trimAutoWhitespace": true,
-  "files.trimTrailingWhitespace": true,
-  "files.insertFinalNewline": true,
-  "files.encoding": "utf8",
-  "files.eol": "\n",
-
-  // Exclude patterns (note: .venv is excluded from file explorer but still accessible for interpreter)
+  // Show .venv folder in the explorer (override any default exclusions)
   "files.exclude": {
-    "**/__pycache__": true,
-    "**/*.pyc": true,
-    "**/.pytest_cache": true,
-    "**/.ruff_cache": true,
-    "**/.mypy_cache": true,
-    "**/.pyright": true,
-    "**/dist": true,
-    "**/build": true,
-    "**/*.egg-info": true,
-    "**/.venv": true,
-    "**/venv": true
+    "**/.venv": false
   },
-
-  // Python venv auto-detection
-  "python.venvPath": "${workspaceFolder}",
-  "python.venvFolders": [".venv", "venv"],
-
-  // Search exclude
+  // Don't exclude .venv from search
   "search.exclude": {
-    "**/node_modules": true,
-    "**/__pycache__": true,
-    "**/.pytest_cache": true,
-    "**/.ruff_cache": true,
-    "**/.mypy_cache": true,
-    "**/.pyright": true,
-    "**/dist": true,
-    "**/build": true,
-    "**/*.egg-info": true,
-    "**/.venv": true,
-    "**/venv": true,
-    "**/logs": true
+    "**/.venv": false
   },
-
-  // Python Testing
-  "python.testing.pytestEnabled": true,
-  "python.testing.unittestEnabled": false,
-  "python.testing.pytestArgs": [
-    "tests"
-  ],
-
-  // Terminal
-  "terminal.integrated.env.osx": {
-    "PYTHONPATH": "${workspaceFolder}"
+  // Explorer settings
+  "explorer.fileNesting.enabled": true,
+  "explorer.fileNesting.patterns": {
+    "*.py": "${capture}.pyi, ${capture}.pyc, ${capture}.pyd"
   }
 }
-

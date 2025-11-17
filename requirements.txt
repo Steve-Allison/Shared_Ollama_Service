@@ -1,14 +1,14 @@
 # Shared Ollama Service - Python Dependencies
 # Core dependencies for the shared Ollama client library
 
-requests>=2.31.0,<3.0.0
+requests>=2.31.0
 
 # Development dependencies (install with: pip install -e ".[dev]")
 # See pyproject.toml for full dev dependencies including:
-# - ruff>=0.14.4,<0.15.0 (linter & formatter)
-# - pyright>=1.1.407,<1.2.0 (type checker)
-# - pytest>=9.0.0,<10.0.0 (testing)
-# - pytest-cov>=7.0.0,<8.0.0 (coverage)
+# - ruff>=0.14.4 (linter & formatter)
+# - pyright>=1.1.407 (type checker)
+# - pytest>=9.0.0 (testing)
+# - pytest-cov>=7.0.0 (coverage)
 
 # For reproducible environments, install with the pinned constraints file:
 #   pip install -r requirements.txt -c constraints.txt

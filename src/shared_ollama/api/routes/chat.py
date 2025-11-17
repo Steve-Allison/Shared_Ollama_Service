@@ -8,11 +8,14 @@ from __future__ import annotations
 import json
 import logging
 from collections.abc import AsyncIterator
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, Response, StreamingResponse
+
+if TYPE_CHECKING:
+    from shared_ollama.api.models import ChatResponse
 
 from shared_ollama.api.dependencies import (
     get_chat_queue,
@@ -95,13 +98,13 @@ async def _stream_chat_sse(
         logger.exception("Error during chat streaming: %s", exc)
 
 
-@router.post("/chat", tags=["Chat"])
+@router.post("/chat", tags=["Chat"], response_model=None)
 @limiter.limit("60/minute")
 async def chat(
     request: Request,
     use_case: ChatUseCase = Depends(get_chat_use_case),
     queue: RequestQueue = Depends(get_chat_queue),
-) -> ChatResponse | StreamingResponse:
+) -> Response:
     """Chat completion endpoint.
 
     Processes a conversation with multiple messages and returns the assistant's
@@ -198,7 +201,7 @@ async def chat(
             load_ms = load_duration / 1_000_000 if load_duration else 0.0
             total_ms = total_duration / 1_000_000 if total_duration else 0.0
 
-            return ChatResponse(
+            response = ChatResponse(
                 message=ChatMessage(role="assistant", content=message_content),
                 model=model_used,
                 request_id=ctx.request_id,
@@ -209,6 +212,7 @@ async def chat(
                 generation_eval_count=eval_count,
                 total_duration_ms=round(total_ms, 3) if total_ms else None,
             )
+            return JSONResponse(content=response.model_dump())
 
     except HTTPException:
         # Re-raise HTTPException (from parsing or other validation)

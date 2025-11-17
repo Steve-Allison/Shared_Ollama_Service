@@ -14,6 +14,18 @@ from shared_ollama.core.resilience import (
     RetryConfig,
     exponential_backoff_retry,
 )
+from shared_ollama.core.config import (
+    APIConfig,
+    BatchConfig,
+    ClientConfig,
+    ImageCacheConfig,
+    ImageProcessingConfig,
+    OllamaConfig,
+    OllamaManagerConfig,
+    QueueConfig,
+    Settings,
+    settings,
+)
 from shared_ollama.core.utils import (
     check_service_health,
     ensure_service_running,
@@ -24,14 +36,23 @@ from shared_ollama.core.utils import (
 )
 
 __all__ = [
+    "APIConfig",
+    "BatchConfig",
     "CircuitBreaker",
     "CircuitBreakerConfig",
     "CircuitState",
+    "ClientConfig",
+    "ImageCacheConfig",
+    "ImageProcessingConfig",
+    "OllamaConfig",
+    "OllamaManagerConfig",
     "OllamaManager",
+    "QueueConfig",
     "QueueStats",
     "RequestQueue",
     "ResilientOllamaClient",
     "RetryConfig",
+    "Settings",
     "check_service_health",
     "ensure_service_running",
     "exponential_backoff_retry",
@@ -41,5 +62,6 @@ __all__ = [
     "get_project_root",
     "import_client",
     "initialize_ollama_manager",
+    "settings",
 ]
 

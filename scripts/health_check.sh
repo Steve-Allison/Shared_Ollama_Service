@@ -104,12 +104,21 @@ if echo "$MODELS_LIST" | grep -q "qwen2.5vl:7b"; then
     echo "Testing model generation with qwen2.5vl:7b..."
     TEST_PROMPT='{"model": "qwen2.5vl:7b", "prompt": "Say hello", "stream": false}'
 
-    if curl -s -X POST "${API_ENDPOINT}/generate" \
+    TEST_RESPONSE=$(curl -s -X POST "${API_ENDPOINT}/generate" \
         -H "Content-Type: application/json" \
-        -d "$TEST_PROMPT" | jq -r '.response' > /dev/null 2>&1; then
+        -d "$TEST_PROMPT" 2>/dev/null)
+
+    # Check for error field first (model not found, etc.)
+    if echo "$TEST_RESPONSE" | jq -e '.error' > /dev/null 2>&1; then
+        ERROR_MSG=$(echo "$TEST_RESPONSE" | jq -r '.error' 2>/dev/null || echo "unknown error")
+        print_status 1 "Model generation test failed: $ERROR_MSG"
+        echo "    Model is listed but not usable. Try: ollama pull qwen2.5vl:7b"
+    # Check for successful response
+    elif echo "$TEST_RESPONSE" | jq -e '.response' > /dev/null 2>&1; then
         print_status 0 "Model generation test passed"
     else
-        print_status 1 "Model generation test failed"
+        print_status 1 "Model generation test failed: Invalid response format"
+        echo "    Response: $(echo "$TEST_RESPONSE" | head -c 200)"
     fi
 fi
 

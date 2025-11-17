@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING
 
 from shared_ollama.api.dependencies import set_dependencies
 from shared_ollama.client import AsyncOllamaConfig, AsyncSharedOllamaClient
+from shared_ollama.core.config import settings
 from shared_ollama.core.ollama_manager import initialize_ollama_manager
 from shared_ollama.core.queue import RequestQueue
 from shared_ollama.core.utils import get_project_root
@@ -59,13 +60,16 @@ async def lifespan_context(app: FastAPI):
         log_dir.mkdir(exist_ok=True)
 
         ollama_manager = initialize_ollama_manager(
-            base_url="http://localhost:11434",
+            base_url=settings.ollama.url,
             log_dir=log_dir,
-            auto_detect_optimizations=True,
+            auto_detect_optimizations=settings.ollama_manager.auto_detect_optimizations,
         )
 
         logger.info("LIFESPAN: Starting Ollama service (managed internally)")
-        ollama_started = await ollama_manager.start(wait_for_ready=True, max_wait_time=30)
+        ollama_started = await ollama_manager.start(
+            wait_for_ready=settings.ollama_manager.wait_for_ready,
+            max_wait_time=settings.ollama_manager.max_wait_time,
+        )
         if not ollama_started:
             logger.error("LIFESPAN: Failed to start Ollama service")
             raise RuntimeError("Failed to start Ollama service. Check logs for details.")
@@ -82,15 +86,26 @@ async def lifespan_context(app: FastAPI):
     # Initialize async client (connects to the managed Ollama service)
     client: AsyncSharedOllamaClient | None = None
     try:
-        config = AsyncOllamaConfig()
+        # AsyncOllamaConfig is a dataclass, so keyword arguments work correctly
+        config = AsyncOllamaConfig(  # type: ignore[call-arg]
+            base_url=settings.ollama.url,
+            timeout=settings.client.timeout,
+            health_check_timeout=settings.client.health_check_timeout,
+            max_connections=settings.client.max_connections,
+            max_keepalive_connections=settings.client.max_keepalive_connections,
+            max_concurrent_requests=settings.client.max_concurrent_requests,
+            max_retries=settings.client.max_retries,
+            retry_delay=settings.client.retry_delay,
+            verbose=settings.client.verbose,
+        )
         logger.info("LIFESPAN: Creating AsyncSharedOllamaClient")
         # Don't verify on init - we'll do it manually to ensure it completes
         client = AsyncSharedOllamaClient(config=config, verify_on_init=False)
         logger.info("LIFESPAN: Client created, ensuring initialization")
         # Ensure client is initialized and verified (async)
-        await client._ensure_client()
+        await client._ensure_client()  # type: ignore[attr-defined]
         logger.info("LIFESPAN: Client ensured, verifying connection")
-        await client._verify_connection()
+        await client._verify_connection()  # type: ignore[attr-defined]
         logger.info("LIFESPAN: Ollama async client initialized successfully")
         print("LIFESPAN: Client initialized successfully", flush=True)
     except Exception as exc:
@@ -115,21 +130,40 @@ async def lifespan_context(app: FastAPI):
 
     # Initialize separate request queues for chat and VLM
     logger.info("LIFESPAN: Initializing separate request queues")
-    chat_queue = RequestQueue(max_concurrent=6, max_queue_size=50, default_timeout=60.0)
-    vlm_queue = RequestQueue(max_concurrent=3, max_queue_size=20, default_timeout=120.0)
-    logger.info("LIFESPAN: Chat queue initialized (max_concurrent=6, max_queue_size=50)")
-    logger.info("LIFESPAN: VLM queue initialized (max_concurrent=3, max_queue_size=20)")
+    chat_queue = RequestQueue(
+        max_concurrent=settings.queue.chat_max_concurrent,
+        max_queue_size=settings.queue.chat_max_queue_size,
+        default_timeout=settings.queue.chat_default_timeout,
+    )
+    vlm_queue = RequestQueue(
+        max_concurrent=settings.queue.vlm_max_concurrent,
+        max_queue_size=settings.queue.vlm_max_queue_size,
+        default_timeout=settings.queue.vlm_default_timeout,
+    )
+    logger.info(
+        "LIFESPAN: Chat queue initialized (max_concurrent=%d, max_queue_size=%d)",
+        settings.queue.chat_max_concurrent,
+        settings.queue.chat_max_queue_size,
+    )
+    logger.info(
+        "LIFESPAN: VLM queue initialized (max_concurrent=%d, max_queue_size=%d)",
+        settings.queue.vlm_max_concurrent,
+        settings.queue.vlm_max_queue_size,
+    )
     print("LIFESPAN: Separate queues initialized (chat + VLM)", flush=True)
 
     # Initialize image processing infrastructure
     logger.info("LIFESPAN: Initializing image processing infrastructure")
     image_processor = ImageProcessor(
-        max_dimension=1024,
-        jpeg_quality=85,
-        png_compression=6,
-        max_size_bytes=10 * 1024 * 1024,  # 10MB max
+        max_dimension=settings.image.max_dimension,
+        jpeg_quality=settings.image.jpeg_quality,
+        png_compression=settings.image.png_compression,
+        max_size_bytes=settings.image.max_size_bytes,
     )
-    image_cache = ImageCache(max_size=100, ttl_seconds=3600.0)
+    image_cache = ImageCache(
+        max_size=settings.image_cache.max_size,
+        ttl_seconds=settings.image_cache.ttl_seconds,
+    )
     logger.info("LIFESPAN: Image processor and cache initialized")
     print("LIFESPAN: Image processing ready", flush=True)
 
@@ -163,7 +197,7 @@ async def lifespan_context(app: FastAPI):
 
         logger.info("LIFESPAN: Stopping Ollama service")
         ollama_manager = get_ollama_manager()
-        await ollama_manager.stop(timeout=10)
+        await ollama_manager.stop(timeout=settings.ollama_manager.shutdown_timeout)
         logger.info("LIFESPAN: Ollama service stopped")
         print("LIFESPAN: Ollama service stopped", flush=True)
     except Exception as exc:

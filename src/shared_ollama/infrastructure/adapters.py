@@ -10,16 +10,17 @@ not concrete implementations.
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from shared_ollama.application.interfaces import (
-    MetricsCollectorInterface,
-    OllamaClientInterface,
-    RequestLoggerInterface,
-)
-from shared_ollama.client import AsyncOllamaConfig, AsyncSharedOllamaClient
 from shared_ollama.telemetry.metrics import MetricsCollector
 from shared_ollama.telemetry.structured_logging import log_request_event
+
+if TYPE_CHECKING:
+    from shared_ollama.client import AsyncSharedOllamaClient
+else:
+    from shared_ollama.client import AsyncSharedOllamaClient
+
+from shared_ollama.client.sync import GenerateOptions
 
 
 class AsyncOllamaClientAdapter:
@@ -60,7 +61,7 @@ class AsyncOllamaClientAdapter:
         system: str | None = None,
         options: dict[str, Any] | None = None,
         stream: bool = False,
-        format: str | dict[str, Any] | None = None,
+        format: str | dict[str, Any] | None = None,  # noqa: A002
     ) -> dict[str, Any] | AsyncIterator[dict[str, Any]]:
         """Generate text from a prompt.
 
@@ -81,60 +82,72 @@ class AsyncOllamaClientAdapter:
             Exception: For other errors.
         """
         # Convert options dict to GenerateOptions if needed
-        from shared_ollama.client.sync import GenerateOptions
-
         generate_options: GenerateOptions | None = None
         if options:
             generate_options = GenerateOptions(
-                temperature=options.get("temperature"),
-                top_p=options.get("top_p"),
-                top_k=options.get("top_k"),
-                repeat_penalty=options.get("repeat_penalty"),
-                max_tokens=options.get("num_predict"),
-                seed=options.get("seed"),
-                stop=options.get("stop"),
+                temperature=options.get("temperature"),  # type: ignore[arg-type]
+                top_p=options.get("top_p"),  # type: ignore[arg-type]
+                top_k=options.get("top_k"),  # type: ignore[arg-type]
+                repeat_penalty=options.get("repeat_penalty"),  # type: ignore[arg-type]
+                max_tokens=options.get("num_predict"),  # type: ignore[arg-type]
+                seed=options.get("seed"),  # type: ignore[arg-type]
+                stop=options.get("stop"),  # type: ignore[arg-type]
             )
 
         if stream:
-            return self._client.generate_stream(
+            return self._client.generate_stream(  # type: ignore[attr-defined]
                 prompt=prompt,
                 model=model,
                 system=system,
                 options=generate_options,
             )
-        else:
-            result = await self._client.generate(
-                prompt=prompt,
-                model=model,
-                system=system,
-                options=generate_options,
-                stream=False,
-                format=format,
-            )
-            # Convert GenerateResponse to dict (preserving all fields)
-            return {
-                "text": result.text,
-                "model": result.model,
-                "prompt_eval_count": result.prompt_eval_count,
-                "eval_count": result.eval_count,
-                "total_duration": result.total_duration,
-                "load_duration": result.load_duration,
-            }
+        # Type ignore needed because pyright doesn't see full method signature
+        result = await self._client.generate(  # type: ignore[call-arg, misc]
+            prompt=prompt,
+            model=model,
+            system=system,
+            options=generate_options,
+            stream=False,
+            format=format,  # type: ignore[arg-type]
+        )
+        # Convert GenerateResponse to dict (preserving all fields)
+        return {
+            "text": result.text,
+            "model": result.model,
+            "prompt_eval_count": result.prompt_eval_count,
+            "eval_count": result.eval_count,
+            "total_duration": result.total_duration,
+            "load_duration": result.load_duration,
+        }
 
     async def chat(
         self,
-        messages: list[dict[str, str]],
+        messages: list[dict[str, Any]],
         model: str | None = None,
         options: dict[str, Any] | None = None,
         stream: bool = False,
+        images: list[str] | None = None,
+        format: str | dict[str, Any] | None = None,  # noqa: A002
+        tools: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any] | AsyncIterator[dict[str, Any]]:
-        """Chat completion.
+        """Chat completion with multimodal and tool calling support.
+
+        Uses Ollama's native API format:
+        - messages: List of message dicts with 'role' and 'content' (string) keys
+        - images: Optional list of base64-encoded image strings (Ollama's native format)
+        - format: Optional output format ("json" or JSON schema dict)
+        - tools: Optional list of tools/functions the model can call (POML compatible)
 
         Args:
-            messages: List of message dicts with 'role' and 'content' keys.
+            messages: List of message dicts with 'role' and optional 'content',
+                'tool_calls', and 'tool_call_id' keys. Supports tool calling.
             model: Model name. Optional.
             options: Generation options. Optional.
             stream: Whether to stream the response.
+            images: Optional list of base64-encoded image strings for vision models.
+                This is Ollama's native format - images are passed as a separate parameter.
+            format: Output format ("json" or JSON schema dict). Optional.
+            tools: List of tools/functions the model can call (POML compatible). Optional.
 
         Returns:
             - dict with chat result if stream=False
@@ -145,33 +158,37 @@ class AsyncOllamaClientAdapter:
             Exception: For other errors.
         """
         # Convert options dict to GenerateOptions if needed
-        from shared_ollama.client.sync import GenerateOptions
-
         generate_options: GenerateOptions | None = None
         if options:
             generate_options = GenerateOptions(
-                temperature=options.get("temperature"),
-                top_p=options.get("top_p"),
-                top_k=options.get("top_k"),
-                repeat_penalty=options.get("repeat_penalty"),
-                max_tokens=options.get("num_predict"),
-                seed=options.get("seed"),
-                stop=options.get("stop"),
+                temperature=options.get("temperature"),  # type: ignore[arg-type]
+                top_p=options.get("top_p"),  # type: ignore[arg-type]
+                top_k=options.get("top_k"),  # type: ignore[arg-type]
+                repeat_penalty=options.get("repeat_penalty"),  # type: ignore[arg-type]
+                max_tokens=options.get("num_predict"),  # type: ignore[arg-type]
+                seed=options.get("seed"),  # type: ignore[arg-type]
+                stop=options.get("stop"),  # type: ignore[arg-type]
             )
 
         if stream:
-            return self._client.chat_stream(
+            return self._client.chat_stream(  # type: ignore[attr-defined]
                 messages=messages,
                 model=model,
                 options=generate_options,
+                images=images,
+                format=format,
+                tools=tools,
             )
-        else:
-            return await self._client.chat(
-                messages=messages,
-                model=model,
-                options=generate_options,
-                stream=False,
-            )
+        # Type ignore needed because pyright doesn't see full method signature
+        return await self._client.chat(  # type: ignore[call-arg, misc]
+            messages=messages,
+            model=model,
+            options=generate_options,  # type: ignore[arg-type]
+            stream=False,
+            images=images,  # type: ignore[arg-type]
+            format=format,  # type: ignore[arg-type]
+            tools=tools,  # type: ignore[arg-type]
+        )
 
     async def health_check(self) -> bool:
         """Check if Ollama service is healthy.
@@ -240,4 +257,3 @@ class MetricsCollectorAdapter:
             success=success,
             error=error,
         )
-

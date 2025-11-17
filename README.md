@@ -746,10 +746,11 @@ Set model parameters directly in POML:
 
 ### API Endpoints Supporting POML
 
-All chat and VLM endpoints support POML-generated requests:
+All generation, chat, and VLM endpoints support POML-generated requests:
 
 | Endpoint | POML Features Supported | Use Case |
 |----------|------------------------|----------|
+| `/api/v1/generate` | Tools, JSON schema, runtime params | Text generation with function calling |
 | `/api/v1/chat` | Tools, JSON schema, runtime params | Text chat with function calling |
 | `/api/v1/vlm` | Tools, JSON schema, runtime params, images | Vision + text with tools |
 | `/api/v1/vlm/openai` | Tools, JSON schema, runtime params, images | OpenAI-compatible VLM |

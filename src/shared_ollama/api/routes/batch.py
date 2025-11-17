@@ -29,6 +29,7 @@ from shared_ollama.application.batch_use_cases import (
     BatchChatUseCase,
     BatchVLMUseCase,
 )
+from shared_ollama.core.config import settings
 from shared_ollama.domain.exceptions import InvalidRequestError
 
 logger = logging.getLogger(__name__)
@@ -91,6 +92,13 @@ async def batch_chat(
         ) from e
 
     try:
+        # Validate batch size
+        if len(api_req.requests) > settings.batch.chat_max_requests:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Too many requests in batch. Maximum allowed: {settings.batch.chat_max_requests}",
+            )
+
         # Convert API requests to domain entities
         domain_requests = [api_to_domain_chat_request(req) for req in api_req.requests]
 
@@ -185,6 +193,13 @@ async def batch_vlm(
         ) from e
 
     try:
+        # Validate batch size
+        if len(api_req.requests) > settings.batch.vlm_max_requests:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Too many requests in batch. Maximum allowed: {settings.batch.vlm_max_requests}",
+            )
+
         # Convert API requests to domain entities
         domain_requests = [api_to_domain_vlm_request(req) for req in api_req.requests]
 

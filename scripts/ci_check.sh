@@ -36,11 +36,11 @@ while [ $WAITED -lt $MAX_WAIT ]; do
         echo -e "${GREEN}✓ Service is available${NC}"
         break
     fi
-    
+
     if [ $WAITED -eq 0 ]; then
         echo -e "${YELLOW}⚠ Service not immediately available, waiting...${NC}"
     fi
-    
+
     sleep $RETRY_INTERVAL
     WAITED=$((WAITED + RETRY_INTERVAL))
     printf "."
@@ -102,10 +102,18 @@ TEST_RESPONSE=$(curl -s -X POST "${API_ENDPOINT}/generate" \
     -d '{"model": "qwen2.5vl:7b", "prompt": "Say OK", "stream": false}' \
     2>/dev/null || echo "")
 
-if echo "$TEST_RESPONSE" | jq -r '.response' > /dev/null 2>&1; then
+# Check for error field first (model not found, etc.)
+if echo "$TEST_RESPONSE" | jq -e '.error' > /dev/null 2>&1; then
+    ERROR_MSG=$(echo "$TEST_RESPONSE" | jq -r '.error' 2>/dev/null || echo "unknown error")
+    echo -e "${RED}✗ Health test failed: ${ERROR_MSG}${NC}"
+    echo "    Model is listed but not usable. Try: ollama pull qwen2.5vl:7b"
+    exit 1
+# Check for successful response
+elif echo "$TEST_RESPONSE" | jq -e '.response' > /dev/null 2>&1; then
     echo -e "${GREEN}✓ Health test passed${NC}"
 else
     echo -e "${YELLOW}⚠ Health test incomplete (model may still be loading)${NC}"
+    echo "    Response: $(echo "$TEST_RESPONSE" | head -c 100)"
 fi
 
 echo ""

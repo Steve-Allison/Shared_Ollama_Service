@@ -107,7 +107,7 @@ echo -e "${GRAY}The REST API will automatically start and manage Ollama internal
 echo -e "${GRAY}System optimizations will be auto-detected and applied${NC}"
 echo ""
 
-# Start API server in foreground (so we can monitor it)
+# Start API server in background so we can run warmup
 echo -e "${GREEN}Starting uvicorn server...${NC}"
 echo -e "${GRAY}Command: $UVICORN_CMD shared_ollama.api.server:app --host $API_HOST --port $API_PORT${NC}"
 echo ""
@@ -115,10 +115,45 @@ echo -e "${GRAY}API will be available at: http://${API_HOST}:${API_PORT}${NC}"
 echo -e "${GRAY}API docs: http://${API_HOST}:${API_PORT}/docs${NC}"
 echo ""
 
-# Start the server (exec replaces this process)
-exec "$UVICORN_CMD" shared_ollama.api.server:app \
+# Start the server in background
+"$UVICORN_CMD" shared_ollama.api.server:app \
     --host "$API_HOST" \
     --port "$API_PORT" \
-    --log-level info
+    --log-level info &
+
+UVICORN_PID=$!
+
+# Wait for API server to be ready
+echo -e "${BLUE}Waiting for API server to start...${NC}"
+for i in {1..30}; do
+    if curl -f -s "http://localhost:$API_PORT/api/v1/health" > /dev/null 2>&1; then
+        echo -e "${GREEN}✓ API server is ready${NC}"
+        break
+    fi
+    if [ $i -eq 30 ]; then
+        echo -e "${YELLOW}⚠ API server may not be ready yet, continuing anyway...${NC}"
+    fi
+    sleep 1
+done
+
+# Warm up models in background
+if [ -f "$SCRIPT_DIR/warmup_models.sh" ]; then
+    echo ""
+    echo -e "${BLUE}🔥 Warming up models...${NC}"
+    "$SCRIPT_DIR/warmup_models.sh" > /dev/null 2>&1 &
+    WARMUP_PID=$!
+    echo -e "${GRAY}Model warmup started in background (PID: $WARMUP_PID)${NC}"
+    echo -e "${GRAY}Models will be preloaded for faster first requests${NC}"
+else
+    echo -e "${YELLOW}⚠ Warmup script not found at $SCRIPT_DIR/warmup_models.sh${NC}"
+fi
+
+echo ""
+echo -e "${GREEN}✓ Service started successfully${NC}"
+echo -e "${GRAY}API server PID: $UVICORN_PID${NC}"
+echo ""
+
+# Wait for uvicorn process (foreground)
+wait $UVICORN_PID
 
 

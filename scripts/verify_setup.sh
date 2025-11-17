@@ -234,13 +234,19 @@ if echo "$MODELS_LIST" | grep -q "qwen2.5vl:7b"; then
         -H "Content-Type: application/json" \
         -d "$TEST_PROMPT" 2>/dev/null)
 
-    if echo "$RESPONSE" | jq -r '.response' > /dev/null 2>&1; then
+    # Check for error field first (model not found, etc.)
+    if echo "$RESPONSE" | jq -e '.error' > /dev/null 2>&1; then
+        ERROR_MSG=$(echo "$RESPONSE" | jq -r '.error' 2>/dev/null || echo "unknown error")
+        print_status 1 "Model generation test failed: $ERROR_MSG"
+        print_warning "Model is listed but not usable. Try: ollama pull qwen2.5vl:7b"
+    # Check for successful response
+    elif echo "$RESPONSE" | jq -e '.response' > /dev/null 2>&1; then
         MODEL_RESPONSE=$(echo "$RESPONSE" | jq -r '.response' | head -c 50)
         print_status 0 "Model generation test passed"
         print_info "Response preview: ${MODEL_RESPONSE}..."
     else
-        print_status 1 "Model generation test failed"
-        print_warning "Model may need more time to initialize"
+        print_status 1 "Model generation test failed: Invalid response format"
+        print_warning "Response: $(echo "$RESPONSE" | head -c 200)"
     fi
 else
     print_warning "Cannot test generation - primary model not available"

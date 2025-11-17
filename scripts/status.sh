@@ -24,7 +24,7 @@ echo -e "${BLUE}Service Status:${NC}"
 if curl -f -s "${API_ENDPOINT}/tags" > /dev/null 2>&1; then
     echo -e "${GREEN}✓ Service is running${NC}"
     echo "  URL: $OLLAMA_URL"
-    
+
     # Get service info
     if command -v ollama &> /dev/null; then
         VERSION=$(ollama --version 2>&1 | head -n 1 || echo "unknown")
@@ -111,11 +111,18 @@ if echo "$MODELS_LIST" | grep -q "qwen2.5vl:7b"; then
         -H "Content-Type: application/json" \
         -d '{"model": "qwen2.5vl:7b", "prompt": "Say OK", "stream": false}' \
         2>/dev/null)
-    
-    if echo "$TEST_RESPONSE" | jq -r '.response' > /dev/null 2>&1; then
+
+    # Check for error field first (model not found, etc.)
+    if echo "$TEST_RESPONSE" | jq -e '.error' > /dev/null 2>&1; then
+        ERROR_MSG=$(echo "$TEST_RESPONSE" | jq -r '.error' 2>/dev/null || echo "unknown error")
+        echo -e "${RED}  ✗ Generation test failed: ${ERROR_MSG}${NC}"
+        echo "    Model is listed but not usable. Try: ollama pull qwen2.5vl:7b"
+    # Check for successful response
+    elif echo "$TEST_RESPONSE" | jq -e '.response' > /dev/null 2>&1; then
         echo -e "${GREEN}  ✓ Generation test passed${NC}"
     else
         echo -e "${YELLOW}  ⚠ Generation test failed or incomplete${NC}"
+        echo "    Response: $(echo "$TEST_RESPONSE" | head -c 100)"
     fi
 else
     echo -e "${YELLOW}  ⚠ Cannot test - qwen2.5vl:7b not available${NC}"

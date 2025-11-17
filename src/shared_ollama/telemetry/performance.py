@@ -167,12 +167,12 @@ class PerformanceCollector:
         operation: str,
         total_latency_ms: float,
         success: bool,
-        response: GenerateResponse | None = None,
+        response: GenerateResponse | dict[str, Any] | None = None,
         error: str | None = None,
     ) -> None:
         """Record detailed performance metrics.
 
-        Extracts timing and token metrics from GenerateResponse and computes
+        Extracts timing and token metrics from GenerateResponse or dict and computes
         derived metrics. Logs to performance.jsonl file.
 
         Args:
@@ -180,8 +180,10 @@ class PerformanceCollector:
             operation: Operation type (e.g., "generate", "chat").
             total_latency_ms: Total request latency in milliseconds (>=0.0).
             success: Whether the request succeeded.
-            response: GenerateResponse with detailed timing data. Only used
-                if success is True.
+            response: GenerateResponse object or dict with detailed timing data.
+                Dict format should have keys: load_duration, prompt_eval_count,
+                prompt_eval_duration, eval_count, eval_duration, total_duration.
+                Only used if success is True.
             error: Error message if request failed. None if successful.
 
         Side effects:
@@ -200,12 +202,23 @@ class PerformanceCollector:
         )
 
         if response and success:
-            metric.load_duration_ns = response.load_duration
-            metric.prompt_eval_count = response.prompt_eval_count
-            metric.prompt_eval_duration_ns = response.prompt_eval_duration
-            metric.eval_count = response.eval_count
-            metric.eval_duration_ns = response.eval_duration
-            metric.total_duration_ns = response.total_duration
+            # Handle both GenerateResponse objects and dicts
+            if isinstance(response, dict):
+                # Extract from dict (adapter returns dicts)
+                metric.load_duration_ns = response.get("load_duration")
+                metric.prompt_eval_count = response.get("prompt_eval_count")
+                metric.prompt_eval_duration_ns = response.get("prompt_eval_duration")
+                metric.eval_count = response.get("eval_count")
+                metric.eval_duration_ns = response.get("eval_duration")
+                metric.total_duration_ns = response.get("total_duration")
+            else:
+                # Handle GenerateResponse object (backward compatibility)
+                metric.load_duration_ns = response.load_duration
+                metric.prompt_eval_count = response.prompt_eval_count
+                metric.prompt_eval_duration_ns = response.prompt_eval_duration
+                metric.eval_count = response.eval_count
+                metric.eval_duration_ns = response.eval_duration
+                metric.total_duration_ns = response.total_duration
 
             if metric.load_duration_ns:
                 metric.load_time_ms = metric.load_duration_ns / 1_000_000

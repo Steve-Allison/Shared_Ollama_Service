@@ -179,7 +179,7 @@ fi
 # Set environment variables for API
 export PYTHONPATH="$PROJECT_ROOT/src:$PYTHONPATH"
 
-# Start API server (will manage Ollama internally)
+# Change to project root directory
 cd "$PROJECT_ROOT"
 echo ""
 echo -e "${GRAY}The REST API will automatically start and manage Ollama internally${NC}"
@@ -191,7 +191,7 @@ echo -e "${GREEN}Starting uvicorn server...${NC}"
 echo -e "${GRAY}Command: $UVICORN_CMD shared_ollama.api.server:app --host $API_HOST --port $API_PORT${NC}"
 echo ""
 echo -e "${GRAY}API will be available at: http://${API_HOST}:${API_PORT}${NC}"
-echo -e "${GRAY}API docs: http://${API_HOST}:${API_PORT}/docs${NC}"
+echo -e "${GRAY}API docs: http://${API_HOST}:${API_PORT}/api/docs${NC}"
 echo ""
 
 # Ensure logs directory exists
@@ -202,8 +202,29 @@ mkdir -p "$LOG_DIR"
 API_LOG="$LOG_DIR/api.log"
 API_ERROR_LOG="$LOG_DIR/api.error.log"
 
+# Verify Python can import the module before starting
+echo -e "${BLUE}Verifying Python dependencies...${NC}"
+IMPORT_ERROR=$("$PYTHON_CMD" -c "import sys; sys.path.insert(0, '$PROJECT_ROOT/src'); from shared_ollama.api.server import app" 2>&1)
+if [ $? -ne 0 ]; then
+    echo -e "${RED}✗ Failed to import shared_ollama.api.server${NC}"
+    echo -e "${YELLOW}Error details:${NC}"
+    echo "$IMPORT_ERROR" | head -5 | sed 's/^/  /'
+    echo ""
+    echo -e "${YELLOW}Please ensure dependencies are installed:${NC}"
+    if [ -d "$PROJECT_ROOT/.venv" ]; then
+        echo "  source .venv/bin/activate"
+        echo "  pip install -e \".[dev]\""
+    else
+        echo "  pip install -e \".[dev]\""
+    fi
+    exit 1
+fi
+echo -e "${GREEN}✓ Dependencies verified${NC}"
+echo ""
+
 # Start the server in background with log redirection
-"$UVICORN_CMD" shared_ollama.api.server:app \
+# Use exec to ensure proper signal handling, but run in background
+nohup "$UVICORN_CMD" shared_ollama.api.server:app \
     --host "$API_HOST" \
     --port "$API_PORT" \
     --log-level info \
@@ -239,9 +260,16 @@ fi
 echo ""
 echo -e "${GREEN}✓ Service started successfully${NC}"
 echo -e "${GRAY}API server PID: $UVICORN_PID${NC}"
+echo -e "${GRAY}Logs: $API_LOG${NC}"
+echo -e "${GRAY}Errors: $API_ERROR_LOG${NC}"
+echo ""
+echo -e "${CYAN}Service is running in the background.${NC}"
+echo -e "${CYAN}To stop the service, run: ./scripts/shutdown.sh${NC}"
+echo -e "${CYAN}To view logs: tail -f $API_LOG${NC}"
 echo ""
 
 # Wait for uvicorn process (foreground)
+# This keeps the script running and allows Ctrl+C to stop the service
 wait $UVICORN_PID
 
 

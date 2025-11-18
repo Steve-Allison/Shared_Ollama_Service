@@ -127,18 +127,43 @@ else
     ps aux | grep -i "[o]llama" | grep -v "grep" | head -5
 fi
 
-# Kill REST API server (uvicorn)
-API_PIDS=$(ps aux | grep -i "[u]vicorn.*shared_ollama.api.server" | awk '{print $2}' 2>/dev/null || true)
-if [ -n "$API_PIDS" ]; then
-    print_info "Stopping REST API server (uvicorn)..."
-    # Try graceful shutdown first
-    for pid in $API_PIDS; do
-        kill -TERM "$pid" 2>/dev/null || true
-    done
-    sleep 2
+# Kill REST API server (gunicorn master and workers)
+GUNICORN_MASTER_PIDS=$(ps aux | grep -i "[g]unicorn.*shared_ollama.api.server" | grep -v "worker" | awk '{print $2}' 2>/dev/null || true)
+GUNICORN_WORKER_PIDS=$(ps aux | grep -i "[g]unicorn.*shared_ollama.api.server.*worker" | awk '{print $2}' 2>/dev/null || true)
+UVICORN_WORKER_PIDS=$(ps aux | grep -i "[u]vicorn.*shared_ollama.api.server" | awk '{print $2}' 2>/dev/null || true)
+
+if [ -n "$GUNICORN_MASTER_PIDS" ] || [ -n "$GUNICORN_WORKER_PIDS" ] || [ -n "$UVICORN_WORKER_PIDS" ]; then
+    print_info "Stopping REST API server (gunicorn master and workers)..."
+    
+    # Kill gunicorn master first (will gracefully stop workers)
+    if [ -n "$GUNICORN_MASTER_PIDS" ]; then
+        for pid in $GUNICORN_MASTER_PIDS; do
+            print_info "Stopping gunicorn master (PID: $pid)..."
+            kill -TERM "$pid" 2>/dev/null || true
+        done
+        sleep 3  # Give gunicorn time to gracefully stop workers
+    fi
+    
+    # Kill any remaining workers
+    if [ -n "$GUNICORN_WORKER_PIDS" ]; then
+        for pid in $GUNICORN_WORKER_PIDS; do
+            kill -TERM "$pid" 2>/dev/null || true
+        done
+        sleep 1
+    fi
+    
+    if [ -n "$UVICORN_WORKER_PIDS" ]; then
+        for pid in $UVICORN_WORKER_PIDS; do
+            kill -TERM "$pid" 2>/dev/null || true
+        done
+        sleep 1
+    fi
+    
     # Force kill if still running
-    for pid in $API_PIDS; do
+    ALL_API_PIDS="$GUNICORN_MASTER_PIDS $GUNICORN_WORKER_PIDS $UVICORN_WORKER_PIDS"
+    for pid in $ALL_API_PIDS; do
         if ps -p "$pid" > /dev/null 2>&1; then
+            print_info "Force killing process (PID: $pid)..."
             kill -9 "$pid" 2>/dev/null || true
         fi
     done
@@ -147,6 +172,9 @@ if [ -n "$API_PIDS" ]; then
 else
     print_status 0 "No running REST API server found"
 fi
+
+# Clean up PID files
+rm -f "$PROJECT_ROOT/.api.pid" 2>/dev/null || true
 
 # Kill any other Python processes running the API (catch-all)
 PYTHON_API_PIDS=$(ps aux | grep -i "python.*shared_ollama.api.server" | grep -v "grep" | awk '{print $2}' 2>/dev/null || true)

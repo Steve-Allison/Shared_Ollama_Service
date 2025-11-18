@@ -12,6 +12,7 @@ dependencies = [
     "requests>=2.31.0",
     "fastapi>=0.115.0",
     "uvicorn[standard]>=0.32.0",
+    "gunicorn>=23.0.0",  # Production ASGI server with process management
     "slowapi>=0.1.9",  # Rate limiting
     "pydantic>=2.9.0,<3.0.0",  # Keep major version constraint (v3 would be breaking)
     "pydantic-settings>=2.5.0,<3.0.0",  # Keep major version constraint (v3 would be breaking)
@@ -19,6 +20,7 @@ dependencies = [
     "tenacity>=8.2.0",  # Retry logic with exponential backoff
     "circuitbreaker>=2.0.0",  # Circuit breaker pattern
     "cachetools>=5.3.0",  # LRU cache with TTL support
+    "psutil>=5.9.0",  # Cross-platform process management
 ]
 
 [project.optional-dependencies]
@@ -30,6 +32,9 @@ dev = [
     "pyright>=1.1.407",
     "pytest>=9.0.0",
     "pytest-cov>=7.0.0",
+]
+production = [
+    "supervisor>=4.2.0",  # Alternative process manager (optional)
 ]
 
 [tool.setuptools]

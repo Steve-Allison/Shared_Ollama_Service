@@ -73,16 +73,23 @@ async def lifespan_context(app: FastAPI):
         )
         if not ollama_started:
             logger.error("LIFESPAN: Failed to start Ollama service")
-            raise RuntimeError("Failed to start Ollama service. Check logs for details.")
-        logger.info("LIFESPAN: Ollama service started successfully")
-        print("LIFESPAN: Ollama service started", flush=True)
+            # Don't raise - log the error and allow server to start
+            # The server can still run even if Ollama fails to start initially
+            # (it will be retried on first request or can be started manually)
+            logger.warning("LIFESPAN: Continuing despite Ollama startup failure - will retry on first request")
+        else:
+            logger.info("LIFESPAN: Ollama service started successfully")
+            print("LIFESPAN: Ollama service started", flush=True)
     except Exception as exc:
         logger.error("LIFESPAN: Failed to start Ollama service: %s", exc, exc_info=True)
         print(f"LIFESPAN ERROR: Failed to start Ollama: {exc}", flush=True)
         import traceback
 
         traceback.print_exc()
-        raise
+        # Don't raise - log the error and allow server to start
+        # The server can still run even if Ollama fails to start initially
+        # (it will be retried on first request or can be started manually)
+        logger.warning("LIFESPAN: Continuing despite Ollama startup failure - will retry on first request")
 
     # Initialize async client (connects to the managed Ollama service)
     client: AsyncSharedOllamaClient | None = None
@@ -118,6 +125,8 @@ async def lifespan_context(app: FastAPI):
         client = None
         # Don't raise - allow server to start but client will be None
         # This way we can see the error in logs
+        # The client will be retried on first request
+        logger.warning("LIFESPAN: Continuing despite client initialization failure - will retry on first request")
 
     # Initialize infrastructure adapters
     if client:

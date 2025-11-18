@@ -146,33 +146,41 @@ echo ""
 echo -e "${BLUE}🚀 Starting REST API server...${NC}"
 API_HOST="${API_HOST:-0.0.0.0}"
 
-# Determine Python and uvicorn paths
-UVICORN_CMD="uvicorn"
+# Determine Python and gunicorn paths
+GUNICORN_CMD="gunicorn"
 PYTHON_CMD="python3"
+
+# Calculate optimal worker count (2 * CPU cores + 1)
+CPU_CORES=$(sysctl -n hw.ncpu 2>/dev/null || nproc 2>/dev/null || echo "4")
+WORKERS=$((CPU_CORES * 2 + 1))
+# Cap at 8 workers for stability
+if [ "$WORKERS" -gt 8 ]; then
+    WORKERS=8
+fi
 
 # Check if we're in a virtual environment
 if [ -z "$VIRTUAL_ENV" ]; then
     if [ -d "$PROJECT_ROOT/.venv" ]; then
         echo -e "${BLUE}Using virtual environment at .venv${NC}"
-        UVICORN_CMD="$PROJECT_ROOT/.venv/bin/uvicorn"
+        GUNICORN_CMD="$PROJECT_ROOT/.venv/bin/gunicorn"
         PYTHON_CMD="$PROJECT_ROOT/.venv/bin/python"
-        # Verify uvicorn exists in venv
-        if [ ! -f "$UVICORN_CMD" ]; then
-            echo -e "${RED}✗ uvicorn not found in virtual environment${NC}"
+        # Verify gunicorn exists in venv
+        if [ ! -f "$GUNICORN_CMD" ]; then
+            echo -e "${RED}✗ gunicorn not found in virtual environment${NC}"
             echo "Please install dependencies: pip install -e \".[dev]\""
             exit 1
         fi
     else
         echo -e "${YELLOW}⚠ No virtual environment found. Using system Python.${NC}"
-        # Check if uvicorn is available in system
-        if ! command -v uvicorn &> /dev/null; then
-            echo -e "${RED}✗ uvicorn not found. Please install dependencies or create a virtual environment.${NC}"
+        # Check if gunicorn is available in system
+        if ! command -v gunicorn &> /dev/null; then
+            echo -e "${RED}✗ gunicorn not found. Please install dependencies or create a virtual environment.${NC}"
             exit 1
         fi
     fi
 else
     # Already in a venv, use it
-    UVICORN_CMD="uvicorn"
+    GUNICORN_CMD="gunicorn"
     PYTHON_CMD="python"
 fi
 
@@ -186,12 +194,13 @@ echo -e "${GRAY}The REST API will automatically start and manage Ollama internal
 echo -e "${GRAY}System optimizations will be auto-detected and applied${NC}"
 echo ""
 
-# Start API server in background so we can run warmup
-echo -e "${GREEN}Starting uvicorn server...${NC}"
-echo -e "${GRAY}Command: $UVICORN_CMD shared_ollama.api.server:app --host $API_HOST --port $API_PORT${NC}"
+# Start API server with gunicorn (production-grade with auto-restart)
+echo -e "${GREEN}Starting gunicorn server with $WORKERS workers...${NC}"
+echo -e "${GRAY}Command: $GUNICORN_CMD shared_ollama.api.server:app --workers $WORKERS --worker-class uvicorn.workers.UvicornWorker --bind $API_HOST:$API_PORT${NC}"
 echo ""
 echo -e "${GRAY}API will be available at: http://${API_HOST}:${API_PORT}${NC}"
 echo -e "${GRAY}API docs: http://${API_HOST}:${API_PORT}/api/docs${NC}"
+echo -e "${GRAY}Workers: $WORKERS (auto-restart on crash)${NC}"
 echo ""
 
 # Ensure logs directory exists
@@ -222,15 +231,22 @@ fi
 echo -e "${GREEN}✓ Dependencies verified${NC}"
 echo ""
 
-# Start the server in background with log redirection
-# Use exec to ensure proper signal handling, but run in background
-nohup "$UVICORN_CMD" shared_ollama.api.server:app \
-    --host "$API_HOST" \
-    --port "$API_PORT" \
+# Start gunicorn server in background with log redirection
+# Gunicorn provides built-in process management and auto-restart
+nohup "$GUNICORN_CMD" shared_ollama.api.server:app \
+    --workers "$WORKERS" \
+    --worker-class uvicorn.workers.UvicornWorker \
+    --bind "$API_HOST:$API_PORT" \
+    --access-logfile "$API_LOG" \
+    --error-logfile "$API_ERROR_LOG" \
     --log-level info \
-    > "$API_LOG" 2> "$API_ERROR_LOG" &
+    --timeout 120 \
+    --keep-alive 5 \
+    --max-requests 1000 \
+    --max-requests-jitter 50 \
+    > /dev/null 2>&1 &
 
-UVICORN_PID=$!
+GUNICORN_PID=$!
 
 # Wait for API server to be ready
 echo -e "${BLUE}Waiting for API server to start...${NC}"
@@ -259,17 +275,26 @@ fi
 
 echo ""
 echo -e "${GREEN}✓ Service started successfully${NC}"
-echo -e "${GRAY}API server PID: $UVICORN_PID${NC}"
+echo -e "${GRAY}Gunicorn master PID: $GUNICORN_PID${NC}"
+echo -e "${GRAY}Workers: $WORKERS (auto-restart on crash)${NC}"
 echo -e "${GRAY}Logs: $API_LOG${NC}"
 echo -e "${GRAY}Errors: $API_ERROR_LOG${NC}"
 echo ""
-echo -e "${CYAN}Service is running in the background.${NC}"
+
+# Save PID for reference (gunicorn manages workers internally)
+echo "$GUNICORN_PID" > "$PROJECT_ROOT/.api.pid"
+
+echo -e "${CYAN}Service is running in the background with gunicorn.${NC}"
+echo -e "${CYAN}Gunicorn provides built-in process management and auto-restart.${NC}"
 echo -e "${CYAN}To stop the service, run: ./scripts/shutdown.sh${NC}"
 echo -e "${CYAN}To view logs: tail -f $API_LOG${NC}"
 echo ""
 
-# Wait for uvicorn process (foreground)
-# This keeps the script running and allows Ctrl+C to stop the service
-wait $UVICORN_PID
+# Wait for gunicorn master process (foreground)
+# Gunicorn manages workers internally and will auto-restart them on crash
+wait $GUNICORN_PID
+
+# If we get here, gunicorn master exited
+echo -e "${YELLOW}⚠ Gunicorn master process exited${NC}"
 
 

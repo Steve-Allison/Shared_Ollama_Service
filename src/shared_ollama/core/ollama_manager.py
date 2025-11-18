@@ -23,11 +23,12 @@ import logging
 import os
 import platform
 import shutil
-import subprocess
 import time
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, Literal, TypeAlias
+
+import psutil
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +46,7 @@ class OllamaManager:
 
     Attributes:
         base_url: Base URL for Ollama service (default: "http://localhost:11434").
-        process: Managed subprocess.Popen instance, or None if not started.
+        process: Managed asyncio.subprocess.Process instance, or None if not started.
         log_dir: Directory path for Ollama log files.
         auto_detect_optimizations: Whether to automatically detect and apply
             system-specific optimizations.
@@ -90,7 +91,7 @@ class OllamaManager:
                 Ollama is already running.
         """
         self.base_url = base_url.rstrip("/")
-        self.process: subprocess.Popen[str] | None = None
+        self.process: asyncio.subprocess.Process | None = None
         self.log_dir = log_dir or self._get_default_log_dir()
         self.auto_detect_optimizations = auto_detect_optimizations
         self.force_manage = force_manage
@@ -357,17 +358,21 @@ class OllamaManager:
 
         try:
             logger.info("Starting Ollama service process...")
-            with (
-                log_file.open("a") as log_f,
-                error_log_file.open("a") as err_f,
-            ):
-                self.process = subprocess.Popen(
-                    [ollama_path, "serve"],
-                    stdout=log_f,
-                    stderr=err_f,
-                    env=env,
-                    start_new_session=True,  # Create new process group
-                )
+            # Open log files for async subprocess (keep open for subprocess lifetime)
+            # Note: Files will be closed when process terminates
+            log_f = log_file.open("a")
+            err_f = error_log_file.open("a")
+            
+            # Use asyncio.create_subprocess_exec for non-blocking async subprocess
+            # Note: File handles are passed to subprocess and will remain open
+            self.process = await asyncio.create_subprocess_exec(
+                ollama_path,
+                "serve",
+                stdout=log_f,
+                stderr=err_f,
+                env=env,
+                start_new_session=True,  # Create new process group
+            )
 
             logger.info("Ollama process started with PID %s", self.process.pid)
 
@@ -451,16 +456,17 @@ class OllamaManager:
                     process.terminate()
 
                     try:
-                        process.wait(timeout=timeout)
+                        # Use asyncio.wait_for for timeout with async wait
+                        await asyncio.wait_for(process.wait(), timeout=timeout)
                         logger.info("Ollama process stopped gracefully")
                         self.process = None
                         return True
-                    except subprocess.TimeoutExpired:
+                    except asyncio.TimeoutError:
                         logger.warning(
                             "Ollama process did not stop gracefully, forcing termination..."
                         )
                         process.kill()
-                        process.wait()
+                        await process.wait()
                         logger.info("Ollama process force-stopped")
                         self.process = None
                         return True
@@ -470,6 +476,7 @@ class OllamaManager:
                     if self.process:
                         try:
                             self.process.kill()
+                            await self.process.wait()
                         except Exception:
                             pass
                         finally:
@@ -481,6 +488,7 @@ class OllamaManager:
 
         Checks both the managed process state and the service health endpoint.
         Updates self.process to None if the managed process has terminated.
+        Uses psutil for reliable cross-platform process checking.
 
         Returns:
             True if service is running and healthy, False otherwise.
@@ -492,12 +500,30 @@ class OllamaManager:
         match self.process:
             case None:
                 pass
-            case process if process.poll() is not None:
-                # Process has terminated
-                self.process = None
-                return False
-            case _:
-                return True
+            case process:
+                # Use psutil for reliable process checking
+                try:
+                    if process.returncode is not None:
+                        # Process has terminated
+                        self.process = None
+                        return False
+                    # Check if process is actually running using psutil
+                    if psutil.pid_exists(process.pid):
+                        proc = psutil.Process(process.pid)
+                        if proc.is_running():
+                            return True
+                        else:
+                            # Process exists but not running
+                            self.process = None
+                            return False
+                    else:
+                        # PID doesn't exist
+                        self.process = None
+                        return False
+                except (psutil.NoSuchProcess, psutil.AccessDenied) as exc:
+                    logger.debug("Process check failed: %s", exc)
+                    self.process = None
+                    return False
 
         return self._check_ollama_running()
 
@@ -521,6 +547,15 @@ class OllamaManager:
         if self.process:
             status["pid"] = self.process.pid
             status["returncode"] = self.process.returncode
+            # Add process info using psutil if available
+            try:
+                if psutil.pid_exists(self.process.pid):
+                    proc = psutil.Process(self.process.pid)
+                    status["cpu_percent"] = proc.cpu_percent(interval=0.1)
+                    status["memory_mb"] = proc.memory_info().rss / 1024 / 1024
+                    status["status"] = proc.status()
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                pass
 
         return status
 

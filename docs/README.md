@@ -33,7 +33,7 @@ Welcome to the Shared Ollama Service documentation. This directory contains comp
 
 1. **Install**: See main [README.md](../README.md)
 2. **Configure**: Copy `env.example` to `.env` and customize
-3. **Start**: Run `./scripts/start_api.sh`
+3. **Start**: Run `./scripts/start.sh`
 4. **Integrate**: See [Integration Guide](INTEGRATION_GUIDE.md)
 
 ## 📖 Documentation Structure

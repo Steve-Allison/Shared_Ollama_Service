@@ -54,7 +54,7 @@ if ! check_service; then
     echo "The Shared Ollama Service must be running for tests."
     echo ""
     echo "To start the service:"
-    echo "  1. ./scripts/setup_launchd.sh (recommended for local dev)"
+    echo "  1. ./scripts/start.sh (recommended - REST API manages Ollama)"
     echo "  2. ollama serve (manual start)"
     echo "  3. brew services start ollama (if using Homebrew)"
     echo ""

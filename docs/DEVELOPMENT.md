@@ -207,7 +207,7 @@ pytest
 
 ```bash
 # Start API server with auto-reload
-API_RELOAD=true ./scripts/start_api.sh
+API_RELOAD=true ./scripts/start.sh
 
 # Or use uvicorn directly
 uvicorn shared_ollama.api.server:app --reload --host 0.0.0.0 --port 8000

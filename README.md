@@ -1,17 +1,19 @@
-# Shared Ollama Service v2.0
+# Shared Ollama Service
 
-**Native Ollama API** - Centralized Ollama instance with VLM support (dual format), batch processing, and image compression.
+**REST API** - Centralized Ollama service with VLM support (dual format), batch processing, and image compression.
 
-⭐ **v2.0 Features**:
-- **Primary**: Native Ollama format (simple, efficient, direct)
-- **Secondary**: OpenAI-compatible format for Docling integration
-- **Breaking Change**: Default endpoints use native Ollama format (v1.x used different format)
+**Key Features**:
+
+- **REST API**: FastAPI-based service (port 8000) that manages Ollama internally
+- **Native Ollama Format**: Simple, efficient, direct integration
+- **OpenAI-Compatible Format**: For Docling and other OpenAI-compatible clients
+- **Automatic Management**: REST API automatically starts and manages Ollama (no manual setup needed)
 
 **📚 Documentation**: See [docs/README.md](docs/README.md) for complete documentation index.
 
 ## Overview
 
-This service provides a single Ollama instance accessible on port `11434` that all projects can use:
+This service provides a REST API (port 8000) that manages Ollama internally and makes it accessible to all projects:
 
 - **Architecture snapshot**: see `docs/ARCHITECTURE.md` for diagrams, request flow, and runtime environments.
 - **Clean Architecture**: see `docs/CLEAN_ARCHITECTURE_REFACTORING.md` for layer structure and dependency rules.
@@ -52,7 +54,7 @@ This service provides a single Ollama instance accessible on port `11434` that a
 
 Models remain in memory for 5 minutes after last use (OLLAMA_KEEP_ALIVE), then are automatically unloaded to free memory. Switching between models requires a brief load time (~2-3 seconds).
 
-## Vision Language Model (VLM) Support ⭐ v2.0
+## Vision Language Model (VLM) Support
 
 The service **fully supports** vision-language models with **both native Ollama and OpenAI-compatible formats**. Choose the format that works best for your use case:
 
@@ -497,7 +499,7 @@ Example error response:
 }
 ```
 
-## POML Support (Prompt Orchestration Markup Language) 🔧 v2.1
+## POML Support (Prompt Orchestration Markup Language)
 
 The Shared Ollama Service **fully supports** [POML](https://github.com/microsoft/poml) for structured prompt engineering and LLM orchestration.
 
@@ -522,6 +524,7 @@ The Shared Ollama Service **fully supports** [POML](https://github.com/microsoft
 Define functions the model can call using POML's `<tool-definition>` syntax:
 
 **POML Template** (`chat_with_tools.poml`):
+
 ```xml
 <poml>
   <system-msg>You are a helpful assistant with access to tools.</system-msg>
@@ -573,6 +576,7 @@ Define functions the model can call using POML's `<tool-definition>` syntax:
 ```
 
 **Python Integration**:
+
 ```python
 import poml
 import requests
@@ -618,6 +622,7 @@ if response["message"].get("tool_calls"):
 Use POML's `<output-schema>` to ensure structured responses:
 
 **POML Template** (`extract_event.poml`):
+
 ```xml
 <poml>
   <system-msg>Extract event information from the text.</system-msg>
@@ -641,6 +646,7 @@ Use POML's `<output-schema>` to ensure structured responses:
 ```
 
 **Python Integration**:
+
 ```python
 import poml
 import requests
@@ -671,6 +677,7 @@ print(event)
 Combine vision capabilities with structured prompts:
 
 **POML Template** (`analyze_image.poml`):
+
 ```xml
 <poml>
   <task>Analyze the image and extract structured information.</task>
@@ -694,6 +701,7 @@ Combine vision capabilities with structured prompts:
 ```
 
 **Python Integration**:
+
 ```python
 import poml
 import requests
@@ -827,8 +835,8 @@ pip install poml[weave]     # Weights & Biases Weave
 
 ### POML Resources
 
-- **Official Repository**: https://github.com/microsoft/poml
-- **Documentation**: https://github.com/microsoft/poml/tree/main/docs
+- **Official Repository**: <https://github.com/microsoft/poml>
+- **Documentation**: <https://github.com/microsoft/poml/tree/main/docs>
 - **Examples**: See `examples/poml/` directory in this repository
 - **VS Code Extension**: Available in marketplace
 
@@ -844,6 +852,7 @@ pip install poml[weave]     # Weights & Biases Weave
 ### Complete Working Example
 
 See `examples/poml/weather_assistant.py` for a full working example with:
+
 - Multiple tool definitions
 - Conversation history
 - Tool call handling
@@ -915,14 +924,11 @@ All modules are shipped as a package (installable via `pip install -e .`) with t
 **Best Performance**: Native Ollama with explicit MPS (Metal Performance Shaders) configuration provides maximum GPU acceleration on Apple Silicon.
 
 ```bash
-# Install and setup native Ollama with MPS optimization
+# Install Ollama
 ./scripts/install_native.sh
 
-# Service runs manually - start when needed:
-ollama serve
-
-# Optional (NOT recommended): Setup as launchd service for automatic startup
-# ./scripts/setup_launchd.sh
+# Start the REST API (automatically manages Ollama internally)
+./scripts/start.sh
 ```
 
 **MPS/Metal Optimizations Enabled:**
@@ -1079,11 +1085,11 @@ make fix         # Auto-fix issues
 # Comprehensive health check
 ./scripts/health_check.sh
 
-# Or manually check
-curl http://localhost:11434/api/tags
+# Or check REST API health
+curl http://localhost:8000/api/v1/health
 
-# List installed models
-ollama list
+# List available models (via REST API)
+curl http://localhost:8000/api/v1/models
 ```
 
 ## Quick Start - Using in Your Projects
@@ -1111,6 +1117,10 @@ print(response.text)
 **Environment Variables** (optional - defaults work too):
 
 ```bash
+# For REST API (recommended)
+export API_BASE_URL="http://localhost:8000"
+
+# For direct Ollama access (not recommended - use REST API instead)
 export OLLAMA_BASE_URL="http://localhost:11434"
 ```
 
@@ -1128,7 +1138,7 @@ The REST API provides centralized logging, metrics, and rate limiting for all pr
 
 ```bash
 # Start the API server (runs on port 8000 by default)
-./scripts/start_api.sh
+./scripts/start.sh
 ```
 
 **Key Features:**
@@ -1445,13 +1455,15 @@ See [INTEGRATION_GUIDE.md](docs/INTEGRATION_GUIDE.md) for detailed project-speci
 
 ### Environment Variables
 
-**For Client Projects** (detected automatically by `shared_ollama.core.utils`):
+**For Client Projects**:
 
 ```bash
-export OLLAMA_BASE_URL="http://localhost:11434"  # Preferred
-# OR
-export OLLAMA_HOST="localhost"
-export OLLAMA_PORT="11434"
+# Recommended: Use REST API (port 8000)
+export API_BASE_URL="http://localhost:8000"
+
+# Alternative: Direct Ollama access (port 11434)
+# Only if you need direct Ollama API access (bypasses REST API features)
+export OLLAMA_BASE_URL="http://localhost:11434"
 ```
 
 **For Service Configuration** (create `.env` file in project root):
@@ -1523,20 +1535,20 @@ The `OLLAMA_KEEP_ALIVE` setting determines how long models remain in memory afte
 
 **To change keep-alive:**
 
-Set the environment variable when starting Ollama:
+Set in `.env` file (auto-generated by `./scripts/generate_optimal_config.sh`):
 
 ```bash
-export OLLAMA_KEEP_ALIVE=15m
-ollama serve
+OLLAMA_KEEP_ALIVE=15m
 ```
 
-Or set it when starting Ollama manually (launchd not recommended)
+Then restart the service: `./scripts/shutdown.sh && ./scripts/start.sh`
 
 ### Port Configuration
 
-- **Default Port**: 11434 (standard Ollama port)
-- **API Endpoint**: `http://localhost:11434/api/generate`
-- **Tags Endpoint**: `http://localhost:11434/api/tags`
+- **REST API Port**: 8000 (FastAPI service)
+- **Ollama Port**: 11434 (managed internally by REST API)
+- **REST API Endpoint**: `http://localhost:8000/api/v1/generate`
+- **REST API Docs**: `http://localhost:8000/api/docs`
 
 ## Health Checks
 
@@ -1565,11 +1577,14 @@ Or set it when starting Ollama manually (launchd not recommended)
 ### Manual Testing
 
 ```bash
-# List models
-curl http://localhost:11434/api/tags
+# Health check (REST API)
+curl http://localhost:8000/api/v1/health
 
-# Test generation
-curl http://localhost:11434/api/generate -d '{
+# List models (REST API)
+curl http://localhost:8000/api/v1/models
+
+# Test generation (REST API)
+curl http://localhost:8000/api/v1/generate -d '{
   "model": "qwen2.5vl:7b",
   "prompt": "Why is the sky blue?"
 }'
@@ -1598,39 +1613,37 @@ ollama pull qwen2.5vl:7b
 
 ## Service Management
 
-**Default: Manual Start** - Service must be started manually when needed.
+**Start the Service:**
 
 ```bash
-# Start service with MPS/Metal optimization (RECOMMENDED)
+# Start REST API (automatically manages Ollama internally)
 ./scripts/start.sh
 
-# Or start manually with optimizations:
-export OLLAMA_METAL=1
-export OLLAMA_NUM_GPU=-1
-ollama serve > ./logs/ollama.log 2> ./logs/ollama.error.log &
-
-# Stop service
-pkill ollama
-# Or use shutdown script
-./scripts/shutdown.sh
-
-# Check if running
-curl http://localhost:11434/api/tags
-
-# View logs
-tail -f ./logs/ollama.log
+# The REST API will:
+# - Auto-detect system hardware
+# - Generate optimal configuration (.env)
+# - Start Ollama with optimizations
+# - Provide REST API on port 8000
 ```
 
-**Optional: Auto-start on Boot** (NOT recommended - disabled by default)
+**Stop the Service:**
 
 ```bash
-# Only if you want the service to auto-start on login/boot:
-# ./scripts/setup_launchd.sh
+# Stop REST API and Ollama
+./scripts/shutdown.sh
+```
 
-# Manage launchd service (if enabled)
-# launchctl load ~/Library/LaunchAgents/com.ollama.service.plist  # Start
-# launchctl unload ~/Library/LaunchAgents/com.ollama.service.plist  # Stop
-# launchctl list | grep ollama  # Status
+**Check Status:**
+
+```bash
+# Quick status check
+./scripts/status.sh
+
+# Health check (REST API)
+curl http://localhost:8000/api/v1/health
+
+# View logs
+tail -f logs/api.log
 ```
 
 ## Performance Optimizations
@@ -1687,14 +1700,14 @@ system_profiler SPDisplaysDataType | grep -i metal
 # Check if Ollama is installed
 which ollama
 
-# Start service manually
-ollama serve
+# Start REST API
+./scripts/start.sh
 
-# Check if port is in use
-lsof -i :11434
+# Check if REST API is running
+curl http://localhost:8000/api/v1/health
 
-# View logs (if using launchd)
-tail -f ~/.ollama/ollama.log
+# View logs
+tail -f logs/api.log
 ```
 
 ### Models Not Found
@@ -1713,51 +1726,15 @@ ollama list
 ### Connection Refused
 
 ```bash
-# Check if port is in use
-lsof -i :11434
+# Check if REST API is running
+curl http://localhost:8000/api/v1/health
 
-# Kill existing Ollama instance
-kill $(lsof -t -i:11434)
+# If not running, start it
+./scripts/start.sh
 
-# Restart service
-ollama serve
+# If already running but not responding, restart
+./scripts/shutdown.sh && ./scripts/start.sh
 ```
-
-## Migration Guide
-
-### From Individual Project Ollama Instances
-
-1. **Stop existing instances**
-
-   ```bash
-   # Stop any running Ollama processes
-   pkill ollama
-   ```
-
-2. **Start shared service**
-
-   ```bash
-   cd Shared_Ollama_Service
-   ./scripts/install_native.sh
-
-   # Or if already installed
-   ollama serve
-   ```
-
-3. **Update project configurations** (see Usage section above)
-
-4. **Test each project**
-
-   ```bash
-   # Test Knowledge Machine
-   cd Knowledge_Machine && python -m pytest tests/integration/test_rag_integration.py
-
-   # Test Course Intelligence Compiler
-   cd Course_Intelligence_Compiler && python -m pytest tests/common/llm/test_ollama_client.py
-
-   # Test Story Machine
-   cd Story_Machine && pytest tests/
-   ```
 
 ## Security
 
@@ -1766,10 +1743,12 @@ ollama serve
 The Ollama service is **not exposed to the internet** by default. Only localhost connections are allowed.
 
 **Default Configuration:**
+
 - `OLLAMA_HOST=localhost` - Ollama service accessible only from localhost (secure default)
 - `API_HOST=0.0.0.0` - REST API can be network-accessible (port 8000) if needed
 
 **To Enable Network Access:**
+
 - Set `OLLAMA_HOST=0.0.0.0` in `.env` to allow connections from other machines on the same network
 - Run `./scripts/generate_optimal_config.sh` to update configuration
 - **Security Note**: Only enable network access on trusted networks. Consider firewall rules for untrusted networks.
@@ -1798,17 +1777,17 @@ Shows:
 ### Logs
 
 ```bash
-# View logs (if using launchd service)
-tail -f ./logs/ollama.log
+# View REST API logs
+tail -f logs/api.log
 
 # View error logs
-tail -f ./logs/ollama.error.log
+tail -f logs/api.error.log
 
 # View structured request log (JSON lines)
-tail -f ./logs/requests.jsonl
+tail -f logs/requests.jsonl
 
-# If running manually, logs output to terminal
-ollama serve
+# View performance logs
+tail -f logs/performance.jsonl
 ```
 
 ### Metrics & Performance
@@ -1819,10 +1798,10 @@ ollama serve
 - Success/failure rates
 - Usage by model and operation
 
-**Ollama Service Logs**:
+**REST API Logs**:
 
-- HTTP request logs: `logs/ollama.log`
-- Error logs: `logs/ollama.error.log`
+- API request logs: `logs/api.log`
+- Error logs: `logs/api.error.log`
 - Performance logs: `logs/performance.jsonl` (detailed performance metrics)
 - Structured request events (model timings, load durations): `logs/requests.jsonl`
 
@@ -1843,7 +1822,7 @@ python scripts/performance_report.py --window 60
 
 - **Quick status**: `./scripts/status.sh` (fast overview)
 - **Health checks**: `./scripts/health_check.sh` (comprehensive)
-- **Model status**: `curl http://localhost:11434/api/tags`
+- **Model status**: `curl http://localhost:8000/api/v1/models`
 - **Resource usage**: `top -pid $(pgrep ollama)` or Activity Monitor
 
 **Note**: See `PERFORMANCE_MONITORING.md` for detailed performance tracking capabilities.
@@ -1865,6 +1844,7 @@ curl "http://localhost:8000/api/v1/metrics?window_minutes=60"
 ```
 
 **Response includes**:
+
 - Total requests, successful/failed counts
 - Latency percentiles (P50, P95, P99)
 - Requests by model and operation
@@ -1880,6 +1860,7 @@ curl http://localhost:8000/api/v1/performance/stats
 ```
 
 **Response includes**:
+
 - Average tokens per second (generation throughput)
 - Average model load time
 - Average generation time
@@ -1904,6 +1885,7 @@ curl "http://localhost:8000/api/v1/analytics?window_minutes=60&project=Docling_M
 ```
 
 **Response includes**:
+
 - Total requests, success rates
 - Latency percentiles (P50, P95, P99)
 - Requests by model, operation, and project
@@ -1922,6 +1904,7 @@ curl http://localhost:8000/api/v1/queue/stats
 ```
 
 **Response includes**:
+
 - Current queue state (queued, in_progress)
 - Historical counts (completed, failed, rejected, timeout)
 - Wait time statistics (total, max, average)
@@ -1932,6 +1915,7 @@ curl http://localhost:8000/api/v1/queue/stats
 The service collects comprehensive performance data:
 
 **Structured Logs** (`logs/requests.jsonl`):
+
 - Request-level metrics (latency, model, operation, status)
 - Model load times (`model_load_ms`)
 - Warm start indicators (`model_warm_start`)
@@ -1940,12 +1924,14 @@ The service collects comprehensive performance data:
 - Error information
 
 **Performance Logs** (`logs/performance.jsonl`):
+
 - Detailed timing breakdowns (load, prompt eval, generation)
 - Token-level metrics (tokens/second, prompt tokens/second)
 - Per-model performance statistics
 - Comprehensive performance data for analysis
 
 **In-Memory Metrics**:
+
 - Real-time aggregations (via `/api/v1/metrics`)
 - Project-based analytics (via `/api/v1/analytics`)
 - Performance statistics (via `/api/v1/performance/stats`)
@@ -1977,6 +1963,7 @@ The service uses **model-based memory calculation** (not percentage-based) to en
   - Safety buffer: 4GB
 - **Automatic Configuration**: Run `./scripts/generate_optimal_config.sh` to auto-detect hardware and generate optimal `.env` settings
 - **Customization**: Adjust RAG reserve if needed:
+
   ```bash
   export RAG_RESERVE_GB=12  # For larger RAG systems
   ./scripts/calculate_memory_limit.sh
@@ -2032,31 +2019,21 @@ KEEP_ALIVE=60m ./scripts/warmup_models.sh
 
 ### Automated Warm-up on Startup
 
-#### Option 1: Manual warm-up after service start
+#### Option 1: Warm-up after service start
 
 ```bash
-# Start Ollama
-ollama serve
+# Start REST API
+./scripts/start.sh
 
-# In another terminal, warm up models
+# In another terminal, warm up models (optional)
 ./scripts/warmup_models.sh
 ```
 
-#### Option 2: Cron job for warm-up (if using launchd service)
+#### Option 2: Warm-up via REST API
 
 ```bash
-# Add to crontab to warm up 2 minutes after login
-crontab -e
-
-# Add this line:
-@reboot sleep 120 && /path/to/Shared_Ollama_Service/scripts/warmup_models.sh
-```
-
-#### Option 3: Warm-up via API call
-
-```bash
-# Warm up a specific model
-curl http://localhost:11434/api/generate -d '{
+# Warm up a specific model via REST API
+curl http://localhost:8000/api/v1/generate -d '{
   "model": "qwen2.5vl:7b",
   "prompt": "Hi",
   "options": {"num_predict": 1},
@@ -2120,6 +2097,7 @@ asyncio.run(main())
 **✅ FULLY ENABLED** - Comprehensive monitoring and analytics:
 
 **Via API** (Recommended):
+
 ```bash
 # Service metrics
 curl http://localhost:8000/api/v1/metrics
@@ -2136,6 +2114,7 @@ curl http://localhost:8000/api/v1/queue/stats
 ```
 
 **Via Python**:
+
 ```python
 from shared_ollama import MetricsCollector, track_request
 
@@ -2182,6 +2161,7 @@ See `IMPLEMENTED_ENHANCEMENTS.md` for full details.
 **✅ NOW FULLY ENABLED** - Project-based analytics with time-series analysis:
 
 **Via API** (Recommended):
+
 ```bash
 # Get all analytics
 curl http://localhost:8000/api/v1/analytics
@@ -2197,6 +2177,7 @@ curl "http://localhost:8000/api/v1/analytics?window_minutes=60&project=Docling_M
 ```
 
 **Via Python**:
+
 ```python
 from shared_ollama import AnalyticsCollector, get_analytics_json
 
@@ -2213,6 +2194,7 @@ AnalyticsCollector.export_csv("analytics.csv")
 ```
 
 **Project Tracking**: Automatically enabled! Include `X-Project-Name` header in requests:
+
 ```python
 import requests
 
@@ -2224,6 +2206,7 @@ response = requests.post(
 ```
 
 **Features**:
+
 - ✅ Project-level usage tracking (automatic with `X-Project-Name` header)
 - ✅ Hourly time-series metrics
 - ✅ Latency percentiles (P50, P95, P99)
@@ -2427,7 +2410,7 @@ MIT
 
 For issues or questions:
 
-- Check logs: `tail -f ~/.ollama/ollama.log`
+- Check logs: `tail -f logs/api.log`
 - Run health check: `./scripts/health_check.sh`
-- Verify service: `curl http://localhost:11434/api/tags`
+- Verify service: `curl http://localhost:8000/api/v1/health`
 - Open issue in project repository

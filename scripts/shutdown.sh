@@ -66,31 +66,101 @@ if [ -f "$LAUNCHD_PLIST" ]; then
     fi
 fi
 
-# Kill any remaining ollama processes
-OLLAMA_PIDS=$(ps aux | grep -i "[o]llama serve" | awk '{print $2}' 2>/dev/null || true)
-if [ -n "$OLLAMA_PIDS" ]; then
-    print_info "Killing remaining Ollama processes..."
-    # Kill each PID individually to avoid killing the script itself
-    for pid in $OLLAMA_PIDS; do
-        kill -9 "$pid" 2>/dev/null || true
+# Kill all Ollama processes (serve, runner, etc.)
+print_info "Killing all Ollama processes..."
+
+# Kill ollama serve processes
+OLLAMA_SERVE_PIDS=$(ps aux | grep -i "[o]llama serve" | awk '{print $2}' 2>/dev/null || true)
+if [ -n "$OLLAMA_SERVE_PIDS" ]; then
+    print_info "Killing ollama serve processes..."
+    for pid in $OLLAMA_SERVE_PIDS; do
+        kill -TERM "$pid" 2>/dev/null || true
+    done
+    sleep 2
+    # Force kill if still running
+    for pid in $OLLAMA_SERVE_PIDS; do
+        if ps -p "$pid" > /dev/null 2>&1; then
+            kill -9 "$pid" 2>/dev/null || true
+        fi
+    done
+fi
+
+# Kill ollama runner processes (model instances)
+OLLAMA_RUNNER_PIDS=$(ps aux | grep -i "[o]llama runner" | awk '{print $2}' 2>/dev/null || true)
+if [ -n "$OLLAMA_RUNNER_PIDS" ]; then
+    print_info "Killing ollama runner processes (model instances)..."
+    for pid in $OLLAMA_RUNNER_PIDS; do
+        kill -TERM "$pid" 2>/dev/null || true
+    done
+    sleep 2
+    # Force kill if still running
+    for pid in $OLLAMA_RUNNER_PIDS; do
+        if ps -p "$pid" > /dev/null 2>&1; then
+            kill -9 "$pid" 2>/dev/null || true
+        fi
+    done
+fi
+
+# Kill any other ollama processes (catch-all)
+OLLAMA_OTHER_PIDS=$(ps aux | grep -i "[o]llama" | grep -v "grep" | grep -v "ollama serve" | grep -v "ollama runner" | awk '{print $2}' 2>/dev/null || true)
+if [ -n "$OLLAMA_OTHER_PIDS" ]; then
+    print_info "Killing other Ollama processes..."
+    for pid in $OLLAMA_OTHER_PIDS; do
+        kill -TERM "$pid" 2>/dev/null || true
     done
     sleep 1
+    for pid in $OLLAMA_OTHER_PIDS; do
+        if ps -p "$pid" > /dev/null 2>&1; then
+            kill -9 "$pid" 2>/dev/null || true
+        fi
+    done
+fi
+
+sleep 1
+# Verify all Ollama processes are killed
+REMAINING_OLLAMA=$(ps aux | grep -i "[o]llama" | grep -v "grep" | wc -l | tr -d ' ' || echo "0")
+if [ "$REMAINING_OLLAMA" -eq 0 ]; then
     print_status 0 "All Ollama processes terminated"
 else
-    print_status 0 "No running Ollama processes found"
+    print_warning "Some Ollama processes may still be running (count: $REMAINING_OLLAMA)"
+    print_info "Remaining processes:"
+    ps aux | grep -i "[o]llama" | grep -v "grep" | head -5
 fi
 
 # Kill REST API server (uvicorn)
 API_PIDS=$(ps aux | grep -i "[u]vicorn.*shared_ollama.api.server" | awk '{print $2}' 2>/dev/null || true)
 if [ -n "$API_PIDS" ]; then
-    print_info "Stopping REST API server..."
+    print_info "Stopping REST API server (uvicorn)..."
+    # Try graceful shutdown first
     for pid in $API_PIDS; do
-        kill -9 "$pid" 2>/dev/null || true
+        kill -TERM "$pid" 2>/dev/null || true
+    done
+    sleep 2
+    # Force kill if still running
+    for pid in $API_PIDS; do
+        if ps -p "$pid" > /dev/null 2>&1; then
+            kill -9 "$pid" 2>/dev/null || true
+        fi
     done
     sleep 1
     print_status 0 "REST API server stopped"
 else
     print_status 0 "No running REST API server found"
+fi
+
+# Kill any other Python processes running the API (catch-all)
+PYTHON_API_PIDS=$(ps aux | grep -i "python.*shared_ollama.api.server" | grep -v "grep" | awk '{print $2}' 2>/dev/null || true)
+if [ -n "$PYTHON_API_PIDS" ]; then
+    print_info "Killing Python API processes..."
+    for pid in $PYTHON_API_PIDS; do
+        kill -TERM "$pid" 2>/dev/null || true
+    done
+    sleep 1
+    for pid in $PYTHON_API_PIDS; do
+        if ps -p "$pid" > /dev/null 2>&1; then
+            kill -9 "$pid" 2>/dev/null || true
+        fi
+    done
 fi
 
 # Verify service is stopped

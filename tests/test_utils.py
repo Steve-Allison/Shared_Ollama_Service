@@ -215,7 +215,7 @@ class TestEnsureServiceRunning:
         error_msg = str(exc_info.value)
         assert "Ollama service is not available" in error_msg
         assert "Service unavailable" in error_msg
-        assert "ollama serve" in error_msg or "setup_launchd" in error_msg
+        assert "ollama serve" in error_msg or "start.sh" in error_msg
 
     @patch("shared_ollama.core.utils.check_service_health")
     def test_custom_base_url_is_passed_through(self, mock_check):

@@ -129,7 +129,7 @@ def ensure_service_running(
         case (False, True):
             msg = (
                 f"Ollama service is not available. {error}\n"
-                "Start the service with: ./scripts/setup_launchd.sh\n"
+                "Start the service with: ./scripts/start.sh\n"
                 "Or manually: ollama serve"
             )
             raise ConnectionError(msg)

@@ -124,7 +124,7 @@ def example_error_handling():
     is_healthy, error = check_service_health()
     if not is_healthy:
         print(f"Service is not available: {error}")
-        print("Start the service with: ./scripts/setup_launchd.sh")
+        print("Start the service with: ./scripts/start.sh")
         return
 
     try:

@@ -302,7 +302,7 @@ See `examples/quick_start.py` for complete working examples.
 ./scripts/status.sh
 
 # Start service
-./scripts/setup_launchd.sh
+./scripts/start.sh  # REST API manages Ollama internally
 ```
 
 ### Import Errors
@@ -320,7 +320,7 @@ client = SharedOllamaClient()
 1. Check service is running: `./scripts/status.sh`
 2. Verify URL is correct: `echo $OLLAMA_BASE_URL`
 3. Check firewall/network settings
-4. Restart service: `./scripts/shutdown.sh && ./scripts/setup_launchd.sh`
+4. Restart service: `./scripts/shutdown.sh && ./scripts/start.sh`
 
 ## Next Steps
 

@@ -275,7 +275,7 @@ ollama serve
 
 # Or use native macOS service
 ./scripts/install_native.sh
-./scripts/setup_launchd.sh
+./scripts/start.sh  # REST API manages Ollama internally
 
 # Preload models (first time)
 ./scripts/preload_models.sh      # Downloads qwen2.5:7b, qwen2.5vl:7b, etc.

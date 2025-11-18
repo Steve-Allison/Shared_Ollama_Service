@@ -62,8 +62,9 @@ class AsyncOllamaClientAdapter:
         options: dict[str, Any] | None = None,
         stream: bool = False,
         format: str | dict[str, Any] | None = None,  # noqa: A002
+        tools: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any] | AsyncIterator[dict[str, Any]]:
-        """Generate text from a prompt.
+        """Generate text from a prompt with tool calling support.
 
         Args:
             prompt: Text prompt for generation.
@@ -72,6 +73,7 @@ class AsyncOllamaClientAdapter:
             options: Generation options. Optional.
             stream: Whether to stream the response.
             format: Output format. Optional.
+            tools: List of tools/functions the model can call (POML compatible). Optional.
 
         Returns:
             - dict with generation result if stream=False
@@ -100,6 +102,8 @@ class AsyncOllamaClientAdapter:
                 model=model,
                 system=system,
                 options=generate_options,
+                format=format,  # type: ignore[arg-type]
+                tools=tools,
             )
         # Type ignore needed because pyright doesn't see full method signature
         result = await self._client.generate(  # type: ignore[call-arg, misc]
@@ -109,6 +113,7 @@ class AsyncOllamaClientAdapter:
             options=generate_options,
             stream=False,
             format=format,  # type: ignore[arg-type]
+            tools=tools,
         )
         # Convert GenerateResponse to dict (preserving all fields)
         return {

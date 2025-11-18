@@ -254,6 +254,10 @@ class VLMUseCase:
                     response=result,
                 )
 
+                # Add compression savings to result if compression was enabled
+                if request.image_compression and total_compression_savings > 0:
+                    result["compression_savings_bytes"] = total_compression_savings
+
                 return result
 
         except ValueError as exc:

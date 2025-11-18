@@ -10,9 +10,7 @@ from shared_ollama.client import (
     SharedOllamaClient,
 )
 from shared_ollama.core import (
-    CircuitBreaker,
     CircuitBreakerConfig,
-    CircuitState,
     ResilientOllamaClient,
     RetryConfig,
     check_service_health,
@@ -46,9 +44,7 @@ __all__ = [
     "AnalyticsReport",
     "AsyncOllamaConfig",
     "AsyncSharedOllamaClient",
-    "CircuitBreaker",
     "CircuitBreakerConfig",
-    "CircuitState",
     "DetailedPerformanceMetrics",
     "GenerateOptions",
     "GenerateResponse",

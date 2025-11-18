@@ -52,27 +52,18 @@ def get_project_root() -> Path:
 def get_ollama_base_url() -> str:
     """Get the Ollama base URL from environment variables.
 
-    Constructs the base URL from OLLAMA_BASE_URL, OLLAMA_HOST, and OLLAMA_PORT
-    environment variables. Falls back to localhost:11434 if not set.
+    Uses pydantic-settings (via OllamaConfig) for consistent environment
+    variable handling. Falls back to localhost:11434 if not set.
 
     Returns:
         Base URL string (e.g., "http://localhost:11434"). Always includes
         protocol and port, with trailing slashes removed.
     """
-    import os
+    from shared_ollama.core.config import OllamaConfig
 
-    if base_url := os.getenv("OLLAMA_BASE_URL"):
-        return base_url.rstrip("/")
-
-    host = os.getenv("OLLAMA_HOST", "localhost")
-    port = os.getenv("OLLAMA_PORT", "11434")
-
-    match ":" in host:
-        case True:
-            # Host already includes port
-            return f"http://{host}"
-        case False:
-            return f"http://{host}:{port}"
+    # Use pydantic-settings for environment variable loading
+    config = OllamaConfig()
+    return config.url
 
 
 def check_service_health(

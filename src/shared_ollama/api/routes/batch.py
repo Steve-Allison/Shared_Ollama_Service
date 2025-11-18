@@ -37,7 +37,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-@router.post("/batch/chat", tags=["Batch"])
+@router.post("/batch/chat", tags=["Batch"], response_model=BatchResponse)
 @limiter.limit("10/minute")
 async def batch_chat(
     request: Request,
@@ -137,7 +137,7 @@ async def batch_chat(
         ) from exc
 
 
-@router.post("/batch/vlm", tags=["Batch"])
+@router.post("/batch/vlm", tags=["Batch"], response_model=BatchResponse)
 @limiter.limit("5/minute")
 async def batch_vlm(
     request: Request,

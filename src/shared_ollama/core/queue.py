@@ -204,10 +204,14 @@ class RequestQueue:
                     self._stats.max_wait_time_ms = max(self._stats.max_wait_time_ms, wait_time_ms)
                     self._stats.queued = self._queue.qsize()
                     self._stats.in_progress = len(self._active_requests) + 1
-                    if total_completed >= 0:
+                    # Calculate average wait time only if we have completed requests
+                    if total_completed > 0:
                         self._stats.avg_wait_time_ms = (
-                            self._stats.total_wait_time_ms / (total_completed + 1)
+                            self._stats.total_wait_time_ms / total_completed
                         )
+                    elif total_completed == 0:
+                        # First request - average equals current wait time
+                        self._stats.avg_wait_time_ms = wait_time_ms
 
                 self._active_requests.add(request_id)
 

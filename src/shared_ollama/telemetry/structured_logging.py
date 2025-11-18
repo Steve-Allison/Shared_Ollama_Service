@@ -26,6 +26,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from pydantic import TypeAdapter
+
 # Cache log directory resolution
 @functools.cache
 def _get_logs_dir() -> Path:
@@ -60,9 +62,9 @@ if not REQUEST_LOGGER.handlers:
 def _json_default(value: Any) -> Any:
     """Fallback serializer for datetime and Path objects.
 
-    Custom JSON encoder fallback that handles datetime and Path objects
-    by converting them to strings. Uses pattern matching for clean type
-    handling.
+    Uses Pydantic's built-in serialization for datetime objects, which handles
+    timezone-aware datetimes correctly. Falls back to string conversion for
+    Path and other types.
 
     Args:
         value: Value to serialize. Expected to be datetime, Path, or
@@ -70,7 +72,7 @@ def _json_default(value: Any) -> Any:
 
     Returns:
         Serialized value:
-            - datetime: ISO 8601 format string
+            - datetime: ISO 8601 format string (via Pydantic)
             - Path: String representation of path
             - Other: String representation
 
@@ -79,7 +81,8 @@ def _json_default(value: Any) -> Any:
     """
     match value:
         case datetime():
-            return value.isoformat()
+            # Use Pydantic's datetime serialization for proper timezone handling
+            return TypeAdapter(datetime).dump_python(value, mode="json")
         case Path():
             return str(value)
         case _:

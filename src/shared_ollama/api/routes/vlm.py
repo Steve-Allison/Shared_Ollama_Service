@@ -11,65 +11,33 @@ import logging
 from collections.abc import AsyncIterator
 from typing import Any
 
-import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from fastapi.responses import JSONResponse, Response, StreamingResponse
+from fastapi.responses import Response, StreamingResponse
 
 from shared_ollama.api.dependencies import (
     get_request_context,
     get_vlm_queue,
     get_vlm_use_case,
 )
+from shared_ollama.api.error_handlers import handle_route_errors
 from shared_ollama.api.mappers import (
     api_to_domain_vlm_request,
     api_to_domain_vlm_request_openai,
 )
 from shared_ollama.api.middleware import limiter
 from shared_ollama.api.models import (
-    ChatMessage,
     RequestContext,
     VLMRequest,
     VLMRequestOpenAI,
-    VLMResponse,
 )
+from shared_ollama.api.response_builders import build_vlm_response, json_response
+from shared_ollama.api.type_guards import is_dict_result
 from shared_ollama.application.vlm_use_cases import VLMUseCase
 from shared_ollama.core.queue import RequestQueue
-from shared_ollama.domain.exceptions import InvalidRequestError
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
-
-
-def _map_http_status_code(status_code: int | None) -> tuple[int, str]:
-    """Map Ollama HTTP status codes to appropriate API responses.
-
-    Converts Ollama service HTTP status codes to appropriate FastAPI
-    status codes and error messages for client consumption.
-
-    Args:
-        status_code: HTTP status code from Ollama service. None if
-            status code unavailable.
-
-    Returns:
-        Tuple of (http_status_code, error_message):
-            - (400, ...) for 4xx client errors from Ollama
-            - (502, ...) for 5xx server errors from Ollama
-            - (503, ...) for unknown/unavailable status
-    """
-    match status_code:
-        case code if code and 400 <= code < 500:
-            return (
-                status.HTTP_400_BAD_REQUEST,
-                f"Invalid request to Ollama service (status {code})",
-            )
-        case code if code and code >= 500:
-            return (
-                status.HTTP_502_BAD_GATEWAY,
-                "Ollama service returned an error. Please try again later.",
-            )
-        case _:
-            return (status.HTTP_503_SERVICE_UNAVAILABLE, "Ollama service is unavailable.")
 
 
 async def _stream_chat_sse(
@@ -199,84 +167,20 @@ async def vlm_chat(
                 target_format=api_req.compression_format,
             )
             # Type narrowing: stream=False returns dict
-            assert isinstance(result, dict)
-            result_dict = result
+            if not is_dict_result(result):
+                raise RuntimeError("Expected dict result for non-streaming request")
 
-            # Convert result dict to API response
-            message_content = result_dict.get("message", {}).get("content", "")
-            model_used = result_dict.get("model", "unknown")
-            prompt_eval_count = result_dict.get("prompt_eval_count", 0)
-            eval_count = result_dict.get("eval_count", 0)
-            total_duration = result_dict.get("total_duration", 0)
-            load_duration = result_dict.get("load_duration", 0)
-
-            load_ms = load_duration / 1_000_000 if load_duration else 0.0
-            total_ms = total_duration / 1_000_000 if total_duration else 0.0
-
-            response = VLMResponse(
-                message=ChatMessage(role="assistant", content=message_content),
-                model=model_used,
-                request_id=ctx.request_id,
-                latency_ms=0.0,  # Use case handles latency tracking internally
-                model_load_ms=round(load_ms, 3) if load_ms else None,
-                model_warm_start=load_ms == 0.0,
-                images_processed=len(api_req.images),
-                compression_savings_bytes=None,  # TODO: Get from use case result
-                prompt_eval_count=prompt_eval_count,
-                generation_eval_count=eval_count,
-                total_duration_ms=round(total_ms, 3) if total_ms else None,
-            )
-            return JSONResponse(content=response.model_dump())
+            response = build_vlm_response(result, ctx, images_processed=len(api_req.images))
+            return json_response(response)
 
     except HTTPException:
         # Re-raise HTTPException (from parsing or other validation)
         raise
-    except (InvalidRequestError, ValueError) as exc:
-        # ValueError from domain validation or InvalidRequestError from use case
-        logger.warning("vlm_validation_error: request_id=%s, error=%s", ctx.request_id, str(exc))
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid VLM request: {exc!s}",
-        ) from exc
-    except ConnectionError as exc:
-        logger.error("vlm_connection_error: request_id=%s, error=%s", ctx.request_id, str(exc))
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Ollama service is unavailable. Please check if the service is running.",
-        ) from exc
-    except TimeoutError as exc:
-        logger.error("vlm_timeout_error: request_id=%s, error=%s", ctx.request_id, str(exc))
-        raise HTTPException(
-            status_code=status.HTTP_504_GATEWAY_TIMEOUT,
-            detail="VLM request timed out. Large images may take longer to process.",
-        ) from exc
-    except httpx.HTTPStatusError as exc:
-        status_code = exc.response.status_code if exc.response else None
-        http_status, error_msg = _map_http_status_code(status_code)
-        logger.error(
-            "vlm_http_status_error: request_id=%s, status_code=%s, error=%s",
-            ctx.request_id,
-            status_code,
-            str(exc),
-        )
-        raise HTTPException(status_code=http_status, detail=error_msg) from exc
-    except httpx.RequestError as exc:
-        logger.error("vlm_request_error: request_id=%s, error=%s", ctx.request_id, str(exc))
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Unable to connect to Ollama service. Please check if the service is running.",
-        ) from exc
     except Exception as exc:
-        logger.exception(
-            "unexpected_error_vlm_completion: request_id=%s, error_type=%s",
-            ctx.request_id,
-            type(exc).__name__,
+        handle_error = handle_route_errors(
+            ctx, "vlm", timeout_message="VLM request timed out. Large images may take longer to process."
         )
-        # Include request_id in error response
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"An internal error occurred (request_id: {ctx.request_id}). Please try again later or contact support.",
-        ) from exc
+        handle_error(exc)  # This raises HTTPException
 
 
 @router.post("/vlm/openai", tags=["VLM"], response_model=None)
@@ -377,81 +281,17 @@ async def vlm_chat_openai(
                 target_format=api_req.compression_format,
             )
             # Type narrowing: stream=False returns dict
-            assert isinstance(result, dict)
-            result_dict = result
+            if not is_dict_result(result):
+                raise RuntimeError("Expected dict result for non-streaming request")
 
-            # Convert result dict to API response
-            message_content = result_dict.get("message", {}).get("content", "")
-            model_used = result_dict.get("model", "unknown")
-            prompt_eval_count = result_dict.get("prompt_eval_count", 0)
-            eval_count = result_dict.get("eval_count", 0)
-            total_duration = result_dict.get("total_duration", 0)
-            load_duration = result_dict.get("load_duration", 0)
-
-            load_ms = load_duration / 1_000_000 if load_duration else 0.0
-            total_ms = total_duration / 1_000_000 if total_duration else 0.0
-
-            response = VLMResponse(
-                message=ChatMessage(role="assistant", content=message_content),
-                model=model_used,
-                request_id=ctx.request_id,
-                latency_ms=0.0,  # Use case handles latency tracking internally
-                model_load_ms=round(load_ms, 3) if load_ms else None,
-                model_warm_start=load_ms == 0.0,
-                images_processed=image_count,
-                compression_savings_bytes=None,  # TODO: Get from use case result
-                prompt_eval_count=prompt_eval_count,
-                generation_eval_count=eval_count,
-                total_duration_ms=round(total_ms, 3) if total_ms else None,
-            )
-            return JSONResponse(content=response.model_dump())
+            response = build_vlm_response(result, ctx, images_processed=image_count)
+            return json_response(response)
 
     except HTTPException:
         # Re-raise HTTPException (from parsing or other validation)
         raise
-    except (InvalidRequestError, ValueError) as exc:
-        # ValueError from domain validation or InvalidRequestError from use case
-        logger.warning("vlm_openai_validation_error: request_id=%s, error=%s", ctx.request_id, str(exc))
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid VLM request (OpenAI format): {exc!s}",
-        ) from exc
-    except ConnectionError as exc:
-        logger.error("vlm_openai_connection_error: request_id=%s, error=%s", ctx.request_id, str(exc))
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Ollama service is unavailable. Please check if the service is running.",
-        ) from exc
-    except TimeoutError as exc:
-        logger.error("vlm_openai_timeout_error: request_id=%s, error=%s", ctx.request_id, str(exc))
-        raise HTTPException(
-            status_code=status.HTTP_504_GATEWAY_TIMEOUT,
-            detail="VLM request timed out. Large images may take longer to process.",
-        ) from exc
-    except httpx.HTTPStatusError as exc:
-        status_code = exc.response.status_code if exc.response else None
-        http_status, error_msg = _map_http_status_code(status_code)
-        logger.error(
-            "vlm_openai_http_status_error: request_id=%s, status_code=%s, error=%s",
-            ctx.request_id,
-            status_code,
-            str(exc),
-        )
-        raise HTTPException(status_code=http_status, detail=error_msg) from exc
-    except httpx.RequestError as exc:
-        logger.error("vlm_openai_request_error: request_id=%s, error=%s", ctx.request_id, str(exc))
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Unable to connect to Ollama service. Please check if the service is running.",
-        ) from exc
     except Exception as exc:
-        logger.exception(
-            "unexpected_error_vlm_openai_completion: request_id=%s, error_type=%s",
-            ctx.request_id,
-            type(exc).__name__,
+        handle_error = handle_route_errors(
+            ctx, "vlm_openai", timeout_message="VLM request timed out. Large images may take longer to process."
         )
-        # Include request_id in error response
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"An internal error occurred (request_id: {ctx.request_id}). Please try again later or contact support.",
-        ) from exc
+        handle_error(exc)  # This raises HTTPException

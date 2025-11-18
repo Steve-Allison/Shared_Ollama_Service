@@ -40,8 +40,9 @@ def _convert_datetime_to_iso(obj: Any) -> Any:
     """Recursively convert datetime objects to ISO format strings.
 
     Traverses nested data structures (dicts, lists, defaultdicts) and
-    converts all datetime objects to ISO 8601 strings. Uses pattern
-    matching for clean type handling.
+    converts all datetime objects to ISO 8601 strings. Uses Pydantic's
+    built-in serialization for datetime objects to ensure proper timezone
+    handling.
 
     Args:
         obj: Object to convert. Can be datetime, dict, list, defaultdict,
@@ -54,9 +55,12 @@ def _convert_datetime_to_iso(obj: Any) -> Any:
     Side effects:
         None. Pure function.
     """
+    from pydantic import TypeAdapter
+
     match obj:
         case datetime():
-            return obj.isoformat()
+            # Use Pydantic's datetime serialization for proper timezone handling
+            return TypeAdapter(datetime).dump_python(obj, mode="json")
         case defaultdict():
             return {k: _convert_datetime_to_iso(v) for k, v in obj.items()}
         case dict():

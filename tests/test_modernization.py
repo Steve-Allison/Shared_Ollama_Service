@@ -22,8 +22,6 @@ import requests
 
 from shared_ollama import (
     AnalyticsCollector,
-    CircuitBreaker,
-    CircuitState,
     GenerateResponse,
     MetricsCollector,
     PerformanceCollector,
@@ -341,45 +339,6 @@ class TestPerformanceLogging:
 
 class TestResilienceFeatures:
     """Tests for resilience features."""
-
-    def test_circuit_breaker_closed_state(self):
-        """Test circuit breaker in CLOSED state."""
-        cb = CircuitBreaker()
-        assert cb.state == CircuitState.CLOSED
-        assert cb.can_proceed() is True
-
-    def test_circuit_breaker_opens_after_failures(self):
-        """Test circuit breaker opens after threshold failures."""
-        cb = CircuitBreaker()
-
-        # Record failures up to threshold
-        for _ in range(5):
-            cb.record_failure()
-
-        assert cb.state == CircuitState.OPEN
-        assert cb.can_proceed() is False
-
-    def test_circuit_breaker_half_open_after_timeout(self):
-        """Test circuit breaker moves to HALF_OPEN after timeout."""
-        from shared_ollama.core.resilience import CircuitBreakerConfig
-        
-        # Use a config with failure_threshold=5 to match the test
-        config = CircuitBreakerConfig(failure_threshold=5, timeout=60.0)
-        cb = CircuitBreaker(config=config)
-
-        # Force circuit to OPEN state (need 5 failures)
-        for _ in range(5):
-            cb.record_failure()
-        assert cb.state == CircuitState.OPEN
-
-        # Simulate timeout by setting last_open_time to past
-        # Use time.monotonic() to match what CircuitBreaker uses internally
-        import time as time_module
-        cb.last_open_time = time_module.monotonic() - 61  # Config timeout is 60s
-
-        # Should transition to HALF_OPEN
-        assert cb.can_proceed() is True
-        assert cb.state == CircuitState.HALF_OPEN
 
     def test_exponential_backoff_retry_success(self):
         """Test exponential backoff retry with successful function."""

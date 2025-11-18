@@ -9,6 +9,7 @@ Clean Architecture principles.
 
 from __future__ import annotations
 
+import uuid
 from typing import TYPE_CHECKING, Annotated
 
 from fastapi import Depends, HTTPException, status
@@ -212,8 +213,6 @@ def get_request_context(request: Request) -> RequestContext:  # type: ignore[val
     Returns:
         RequestContext with request_id, client_ip, user_agent, and project_name.
     """
-    import uuid
-
     from slowapi.util import get_remote_address
 
     return RequestContext(

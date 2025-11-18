@@ -56,25 +56,21 @@ else
 fi
 
 echo ""
-echo -e "${BLUE}Step 2: Starting Ollama service...${NC}"
+echo -e "${BLUE}Step 2: Disabling Homebrew Ollama service...${NC}"
 
-# Start Ollama service (if not already running)
-if curl -f -s http://localhost:11434/api/tags > /dev/null 2>&1; then
-    echo -e "${GREEN}✓ Ollama service is already running${NC}"
-else
-    echo "Starting Ollama service with MPS/Metal optimization..."
-    export OLLAMA_METAL=1
-    export OLLAMA_NUM_GPU=-1
-    ollama serve > /dev/null 2>&1 &
-    sleep 3
-    
-    if curl -f -s http://localhost:11434/api/tags > /dev/null 2>&1; then
-        echo -e "${GREEN}✓ Ollama service started${NC}"
+# Disable Homebrew Ollama service (we'll manage it via our scripts)
+if command -v brew &> /dev/null; then
+    BREW_STATUS=$(brew services list 2>/dev/null | grep ollama || echo "")
+    if [ -n "$BREW_STATUS" ]; then
+        echo -e "${BLUE}Disabling Homebrew Ollama service (we manage Ollama ourselves)...${NC}"
+        brew services stop ollama > /dev/null 2>&1 || true
+        echo -e "${GREEN}✓ Homebrew Ollama service disabled${NC}"
+        echo -e "${YELLOW}Note: Ollama will be managed by this project's scripts, not Homebrew${NC}"
     else
-        echo -e "${RED}✗ Failed to start Ollama service${NC}"
-        echo "Try running: ollama serve"
-        exit 1
+        echo -e "${GREEN}✓ Homebrew Ollama service not configured${NC}"
     fi
+else
+    echo -e "${GREEN}✓ Homebrew not found (skipping)${NC}"
 fi
 
 echo ""
@@ -102,6 +98,12 @@ done
 
 echo ""
 echo -e "${BLUE}Step 4: Verifying installation...${NC}"
+echo ""
+echo -e "${YELLOW}Important:${NC}"
+echo -e "  • Ollama will be managed by this project's start scripts"
+echo -e "  • Do NOT use 'brew services start ollama' - use './scripts/start_api.sh' instead"
+echo -e "  • The REST API will automatically start and manage Ollama"
+echo ""
 
 # Verify models are available
 MODELS_LIST=$(ollama list 2>/dev/null | grep -E "qwen2.5vl:7b|qwen2.5:7b|qwen2.5:14b" || echo "")

@@ -11,7 +11,6 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
-import math
 import sys
 import time
 from collections import Counter
@@ -29,23 +28,23 @@ from shared_ollama.client import AsyncOllamaConfig, AsyncSharedOllamaClient  # n
 
 
 def percentile(values: list[float], pct: float) -> float:
-    """Return the percentile (0-1) value for a list of floats."""
+    """Return the percentile (0-1) value for a list of floats.
+    
+    Uses statistics.quantiles() for consistency with production code.
+    """
+    import statistics
+    
     if not values:
         return 0.0
     if pct <= 0:
         return min(values)
     if pct >= 1:
         return max(values)
-
-    data = sorted(values)
-    k = (len(data) - 1) * pct
-    f = math.floor(k)
-    c = math.ceil(k)
-    if f == c:
-        return data[f]
-    d0 = data[f] * (c - k)
-    d1 = data[c] * (k - f)
-    return d0 + d1
+    
+    # Use statistics.quantiles with method='inclusive' for consistent behavior
+    quantiles = statistics.quantiles(values, n=100, method='inclusive')
+    index = min(int(pct * 100), len(quantiles) - 1)
+    return quantiles[index]
 
 
 async def warmup(client: AsyncSharedOllamaClient, prompt: str, model: str, count: int) -> None:

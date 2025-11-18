@@ -63,6 +63,7 @@ async def lifespan_context(app: FastAPI):
             base_url=settings.ollama.url,
             log_dir=log_dir,
             auto_detect_optimizations=settings.ollama_manager.auto_detect_optimizations,
+            force_manage=settings.ollama_manager.force_manage,
         )
 
         logger.info("LIFESPAN: Starting Ollama service (managed internally)")

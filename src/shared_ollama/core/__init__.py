@@ -7,9 +7,7 @@ from shared_ollama.core.ollama_manager import (
 )
 from shared_ollama.core.queue import QueueStats, RequestQueue
 from shared_ollama.core.resilience import (
-    CircuitBreaker,
     CircuitBreakerConfig,
-    CircuitState,
     ResilientOllamaClient,
     RetryConfig,
     exponential_backoff_retry,
@@ -38,9 +36,7 @@ from shared_ollama.core.utils import (
 __all__ = [
     "APIConfig",
     "BatchConfig",
-    "CircuitBreaker",
     "CircuitBreakerConfig",
-    "CircuitState",
     "ClientConfig",
     "ImageCacheConfig",
     "ImageProcessingConfig",

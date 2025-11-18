@@ -66,6 +66,7 @@ class OllamaManager:
         "process",
         "log_dir",
         "auto_detect_optimizations",
+        "force_manage",
         "_ollama_path",
     )
 
@@ -74,6 +75,7 @@ class OllamaManager:
         base_url: str = "http://localhost:11434",
         log_dir: Path | None = None,
         auto_detect_optimizations: bool = True,
+        force_manage: bool = True,
     ) -> None:
         """Initialize the Ollama manager.
 
@@ -83,11 +85,15 @@ class OllamaManager:
                 directory.
             auto_detect_optimizations: If True, automatically detect and apply
                 system-specific optimizations (GPU, CPU cores, memory limits).
+            force_manage: If True, stop external Ollama instances (Homebrew/launchd)
+                before starting our managed instance. If False, skip starting if
+                Ollama is already running.
         """
         self.base_url = base_url.rstrip("/")
         self.process: subprocess.Popen[str] | None = None
         self.log_dir = log_dir or self._get_default_log_dir()
         self.auto_detect_optimizations = auto_detect_optimizations
+        self.force_manage = force_manage
         self._ollama_path: str | None = None
 
     def _get_default_log_dir(self) -> Path:
@@ -189,6 +195,89 @@ class OllamaManager:
 
         return optimizations
 
+    async def _stop_external_ollama(self) -> None:
+        """Stop external Ollama instances (Homebrew/launchd).
+
+        Attempts to stop Ollama services managed by external systems:
+        - Homebrew services (brew services stop ollama)
+        - Launchd services (launchctl unload)
+        - Direct processes (kill by PID)
+
+        Side effects:
+            - Stops Homebrew service if running
+            - Unloads launchd service if found
+            - Kills remaining ollama serve processes
+            - Waits briefly for processes to terminate
+        """
+        import shutil
+
+        logger.info("Stopping external Ollama instances...")
+
+        # Stop Homebrew service
+        if shutil.which("brew"):
+            try:
+                result = subprocess.run(
+                    ["brew", "services", "list"],
+                    capture_output=True,
+                    text=True,
+                    timeout=5,
+                )
+                if "ollama" in result.stdout and "started" in result.stdout:
+                    logger.info("Stopping Homebrew Ollama service...")
+                    subprocess.run(
+                        ["brew", "services", "stop", "ollama"],
+                        capture_output=True,
+                        timeout=10,
+                    )
+                    await asyncio.sleep(2)  # Wait for service to stop
+            except Exception as exc:
+                logger.debug("Could not stop Homebrew service: %s", exc)
+
+        # Stop launchd service
+        launchd_plist = Path.home() / "Library/LaunchAgents/com.ollama.service.plist"
+        if launchd_plist.exists():
+            try:
+                logger.info("Unloading launchd Ollama service...")
+                subprocess.run(
+                    ["launchctl", "unload", str(launchd_plist)],
+                    capture_output=True,
+                    timeout=10,
+                )
+                await asyncio.sleep(1)
+            except Exception as exc:
+                logger.debug("Could not unload launchd service: %s", exc)
+
+        # Kill any remaining ollama serve processes
+        try:
+            result = subprocess.run(
+                ["pgrep", "-f", "ollama serve"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            if result.returncode == 0:
+                pids = result.stdout.strip().split("\n")
+                for pid in pids:
+                    if pid.strip():
+                        try:
+                            logger.info("Killing Ollama process PID %s", pid.strip())
+                            subprocess.run(
+                                ["kill", "-TERM", pid.strip()],
+                                capture_output=True,
+                                timeout=5,
+                            )
+                        except Exception as exc:
+                            logger.debug("Could not kill process %s: %s", pid, exc)
+                await asyncio.sleep(2)  # Wait for processes to terminate
+        except Exception as exc:
+            logger.debug("Could not find/kill Ollama processes: %s", exc)
+
+        # Verify Ollama is stopped
+        if self._check_ollama_running(timeout=1):
+            logger.warning("External Ollama instance may still be running")
+        else:
+            logger.info("External Ollama instances stopped successfully")
+
     def _check_ollama_running(self, timeout: int = 2) -> bool:
         """Check if Ollama service is currently running.
 
@@ -240,10 +329,16 @@ class OllamaManager:
         Raises:
             No exceptions raised, but logs errors and returns False on failure.
         """
-        # Early return if already running
+        # Check if Ollama is already running
         if self._check_ollama_running():
-            logger.info("Ollama service is already running at %s", self.base_url)
-            return True
+            if self.force_manage:
+                logger.info(
+                    "Ollama service is already running externally. Stopping external instance to manage our own..."
+                )
+                await self._stop_external_ollama()
+            else:
+                logger.info("Ollama service is already running at %s", self.base_url)
+                return True
 
         ollama_path = self.ollama_executable
         if not ollama_path:
@@ -453,6 +548,7 @@ def initialize_ollama_manager(
     base_url: str = "http://localhost:11434",
     log_dir: Path | None = None,
     auto_detect_optimizations: bool = True,
+    force_manage: bool = True,
 ) -> OllamaManager:
     """Initialize the global Ollama manager instance.
 
@@ -463,6 +559,7 @@ def initialize_ollama_manager(
         base_url: Base URL for Ollama service.
         log_dir: Directory for Ollama logs. If None, uses default.
         auto_detect_optimizations: Whether to auto-detect system optimizations.
+        force_manage: Whether to stop external Ollama instances and manage our own.
 
     Returns:
         The initialized OllamaManager instance.
@@ -475,5 +572,6 @@ def initialize_ollama_manager(
         base_url=base_url,
         log_dir=log_dir,
         auto_detect_optimizations=auto_detect_optimizations,
+        force_manage=force_manage,
     )
     return _ollama_manager

@@ -232,6 +232,10 @@ class OllamaManagerConfig(BaseSettings):
     shutdown_timeout: int = Field(
         default=10, ge=1, le=60, description="Shutdown timeout (seconds)"
     )
+    force_manage: bool = Field(
+        default=True,
+        description="Stop external Ollama instances and manage our own. If True, stops Homebrew/launchd services before starting.",
+    )
 
 
 class Settings(BaseSettings):

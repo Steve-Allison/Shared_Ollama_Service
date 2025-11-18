@@ -49,6 +49,40 @@ if ! command -v ollama &> /dev/null; then
     exit 1
 fi
 
+# Stop and disable Homebrew Ollama service (we manage it ourselves)
+if command -v brew &> /dev/null; then
+    BREW_STATUS=$(brew services list 2>/dev/null | grep ollama || echo "")
+    if [ -n "$BREW_STATUS" ]; then
+        echo -e "${BLUE}Disabling Homebrew Ollama service (we manage Ollama ourselves)...${NC}"
+        # Stop if running
+        brew services stop ollama > /dev/null 2>&1 || true
+        sleep 1
+        # Ensure it's disabled (won't auto-start on boot)
+        # Note: brew services stop also disables auto-start
+        echo -e "${GREEN}✓ Homebrew Ollama service disabled${NC}"
+    fi
+fi
+
+# Stop any launchd Ollama service
+LAUNCHD_PLIST="$HOME/Library/LaunchAgents/com.ollama.service.plist"
+if [ -f "$LAUNCHD_PLIST" ]; then
+    if launchctl list 2>/dev/null | grep -q "com.ollama.service"; then
+        echo -e "${BLUE}Stopping launchd Ollama service...${NC}"
+        launchctl unload "$LAUNCHD_PLIST" 2>/dev/null || true
+        sleep 1
+    fi
+fi
+
+# Kill any existing ollama serve processes
+OLLAMA_PIDS=$(ps aux | grep -i "[o]llama serve" | awk '{print $2}' 2>/dev/null || true)
+if [ -n "$OLLAMA_PIDS" ]; then
+    echo -e "${BLUE}Stopping existing Ollama processes...${NC}"
+    for pid in $OLLAMA_PIDS; do
+        kill -TERM "$pid" 2>/dev/null || true
+    done
+    sleep 2
+fi
+
 # ============================================================================
 # Step 0: Verify Setup and Generate Optimal Configuration
 # ============================================================================
@@ -160,11 +194,20 @@ echo -e "${GRAY}API will be available at: http://${API_HOST}:${API_PORT}${NC}"
 echo -e "${GRAY}API docs: http://${API_HOST}:${API_PORT}/docs${NC}"
 echo ""
 
-# Start the server in background
+# Ensure logs directory exists
+LOG_DIR="$PROJECT_ROOT/logs"
+mkdir -p "$LOG_DIR"
+
+# Log file paths
+API_LOG="$LOG_DIR/api.log"
+API_ERROR_LOG="$LOG_DIR/api.error.log"
+
+# Start the server in background with log redirection
 "$UVICORN_CMD" shared_ollama.api.server:app \
     --host "$API_HOST" \
     --port "$API_PORT" \
-    --log-level info &
+    --log-level info \
+    > "$API_LOG" 2> "$API_ERROR_LOG" &
 
 UVICORN_PID=$!
 

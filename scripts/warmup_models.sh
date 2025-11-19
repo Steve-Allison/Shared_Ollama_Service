@@ -15,10 +15,10 @@ NC='\033[0m' # No Color
 OLLAMA_URL="${OLLAMA_URL:-http://localhost:11434}"
 API_ENDPOINT="${OLLAMA_URL}/api"
 
-# Models to warm up (primary models)
+# Models to warm up (primary models, in priority order)
 MODELS=(
-    "qwen2.5vl:7b"
     "qwen2.5:7b"
+    "qwen2.5vl:7b"
     "qwen2.5:14b"
 )
 

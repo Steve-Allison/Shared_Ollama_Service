@@ -12,6 +12,14 @@ from shared_ollama.core.resilience import (
     RetryConfig,
     exponential_backoff_retry,
 )
+from shared_ollama.core.utils import (
+    check_service_health,
+    ensure_service_running,
+    get_client_path,
+    get_ollama_base_url,
+    get_project_root,
+    import_client,
+)
 from shared_ollama.infrastructure.config import (
     APIConfig,
     BatchConfig,
@@ -24,14 +32,6 @@ from shared_ollama.infrastructure.config import (
     Settings,
     settings,
 )
-from shared_ollama.core.utils import (
-    check_service_health,
-    ensure_service_running,
-    get_client_path,
-    get_ollama_base_url,
-    get_project_root,
-    import_client,
-)
 
 __all__ = [
     "APIConfig",
@@ -41,8 +41,8 @@ __all__ = [
     "ImageCacheConfig",
     "ImageProcessingConfig",
     "OllamaConfig",
-    "OllamaManagerConfig",
     "OllamaManager",
+    "OllamaManagerConfig",
     "QueueConfig",
     "QueueStats",
     "RequestQueue",
@@ -60,4 +60,3 @@ __all__ = [
     "initialize_ollama_manager",
     "settings",
 ]
-

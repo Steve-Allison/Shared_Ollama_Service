@@ -6,9 +6,7 @@ and data integrity. No mocks - tests use real data structures.
 """
 
 import json
-import tempfile
 from datetime import UTC, datetime, timedelta
-from pathlib import Path
 
 import pytest
 
@@ -16,13 +14,9 @@ from shared_ollama import (
     AnalyticsCollector,
     MetricsCollector,
     PerformanceCollector,
-    ProjectMetrics,
-    ServiceMetrics,
-    get_performance_stats,
     log_request_event,
     track_performance,
     track_request,
-    track_request_with_project,
 )
 from shared_ollama.client import GenerateResponse
 
@@ -125,21 +119,21 @@ class TestMetricsCollector:
             MetricsCollector.record_request(
                 model="test", operation="generate", latency_ms=float(i), success=True
             )
-        
+
         # Debug: Check how many metrics were actually recorded
         actual_count = len(MetricsCollector._metrics)
-        
+
         metrics = MetricsCollector.get_metrics()
         # Verify we have exactly 100 metrics
         assert metrics.total_requests == 100, f"Expected 100 metrics, got {metrics.total_requests}. Actual _metrics length: {actual_count}"
-        
+
         # With 100 metrics (0-99), percentiles should be approximately:
         # p50: 49-50, p95: 94-95, p99: 98-99
         assert metrics.p50_latency_ms == pytest.approx(49.0, abs=1.0)
         assert metrics.p95_latency_ms == pytest.approx(94.0, abs=1.0)
         assert metrics.p99_latency_ms == pytest.approx(98.0, abs=1.0)
         assert metrics.p50_latency_ms < metrics.p95_latency_ms < metrics.p99_latency_ms
-        
+
         # Clean up
         MetricsCollector.reset()
 
@@ -228,9 +222,8 @@ class TestTrackRequest:
         """Test that track_request() records failed request."""
         MetricsCollector.reset()
 
-        with pytest.raises(ValueError):
-            with track_request("test-model", "generate"):
-                raise ValueError("Test error")
+        with pytest.raises(ValueError), track_request("test-model", "generate"):
+            raise ValueError("Test error")
 
         metrics = MetricsCollector.get_metrics()
         assert metrics.total_requests == 1

@@ -26,12 +26,12 @@ from shared_ollama.telemetry import (
     AnalyticsReport,
     DetailedPerformanceMetrics,
     MetricsCollector,
-    get_metrics_endpoint,
     PerformanceCollector,
     ProjectMetrics,
     ServiceMetrics,
     TimeSeriesMetrics,
     get_analytics_json,
+    get_metrics_endpoint,
     get_performance_stats,
     log_request_event,
     track_performance,
@@ -73,4 +73,3 @@ __all__ = [
     "track_request",
     "track_request_with_project",
 ]
-

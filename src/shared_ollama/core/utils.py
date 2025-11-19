@@ -171,7 +171,7 @@ def import_client() -> type[SharedOllamaClient]:
         ImportError: If the module or class cannot be imported.
     """
     module = importlib.import_module("shared_ollama.client.sync")
-    return getattr(module, "SharedOllamaClient")
+    return module.SharedOllamaClient
 
 
 __all__ = [

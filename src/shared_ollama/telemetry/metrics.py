@@ -268,7 +268,7 @@ class MetricsCollector:
         }
 
     @classmethod
-    def reset(cls) -> Self:
+    def reset(cls) -> type[Self]:
         """Reset all collected metrics.
 
         Clears the entire metrics collection. Useful for testing or
@@ -278,14 +278,14 @@ class MetricsCollector:
             Sets _metrics to empty list.
 
         Returns:
-            Self for method chaining (Python 3.13+ Self type).
+            The class itself for method chaining (Python 3.13+ Self type).
         """
         cls._metrics = []
         return cls
 
 
 @contextmanager
-def track_request(model: str, operation: str) -> Generator[None, None, None]:
+def track_request(model: str, operation: str) -> Generator[None]:
     """Context manager to track a request's latency.
 
     Automatically measures execution time and records metrics. Handles
@@ -311,7 +311,7 @@ def track_request(model: str, operation: str) -> Generator[None, None, None]:
     error: str | None = None
     try:
         yield
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         error = f"{exc.__class__.__name__}: {exc}"
         raise
     finally:

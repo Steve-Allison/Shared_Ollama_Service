@@ -19,7 +19,6 @@ from shared_ollama.api.models import (
     Tool as APITool,
     ToolCall as APIToolCall,
     ToolCallFunction as APIToolCallFunction,
-    ToolFunction as APIToolFunction,
 )
 from shared_ollama.domain.entities import (
     ChatMessage,
@@ -33,7 +32,6 @@ from shared_ollama.domain.entities import (
     ToolFunction,
 )
 from shared_ollama.domain.value_objects import ModelName, Prompt, SystemMessage
-
 
 # ============================================================================
 # Tool Calling Mappers
@@ -158,14 +156,14 @@ def api_to_domain_generation_request(api_req: APIGenerateRequest) -> GenerationR
 
     options: GenerationOptions | None = None
     # Build options only if any option is provided (performance: use generator)
-    if any(
+    if any((
         api_req.temperature is not None,
         api_req.top_p is not None,
         api_req.top_k is not None,
         api_req.max_tokens is not None,
         api_req.seed is not None,
         api_req.stop is not None,
-    ):
+    )):
         options = GenerationOptions(
             temperature=api_req.temperature or 0.2,
             top_p=api_req.top_p or 0.9,
@@ -226,14 +224,14 @@ def api_to_domain_chat_request(api_req: APIChatRequest) -> ChatRequest:
 
     options: GenerationOptions | None = None
     # Build options only if any option is provided (performance: use generator)
-    if any(
+    if any((
         api_req.temperature is not None,
         api_req.top_p is not None,
         api_req.top_k is not None,
         api_req.max_tokens is not None,
         api_req.seed is not None,
         api_req.stop is not None,
-    ):
+    )):
         options = GenerationOptions(
             temperature=api_req.temperature or 0.2,
             top_p=api_req.top_p or 0.9,
@@ -300,14 +298,14 @@ def api_to_domain_vlm_request(api_req: Any) -> Any:  # VLMRequest from models
     # Convert options
     options = None
     # Convert options (performance: use generator instead of list)
-    if any(
+    if any((
         api_req.temperature is not None,
         api_req.top_p is not None,
         api_req.top_k is not None,
         api_req.max_tokens is not None,
         api_req.seed is not None,
         api_req.stop is not None,
-    ):
+    )):
         options = GenerationOptions(
             temperature=api_req.temperature,
             top_p=api_req.top_p,
@@ -393,14 +391,14 @@ def api_to_domain_vlm_request_openai(api_req: Any) -> Any:
     # Convert options
     options = None
     # Convert options (performance: use generator instead of list)
-    if any(
+    if any((
         api_req.temperature is not None,
         api_req.top_p is not None,
         api_req.top_k is not None,
         api_req.max_tokens is not None,
         api_req.seed is not None,
         api_req.stop is not None,
-    ):
+    )):
         options = GenerationOptions(
             temperature=api_req.temperature,
             top_p=api_req.top_p,

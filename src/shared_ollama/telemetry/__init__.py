@@ -39,4 +39,3 @@ __all__ = [
     "track_request",
     "track_request_with_project",
 ]
-

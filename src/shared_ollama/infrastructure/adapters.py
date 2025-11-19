@@ -13,6 +13,7 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING, Any
 
+from shared_ollama.application.interfaces import ImageFormat
 from shared_ollama.telemetry.analytics import AnalyticsCollector
 from shared_ollama.telemetry.metrics import MetricsCollector
 from shared_ollama.telemetry.performance import PerformanceCollector
@@ -303,7 +304,7 @@ class ImageProcessorAdapter:
     def process_image(
         self,
         data_url: str,
-        target_format: str = "jpeg",
+        target_format: ImageFormat = "jpeg",
     ) -> tuple[str, Any]:  # Returns (base64_string, ImageMetadata)
         """Process and optimize image for VLM model.
 
@@ -338,7 +339,7 @@ class ImageCacheAdapter:
     def get(
         self,
         data_url: str,
-        target_format: str,
+        target_format: ImageFormat,
     ) -> tuple[str, Any] | None:  # Returns (base64_string, ImageMetadata) | None
         """Get cached processed image.
 
@@ -354,7 +355,7 @@ class ImageCacheAdapter:
     def put(
         self,
         data_url: str,
-        target_format: str,
+        target_format: ImageFormat,
         base64_string: str,
         metadata: Any,  # ImageMetadata
     ) -> None:
@@ -432,7 +433,7 @@ class PerformanceCollectorAdapter:
         operation: str,
         total_latency_ms: float,
         success: bool,
-        response: dict[str, Any] | None = None,
+        response: Any = None,  # GenerateResponse | dict[str, Any] | None
     ) -> None:
         """Record detailed performance metrics.
 
@@ -441,7 +442,7 @@ class PerformanceCollectorAdapter:
             operation: Operation type (e.g., "generate", "chat", "vlm").
             total_latency_ms: Total request latency in milliseconds.
             success: Whether the request succeeded.
-            response: Response dictionary with timing data. Optional.
+            response: GenerateResponse object or dictionary with timing data. Optional.
         """
         PerformanceCollector.record_performance(
             model=model,

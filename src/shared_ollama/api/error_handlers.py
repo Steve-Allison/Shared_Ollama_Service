@@ -9,8 +9,8 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, NoReturn
 
-from fastapi import HTTPException, status
 import httpx
+from fastapi import HTTPException, status
 
 from shared_ollama.api.models import RequestContext
 from shared_ollama.domain.exceptions import InvalidRequestError
@@ -153,4 +153,3 @@ def _map_http_status_code(status_code: int | None) -> tuple[int, str]:
         case _:
             # Default for unknown status codes
             return status.HTTP_503_SERVICE_UNAVAILABLE, "Ollama service returned an error."
-

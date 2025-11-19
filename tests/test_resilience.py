@@ -8,7 +8,6 @@ timeout scenarios, and edge cases. Uses real HTTP requests with test server.
 import time
 
 import pytest
-import requests
 from requests.exceptions import HTTPError
 
 from shared_ollama import (

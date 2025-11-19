@@ -257,7 +257,7 @@ class SharedOllamaClient:
                     msg = f"Expected dict response, got {type(data).__name__}"
                     raise ValueError(msg)
 
-        except json.JSONDecodeError as exc:
+        except json.JSONDecodeError:
             logger.exception("Failed to decode JSON response from /api/tags")
             raise
         except requests.exceptions.HTTPError as exc:
@@ -812,9 +812,9 @@ class SharedOllamaClient:
 
 
 __all__ = [
-    "SharedOllamaClient",
-    "OllamaConfig",
     "GenerateOptions",
     "GenerateResponse",
     "Model",
+    "OllamaConfig",
+    "SharedOllamaClient",
 ]

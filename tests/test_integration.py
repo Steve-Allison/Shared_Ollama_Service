@@ -256,7 +256,7 @@ class TestSyncClientIntegration:
 
     def test_sync_client_full_workflow(self, ollama_server):
         """Test complete workflow with synchronous client."""
-        from shared_ollama import OllamaConfig, SharedOllamaClient
+        from shared_ollama import OllamaConfig
 
         config = OllamaConfig(base_url=ollama_server.base_url)
         client = SharedOllamaClient(config=config, verify_on_init=False)
@@ -280,7 +280,7 @@ class TestSyncClientIntegration:
 
     def test_sync_client_with_options(self, ollama_server):
         """Test synchronous client with all options."""
-        from shared_ollama import GenerateOptions, OllamaConfig, SharedOllamaClient
+        from shared_ollama import GenerateOptions, OllamaConfig
 
         config = OllamaConfig(base_url=ollama_server.base_url)
         client = SharedOllamaClient(config=config, verify_on_init=False)
@@ -330,4 +330,3 @@ class TestMetricsIntegration:
         # Get metrics for last hour
         metrics_hour = MetricsCollector.get_metrics(window_minutes=60)
         assert metrics_hour.total_requests >= 1
-

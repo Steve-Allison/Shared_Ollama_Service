@@ -5,15 +5,12 @@ Tests focus on real process lifecycle, async subprocess management, error handli
 and edge cases. Uses real subprocess operations (no mocks of internal logic).
 """
 
-import asyncio
-import os
 import platform
 import shutil
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 import pytest
-import psutil
 
 from shared_ollama.core.ollama_manager import OllamaManager
 
@@ -297,12 +294,12 @@ class TestOllamaManagerStop:
         # Create a mock process that doesn't terminate
         mock_process = AsyncMock()
         mock_process.pid = 12345
-        mock_process.wait = AsyncMock(side_effect=asyncio.TimeoutError())
+        mock_process.wait = AsyncMock(side_effect=TimeoutError())
         mock_process.kill = AsyncMock()
         ollama_manager.process = mock_process
 
         # Mock wait_for to raise TimeoutError
-        with patch("asyncio.wait_for", side_effect=asyncio.TimeoutError()):
+        with patch("asyncio.wait_for", side_effect=TimeoutError()):
             result = await ollama_manager.stop(timeout=0.1)
 
         # Should have called kill
@@ -448,4 +445,3 @@ class TestOllamaManagerEdgeCases:
         status = ollama_manager.get_status()
         assert status["managed"] is False
         assert "pid" not in status
-

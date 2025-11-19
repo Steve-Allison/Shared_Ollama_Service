@@ -20,10 +20,9 @@ Validation:
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Literal, Union
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, FieldValidationInfo, field_validator
-
 
 # ============================================================================
 # Tool/Function Calling Models (for POML and OpenAI compatibility)

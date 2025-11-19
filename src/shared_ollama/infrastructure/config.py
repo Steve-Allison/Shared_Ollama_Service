@@ -18,7 +18,7 @@ from __future__ import annotations
 import tomllib
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Literal
+from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -228,7 +228,7 @@ class Settings(BaseModel):
             return cls()
 
         try:
-            with open(config_path, "rb") as f:
+            with Path(config_path).open("rb") as f:
                 config_data = tomllib.load(f)
 
             # Create nested config objects

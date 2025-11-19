@@ -6,6 +6,7 @@ No mocks - tests use real asyncio primitives.
 """
 
 import asyncio
+
 import pytest
 
 from shared_ollama.core.queue import QueueStats, RequestQueue
@@ -248,9 +249,8 @@ class TestRequestQueue:
         queue2 = RequestQueue(max_concurrent=1)
 
         # Both should be able to process requests independently
-        async with queue1.acquire(request_id="q1-1"):
-            async with queue2.acquire(request_id="q2-1"):
-                pass  # Both should work
+        async with queue1.acquire(request_id="q1-1"), queue2.acquire(request_id="q2-1"):
+            pass  # Both should work
 
         stats1 = await queue1.get_stats()
         stats2 = await queue2.get_stats()
@@ -318,4 +318,3 @@ class TestRequestQueue:
 
         stats2 = await queue.get_stats()
         assert stats2.completed == 1
-

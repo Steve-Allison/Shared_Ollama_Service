@@ -26,14 +26,13 @@ from shared_ollama.infrastructure.health_checker import (
 )
 
 __all__ = [
-    "AsyncOllamaClientAdapter",
-    "RequestLoggerAdapter",
-    "MetricsCollectorAdapter",
-    "ImageProcessorAdapter",
-    "ImageCacheAdapter",
     "AnalyticsCollectorAdapter",
+    "AsyncOllamaClientAdapter",
+    "ImageCacheAdapter",
+    "ImageProcessorAdapter",
+    "MetricsCollectorAdapter",
     "PerformanceCollectorAdapter",
+    "RequestLoggerAdapter",
     "check_ollama_health",
     "check_ollama_health_simple",
 ]
-

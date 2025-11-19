@@ -256,7 +256,7 @@ class TestAsyncClientStreaming:
                 if chunk.get("done"):
                     final_chunk = chunk
                     break
-            
+
             # If no chunk with done=True, use the last chunk (mock server returns single response)
             if final_chunk is None and chunks:
                 final_chunk = chunks[-1]

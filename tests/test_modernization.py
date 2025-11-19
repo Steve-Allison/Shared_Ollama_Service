@@ -10,10 +10,9 @@ Tests cover:
 """
 
 import json
-import statistics
 import tempfile
 import time
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import Mock, patch
 
@@ -25,7 +24,6 @@ from shared_ollama import (
     GenerateResponse,
     MetricsCollector,
     PerformanceCollector,
-    SharedOllamaClient,
     exponential_backoff_retry,
     track_performance,
     track_request,

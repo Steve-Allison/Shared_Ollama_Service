@@ -106,7 +106,7 @@ class AsyncSharedOllamaClient:
         - Call close() or use context manager exit to cleanup
     """
 
-    __slots__ = ("config", "client", "_semaphore", "_needs_verification")
+    __slots__ = ("_needs_verification", "_semaphore", "client", "config")
 
     def __init__(
         self, config: AsyncOllamaConfig | None = None, verify_on_init: bool = True
@@ -327,7 +327,7 @@ class AsyncSharedOllamaClient:
                     msg = f"Expected dict response, got {type(data).__name__}"
                     raise ValueError(msg)
 
-        except json.JSONDecodeError as exc:
+        except json.JSONDecodeError:
             logger.exception("Failed to decode JSON response from /api/tags")
             raise
         except httpx.HTTPStatusError as exc:
@@ -859,83 +859,82 @@ class AsyncSharedOllamaClient:
         start_time = time.perf_counter()
 
         try:
-            async with self._acquire_slot():
-                async with self.client.stream(
-                    "POST",
-                    "/api/generate",
-                    json=payload,
-                    timeout=self.config.timeout,
-                ) as response:
-                    response.raise_for_status()
+            async with self._acquire_slot(), self.client.stream(
+                "POST",
+                "/api/generate",
+                json=payload,
+                timeout=self.config.timeout,
+            ) as response:
+                response.raise_for_status()
 
-                    async for line in response.aiter_lines():
-                        if not line.strip():
-                            continue
+                async for line in response.aiter_lines():
+                    if not line.strip():
+                        continue
 
-                        try:
-                            chunk_data = json.loads(line)
-                        except json.JSONDecodeError:
-                            logger.warning("Failed to parse streaming chunk: %s", line)
-                            continue
+                    try:
+                        chunk_data = json.loads(line)
+                    except json.JSONDecodeError:
+                        logger.warning("Failed to parse streaming chunk: %s", line)
+                        continue
 
-                        done = chunk_data.get("done", False)
-                        text_chunk = chunk_data.get("response", "")
+                    done = chunk_data.get("done", False)
+                    text_chunk = chunk_data.get("response", "")
 
-                        chunk_dict: dict[str, Any] = {
-                            "chunk": text_chunk,
-                            "done": done,
-                            "model": chunk_data.get("model", model_str),
-                            "request_id": request_id,
-                        }
+                    chunk_dict: dict[str, Any] = {
+                        "chunk": text_chunk,
+                        "done": done,
+                        "model": chunk_data.get("model", model_str),
+                        "request_id": request_id,
+                    }
 
-                        if done:
-                            latency_ms = (time.perf_counter() - start_time) * 1000
-                            load_duration = chunk_data.get("load_duration", 0)
-                            total_duration = chunk_data.get("total_duration", 0)
+                    if done:
+                        latency_ms = (time.perf_counter() - start_time) * 1000
+                        load_duration = chunk_data.get("load_duration", 0)
+                        total_duration = chunk_data.get("total_duration", 0)
 
-                            chunk_dict.update(
-                                {
-                                    "latency_ms": round(latency_ms, 3),
-                                    "model_load_ms": round(load_duration / 1_000_000, 3)
-                                    if load_duration
-                                    else 0.0,
-                                    "model_warm_start": load_duration == 0,
-                                    "prompt_eval_count": chunk_data.get("prompt_eval_count"),
-                                    "generation_eval_count": chunk_data.get("eval_count"),
-                                    "total_duration_ms": round(total_duration / 1_000_000, 3)
-                                    if total_duration
-                                    else None,
-                                }
-                            )
+                        chunk_dict.update(
+                            {
+                                "latency_ms": round(latency_ms, 3),
+                                "model_load_ms": round(load_duration / 1_000_000, 3)
+                                if load_duration
+                                else 0.0,
+                                "model_warm_start": load_duration == 0,
+                                "prompt_eval_count": chunk_data.get("prompt_eval_count"),
+                                "generation_eval_count": chunk_data.get("eval_count"),
+                                "total_duration_ms": round(total_duration / 1_000_000, 3)
+                                if total_duration
+                                else None,
+                            }
+                        )
 
-                            MetricsCollector.record_request(
-                                model=model_str,
-                                operation="generate_stream",
-                                latency_ms=latency_ms,
-                                success=True,
-                            )
+                        MetricsCollector.record_request(
+                            model=model_str,
+                            operation="generate_stream",
+                            latency_ms=latency_ms,
+                            success=True,
+                        )
 
-                            log_request_event(
-                                {
-                                    "event": "ollama_request",
-                                    "client_type": "async",
-                                    "operation": "generate_stream",
-                                    "status": "success",
-                                    "model": model_str,
-                                    "stream": True,
-                                    "request_id": request_id,
-                                    "latency_ms": round(latency_ms, 3),
-                                    "total_duration_ms": chunk_dict.get("total_duration_ms"),
-                                    "model_load_ms": chunk_dict.get("model_load_ms"),
-                                    "model_warm_start": chunk_dict.get("model_warm_start"),
-                                    "prompt_chars": len(prompt),
-                                    "prompt_eval_count": chunk_dict.get("prompt_eval_count"),
-                                    "generation_eval_count": chunk_dict.get("generation_eval_count"),
-                                    "options": options_dict,
-                                }
-                            )
+                        log_request_event(
+                            {
+                                "event": "ollama_request",
+                                "client_type": "async",
+                                "operation": "generate_stream",
+                                "status": "success",
+                                "model": model_str,
+                                "stream": True,
+                                "request_id": request_id,
+                                "latency_ms": round(latency_ms, 3),
+                                "total_duration_ms": chunk_dict.get("total_duration_ms"),
+                                "model_load_ms": chunk_dict.get("model_load_ms"),
+                                "model_warm_start": chunk_dict.get("model_warm_start"),
+                                "prompt_chars": len(prompt),
+                                "prompt_eval_count": chunk_dict.get("prompt_eval_count"),
+                                "generation_eval_count": chunk_dict.get("generation_eval_count"),
+                                "options": options_dict,
+                            }
+                        )
 
-                        yield chunk_dict
+                    yield chunk_dict
 
         except httpx.HTTPStatusError as exc:
             self._log_stream_error(
@@ -1040,86 +1039,85 @@ class AsyncSharedOllamaClient:
         start_time = time.perf_counter()
 
         try:
-            async with self._acquire_slot():
-                async with self.client.stream(
-                    "POST",
-                    "/api/chat",
-                    json=payload,
-                    timeout=self.config.timeout,
-                ) as response:
-                    response.raise_for_status()
+            async with self._acquire_slot(), self.client.stream(
+                "POST",
+                "/api/chat",
+                json=payload,
+                timeout=self.config.timeout,
+            ) as response:
+                response.raise_for_status()
 
-                    async for line in response.aiter_lines():
-                        if not line.strip():
-                            continue
+                async for line in response.aiter_lines():
+                    if not line.strip():
+                        continue
 
-                        try:
-                            chunk_data = json.loads(line)
-                        except json.JSONDecodeError:
-                            logger.warning("Failed to parse streaming chunk: %s", line)
-                            continue
+                    try:
+                        chunk_data = json.loads(line)
+                    except json.JSONDecodeError:
+                        logger.warning("Failed to parse streaming chunk: %s", line)
+                        continue
 
-                        done = chunk_data.get("done", False)
-                        message = chunk_data.get("message", {})
-                        text_chunk = message.get("content", "")
-                        role = message.get("role", "assistant")
+                    done = chunk_data.get("done", False)
+                    message = chunk_data.get("message", {})
+                    text_chunk = message.get("content", "")
+                    role = message.get("role", "assistant")
 
-                        chunk_dict: dict[str, Any] = {
-                            "chunk": text_chunk,
-                            "role": role,
-                            "done": done,
-                            "model": chunk_data.get("model", model_str),
-                            "request_id": request_id,
-                        }
+                    chunk_dict: dict[str, Any] = {
+                        "chunk": text_chunk,
+                        "role": role,
+                        "done": done,
+                        "model": chunk_data.get("model", model_str),
+                        "request_id": request_id,
+                    }
 
-                        if done:
-                            latency_ms = (time.perf_counter() - start_time) * 1000
-                            load_duration = chunk_data.get("load_duration", 0)
-                            total_duration = chunk_data.get("total_duration", 0)
+                    if done:
+                        latency_ms = (time.perf_counter() - start_time) * 1000
+                        load_duration = chunk_data.get("load_duration", 0)
+                        total_duration = chunk_data.get("total_duration", 0)
 
-                            chunk_dict.update(
-                                {
-                                    "latency_ms": round(latency_ms, 3),
-                                    "model_load_ms": round(load_duration / 1_000_000, 3)
-                                    if load_duration
-                                    else 0.0,
-                                    "model_warm_start": load_duration == 0,
-                                    "prompt_eval_count": chunk_data.get("prompt_eval_count"),
-                                    "generation_eval_count": chunk_data.get("eval_count"),
-                                    "total_duration_ms": round(total_duration / 1_000_000, 3)
-                                    if total_duration
-                                    else None,
-                                }
-                            )
+                        chunk_dict.update(
+                            {
+                                "latency_ms": round(latency_ms, 3),
+                                "model_load_ms": round(load_duration / 1_000_000, 3)
+                                if load_duration
+                                else 0.0,
+                                "model_warm_start": load_duration == 0,
+                                "prompt_eval_count": chunk_data.get("prompt_eval_count"),
+                                "generation_eval_count": chunk_data.get("eval_count"),
+                                "total_duration_ms": round(total_duration / 1_000_000, 3)
+                                if total_duration
+                                else None,
+                            }
+                        )
 
-                            MetricsCollector.record_request(
-                                model=model_str,
-                                operation="chat_stream",
-                                latency_ms=latency_ms,
-                                success=True,
-                            )
+                        MetricsCollector.record_request(
+                            model=model_str,
+                            operation="chat_stream",
+                            latency_ms=latency_ms,
+                            success=True,
+                        )
 
-                            log_request_event(
-                                {
-                                    "event": "ollama_request",
-                                    "client_type": "async",
-                                    "operation": "chat_stream",
-                                    "status": "success",
-                                    "model": model_str,
-                                    "stream": True,
-                                    "request_id": request_id,
-                                    "latency_ms": round(latency_ms, 3),
-                                    "total_duration_ms": chunk_dict.get("total_duration_ms"),
-                                    "model_load_ms": chunk_dict.get("model_load_ms"),
-                                    "model_warm_start": chunk_dict.get("model_warm_start"),
-                                    "messages_count": len(messages),
-                                    "prompt_eval_count": chunk_dict.get("prompt_eval_count"),
-                                    "generation_eval_count": chunk_dict.get("generation_eval_count"),
-                                    "options": options_dict,
-                                }
-                            )
+                        log_request_event(
+                            {
+                                "event": "ollama_request",
+                                "client_type": "async",
+                                "operation": "chat_stream",
+                                "status": "success",
+                                "model": model_str,
+                                "stream": True,
+                                "request_id": request_id,
+                                "latency_ms": round(latency_ms, 3),
+                                "total_duration_ms": chunk_dict.get("total_duration_ms"),
+                                "model_load_ms": chunk_dict.get("model_load_ms"),
+                                "model_warm_start": chunk_dict.get("model_warm_start"),
+                                "messages_count": len(messages),
+                                "prompt_eval_count": chunk_dict.get("prompt_eval_count"),
+                                "generation_eval_count": chunk_dict.get("generation_eval_count"),
+                                "options": options_dict,
+                            }
+                        )
 
-                        yield chunk_dict
+                    yield chunk_dict
 
         except httpx.HTTPStatusError as exc:
             self._log_stream_error(
@@ -1248,4 +1246,4 @@ class AsyncSharedOllamaClient:
         return next((item for item in models if item.get("name") == model), None)
 
 
-__all__ = ["AsyncSharedOllamaClient", "AsyncOllamaConfig"]
+__all__ = ["AsyncOllamaConfig", "AsyncSharedOllamaClient"]

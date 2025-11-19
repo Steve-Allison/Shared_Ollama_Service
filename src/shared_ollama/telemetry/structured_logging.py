@@ -28,6 +28,7 @@ from typing import Any
 
 from pydantic import TypeAdapter
 
+
 # Cache log directory resolution
 @functools.cache
 def _get_logs_dir() -> Path:

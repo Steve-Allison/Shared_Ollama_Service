@@ -557,7 +557,7 @@ def track_request_with_project(
     model: str,
     operation: str = "generate",
     project: str | None = None,
-) -> Generator[None, None, None]:
+) -> Generator[None]:
     """Context manager to track a request with project tracking.
 
     Automatically measures execution time and records metrics with project
@@ -587,7 +587,7 @@ def track_request_with_project(
     try:
         yield
         success = True
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         error = f"{type(exc).__name__}: {exc}"
         raise
     finally:

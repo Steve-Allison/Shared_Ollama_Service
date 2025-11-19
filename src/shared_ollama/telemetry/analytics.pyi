@@ -84,4 +84,3 @@ def get_analytics_json(
     window_minutes: int | None = ...,
     project: str | None = ...,
 ) -> dict[str, Any]: ...
-

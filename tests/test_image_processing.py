@@ -7,7 +7,6 @@ and edge cases. Uses real PIL/Image operations - no mocks of internal logic.
 
 import base64
 import io
-from pathlib import Path
 
 import pytest
 from PIL import Image
@@ -463,4 +462,3 @@ class TestImageProcessorEdgeCases:
         img = Image.open(io.BytesIO(decoded_bytes))
 
         assert img.size == (metadata.width, metadata.height)
-

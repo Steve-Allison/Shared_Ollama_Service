@@ -154,7 +154,7 @@ class ResilientOllamaClient:
         Thread-safe. Uses circuitbreaker library which is thread-safe.
     """
 
-    __slots__ = ("base_url", "retry_config", "circuit_breaker_config", "client")
+    __slots__ = ("base_url", "circuit_breaker_config", "client", "retry_config")
 
     def __init__(
         self,
@@ -224,7 +224,7 @@ class ResilientOllamaClient:
                 ),
             )
             return result
-        except requests.exceptions.HTTPError as exc:
+        except requests.exceptions.HTTPError:
             # HTTP errors that weren't retried (e.g., 4xx client errors)
             raise
         except requests.exceptions.RequestException as exc:

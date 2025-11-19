@@ -553,4 +553,3 @@ class VLMRequestOpenAI:
         # Validate max_dimension
         if self.max_dimension < 256 or self.max_dimension > 2048:
             raise ValueError("max_dimension must be between 256 and 2048")
-

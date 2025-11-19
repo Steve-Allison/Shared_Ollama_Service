@@ -35,4 +35,3 @@ def is_streaming_result(result: dict[str, Any] | AsyncIterator[dict[str, Any]]) 
         True if result is an AsyncIterator, False if it's a dict.
     """
     return isinstance(result, AsyncIterator)
-

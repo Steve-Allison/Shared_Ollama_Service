@@ -145,4 +145,3 @@ def json_response(model: ChatResponse | GenerateResponse | VLMResponse) -> JSONR
         JSONResponse with model data.
     """
     return JSONResponse(content=model.model_dump(mode="json"))
-

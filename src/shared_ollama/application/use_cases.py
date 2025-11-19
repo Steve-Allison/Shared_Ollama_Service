@@ -16,14 +16,11 @@ from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING, Any
 
 from shared_ollama.domain.entities import (
-    ChatMessage,
     ChatRequest,
-    GenerationOptions,
     GenerationRequest,
     ModelInfo,
 )
 from shared_ollama.domain.exceptions import InvalidRequestError
-from shared_ollama.domain.value_objects import ModelName, Prompt, SystemMessage
 
 if TYPE_CHECKING:
     from shared_ollama.application.interfaces import (
@@ -149,56 +146,55 @@ class GenerateUseCase:
             if stream:
                 # For streaming, we'll log after first chunk
                 return result
-            else:
-                # Non-streaming: log immediately
-                model_used = result.get("model", model_str or "unknown")
-                # Extract performance metrics from Ollama response
-                load_duration = result.get("load_duration", 0)
-                model_load_ms = round(load_duration / 1_000_000, 3) if load_duration else None
-                model_warm_start = (load_duration == 0) if load_duration is not None else None
+            # Non-streaming: log immediately
+            model_used = result.get("model", model_str or "unknown")
+            # Extract performance metrics from Ollama response
+            load_duration = result.get("load_duration", 0)
+            model_load_ms = round(load_duration / 1_000_000, 3) if load_duration else None
+            model_warm_start = (load_duration == 0) if load_duration is not None else None
 
-                self._logger.log_request({
-                    "event": "api_request",
-                    "client_type": "rest_api",
-                    "operation": "generate",
-                    "status": "success",
-                    "model": model_used,
-                    "request_id": request_id,
-                    "client_ip": client_ip,
-                    "project_name": project_name,
-                    "latency_ms": round(latency_ms, 3),
-                    "model_load_ms": model_load_ms,
-                    "model_warm_start": model_warm_start,
-                })
+            self._logger.log_request({
+                "event": "api_request",
+                "client_type": "rest_api",
+                "operation": "generate",
+                "status": "success",
+                "model": model_used,
+                "request_id": request_id,
+                "client_ip": client_ip,
+                "project_name": project_name,
+                "latency_ms": round(latency_ms, 3),
+                "model_load_ms": model_load_ms,
+                "model_warm_start": model_warm_start,
+            })
 
-                self._metrics.record_request(
-                    model=result.get("model", model_str or "unknown"),
-                    operation="generate",
-                    latency_ms=latency_ms,
-                    success=True,
-                )
+            self._metrics.record_request(
+                model=result.get("model", model_str or "unknown"),
+                operation="generate",
+                latency_ms=latency_ms,
+                success=True,
+            )
 
-                # Record project-based analytics
-                from shared_ollama.telemetry.analytics import AnalyticsCollector
-                AnalyticsCollector.record_request_with_project(
-                    model=model_used,
-                    operation="generate",
-                    latency_ms=latency_ms,
-                    success=True,
-                    project=project_name,
-                )
+            # Record project-based analytics
+            from shared_ollama.telemetry.analytics import AnalyticsCollector
+            AnalyticsCollector.record_request_with_project(
+                model=model_used,
+                operation="generate",
+                latency_ms=latency_ms,
+                success=True,
+                project=project_name,
+            )
 
-                # Record detailed performance metrics
-                from shared_ollama.telemetry.performance import PerformanceCollector
-                PerformanceCollector.record_performance(
-                    model=model_used,
-                    operation="generate",
-                    total_latency_ms=latency_ms,
-                    success=True,
-                    response=result,  # Pass dict - PerformanceCollector now handles it
-                )
+            # Record detailed performance metrics
+            from shared_ollama.telemetry.performance import PerformanceCollector
+            PerformanceCollector.record_performance(
+                model=model_used,
+                operation="generate",
+                total_latency_ms=latency_ms,
+                success=True,
+                response=result,  # Pass dict - PerformanceCollector now handles it
+            )
 
-                return result
+            return result
 
         except ValueError as exc:
             latency_ms = (time.perf_counter() - start_time) * 1000
@@ -421,56 +417,55 @@ class ChatUseCase:
             if stream:
                 # For streaming, we'll log after first chunk
                 return result
-            else:
-                # Non-streaming: log immediately
-                model_used = result.get("model", model_str or "unknown")
-                # Extract performance metrics from Ollama response
-                load_duration = result.get("load_duration", 0)
-                model_load_ms = round(load_duration / 1_000_000, 3) if load_duration else None
-                model_warm_start = (load_duration == 0) if load_duration is not None else None
+            # Non-streaming: log immediately
+            model_used = result.get("model", model_str or "unknown")
+            # Extract performance metrics from Ollama response
+            load_duration = result.get("load_duration", 0)
+            model_load_ms = round(load_duration / 1_000_000, 3) if load_duration else None
+            model_warm_start = (load_duration == 0) if load_duration is not None else None
 
-                self._logger.log_request({
-                    "event": "api_request",
-                    "client_type": "rest_api",
-                    "operation": "chat",
-                    "status": "success",
-                    "model": model_used,
-                    "request_id": request_id,
-                    "client_ip": client_ip,
-                    "project_name": project_name,
-                    "latency_ms": round(latency_ms, 3),
-                    "model_load_ms": model_load_ms,
-                    "model_warm_start": model_warm_start,
-                })
+            self._logger.log_request({
+                "event": "api_request",
+                "client_type": "rest_api",
+                "operation": "chat",
+                "status": "success",
+                "model": model_used,
+                "request_id": request_id,
+                "client_ip": client_ip,
+                "project_name": project_name,
+                "latency_ms": round(latency_ms, 3),
+                "model_load_ms": model_load_ms,
+                "model_warm_start": model_warm_start,
+            })
 
-                self._metrics.record_request(
-                    model=model_used,
-                    operation="chat",
-                    latency_ms=latency_ms,
-                    success=True,
-                )
+            self._metrics.record_request(
+                model=model_used,
+                operation="chat",
+                latency_ms=latency_ms,
+                success=True,
+            )
 
-                # Record project-based analytics
-                from shared_ollama.telemetry.analytics import AnalyticsCollector
-                AnalyticsCollector.record_request_with_project(
-                    model=model_used,
-                    operation="chat",
-                    latency_ms=latency_ms,
-                    success=True,
-                    project=project_name,
-                )
+            # Record project-based analytics
+            from shared_ollama.telemetry.analytics import AnalyticsCollector
+            AnalyticsCollector.record_request_with_project(
+                model=model_used,
+                operation="chat",
+                latency_ms=latency_ms,
+                success=True,
+                project=project_name,
+            )
 
-                # Record detailed performance metrics
-                from shared_ollama.telemetry.performance import PerformanceCollector
-                PerformanceCollector.record_performance(
-                    model=model_used,
-                    operation="chat",
-                    total_latency_ms=latency_ms,
-                    success=True,
-                    response=result,  # Pass dict - PerformanceCollector now handles it
-                )
+            # Record detailed performance metrics
+            from shared_ollama.telemetry.performance import PerformanceCollector
+            PerformanceCollector.record_performance(
+                model=model_used,
+                operation="chat",
+                total_latency_ms=latency_ms,
+                success=True,
+                response=result,  # Pass dict - PerformanceCollector now handles it
+            )
 
-                return result
+            return result
 
         except ValueError as exc:
             latency_ms = (time.perf_counter() - start_time) * 1000
@@ -663,4 +658,3 @@ class ListModelsUseCase:
             )
 
             raise
-

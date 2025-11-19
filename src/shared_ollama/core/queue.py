@@ -23,7 +23,7 @@ import asyncio
 import logging
 import time
 from contextlib import asynccontextmanager
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -85,14 +85,14 @@ class RequestQueue:
     """
 
     __slots__ = (
+        "_active_requests",
+        "_queue",
+        "_semaphore",
+        "_stats",
+        "_stats_lock",
+        "default_timeout",
         "max_concurrent",
         "max_queue_size",
-        "default_timeout",
-        "_semaphore",
-        "_queue",
-        "_stats_lock",
-        "_stats",
-        "_active_requests",
     )
 
     def __init__(
@@ -182,7 +182,7 @@ class RequestQueue:
             try:
                 await asyncio.wait_for(self._semaphore.acquire(), timeout=timeout)
                 acquired = True
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 async with self._stats_lock:
                     self._stats.timeout += 1
                     self._stats.queued = self._queue.qsize()
@@ -224,7 +224,7 @@ class RequestQueue:
                     len(self._active_requests),
                 )
 
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 logger.error("timeout_getting_from_queue: request_id=%s", request_id)
                 async with self._stats_lock:
                     self._stats.queued = self._queue.qsize()
@@ -308,4 +308,4 @@ class RequestQueue:
         }
 
 
-__all__ = ["RequestQueue", "QueueStats"]
+__all__ = ["QueueStats", "RequestQueue"]

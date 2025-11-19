@@ -94,7 +94,6 @@ def get_request_context(request: Request) -> RequestContext:
     return _get_request_context(request)
 
 
-
 # All endpoints (generate, chat, vlm, batch) are now in modular route files:
 # - routes/generation.py: /api/v1/generate
 # - routes/chat.py: /api/v1/chat

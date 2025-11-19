@@ -7,20 +7,12 @@ error handling, and edge cases. Mocks are only used for external Ollama service.
 
 from __future__ import annotations
 
-import json
 from unittest.mock import AsyncMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
 
 from shared_ollama.api.dependencies import (
-    get_chat_use_case,
-    get_client_adapter,
-    get_generate_use_case,
-    get_list_models_use_case,
-    get_logger_adapter,
-    get_metrics_adapter,
-    get_queue,
     set_dependencies,
 )
 from shared_ollama.api.server import app

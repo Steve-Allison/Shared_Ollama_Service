@@ -116,7 +116,7 @@ class ImageProcessor:
         Raises:
             ValueError: If image is invalid
         """
-        orig_format, image_bytes = self.validate_data_url(data_url)
+        _orig_format, image_bytes = self.validate_data_url(data_url)
         original_size = len(image_bytes)
 
         # Load image

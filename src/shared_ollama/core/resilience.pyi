@@ -1,30 +1,27 @@
 """Type stubs for shared_ollama.core.resilience module."""
 
-from typing import Any, Callable, TypeVar
+from collections.abc import Callable
+from typing import Any, TypeVar
 
 from shared_ollama.client.sync import GenerateResponse
 
 _T = TypeVar("_T")
-
 
 class RetryConfig:
     max_retries: int
     initial_delay: float
     max_delay: float
 
-
 class CircuitBreakerConfig:
     failure_threshold: int
     recovery_timeout: float
     expected_exception: type[Exception] | tuple[type[Exception], ...]
-
 
 def exponential_backoff_retry(
     func: Callable[[], _T],
     config: RetryConfig | None = ...,
     exceptions: tuple[type[Exception], ...] | None = ...,
 ) -> _T: ...
-
 
 class ResilientOllamaClient:
     def __init__(

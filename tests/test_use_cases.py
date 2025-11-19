@@ -22,7 +22,6 @@ from shared_ollama.domain.entities import (
     GenerationRequest,
     ModelInfo,
 )
-from shared_ollama.domain.exceptions import InvalidRequestError
 from shared_ollama.domain.value_objects import ModelName, Prompt, SystemMessage
 from shared_ollama.infrastructure.adapters import (
     AsyncOllamaClientAdapter,
@@ -32,29 +31,33 @@ from shared_ollama.infrastructure.adapters import (
 from shared_ollama.telemetry.metrics import MetricsCollector
 
 
+class MockGenerateResponse:
+    """Mock GenerateResponse for testing."""
+    def __init__(self):
+        self.text = "Generated text"
+        self.model = "qwen2.5vl:7b"
+        self.total_duration = 500_000_000
+        self.load_duration = 200_000_000
+        self.prompt_eval_count = 5
+        self.prompt_eval_duration = 100_000_000
+        self.eval_count = 10
+        self.eval_duration = 400_000_000
+
+
+class MockChatResponse:
+    """Mock ChatResponse for testing."""
+    def __init__(self):
+        self.message = {"role": "assistant", "content": "Chat response"}
+        self.model = "qwen2.5vl:7b"
+        self.done = True
+
+
 @pytest.fixture
 def mock_async_client():
     """Create a mock async client for testing (external service)."""
     client = AsyncMock()
-    client.generate = AsyncMock(
-        return_value={
-            "text": "Generated text",
-            "model": "qwen2.5vl:7b",
-            "total_duration": 500_000_000,
-            "load_duration": 200_000_000,
-            "prompt_eval_count": 5,
-            "prompt_eval_duration": 100_000_000,
-            "eval_count": 10,
-            "eval_duration": 400_000_000,
-        }
-    )
-    client.chat = AsyncMock(
-        return_value={
-            "message": {"role": "assistant", "content": "Chat response"},
-            "model": "qwen2.5vl:7b",
-            "done": True,
-        }
-    )
+    client.generate = AsyncMock(return_value=MockGenerateResponse())
+    client.chat = AsyncMock(return_value=MockChatResponse())
     client.list_models = AsyncMock(
         return_value=[
             {"name": "qwen2.5vl:7b", "size": 5969245856},
@@ -541,4 +544,3 @@ class TestUseCaseEdgeCases:
 
         assert len(results) == 10
         assert all(isinstance(r, dict) for r in results)
-

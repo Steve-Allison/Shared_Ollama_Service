@@ -13,7 +13,6 @@ from typing import TYPE_CHECKING
 
 from shared_ollama.api.dependencies import set_dependencies
 from shared_ollama.client import AsyncOllamaConfig, AsyncSharedOllamaClient
-from shared_ollama.infrastructure.config import settings
 from shared_ollama.core.ollama_manager import initialize_ollama_manager
 from shared_ollama.core.queue import RequestQueue
 from shared_ollama.core.utils import get_project_root
@@ -26,6 +25,7 @@ from shared_ollama.infrastructure.adapters import (
     PerformanceCollectorAdapter,
     RequestLoggerAdapter,
 )
+from shared_ollama.infrastructure.config import settings
 from shared_ollama.infrastructure.image_cache import ImageCache
 from shared_ollama.infrastructure.image_processing import ImageProcessor
 

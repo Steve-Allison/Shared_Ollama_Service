@@ -69,4 +69,3 @@ class SystemMessage:
     """
 
     value: str
-

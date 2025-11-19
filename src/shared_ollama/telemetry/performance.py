@@ -36,6 +36,7 @@ if TYPE_CHECKING:  # pragma: no cover
 performance_logger = logging.getLogger("ollama.performance")
 performance_logger.setLevel(logging.INFO)
 
+
 # Cache log directory resolution
 @functools.cache
 def _get_logs_dir() -> Path:
@@ -342,7 +343,7 @@ def track_performance(
     model: str,
     operation: str = "generate",
     response: GenerateResponse | None = None,
-) -> Generator[None, None, None]:
+) -> Generator[None]:
     """Context manager to track request performance.
 
     Automatically measures execution time and records detailed performance
@@ -375,7 +376,7 @@ def track_performance(
     try:
         yield
         success = True
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         error = f"{type(exc).__name__}: {exc}"
         raise
     finally:

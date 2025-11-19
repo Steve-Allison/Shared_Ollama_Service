@@ -12,14 +12,14 @@ from fastapi import FastAPI
 from httpx import AsyncClient, Response
 
 from shared_ollama.api.dependencies import (
+    get_chat_queue,
     get_chat_use_case,
     get_client_adapter,
     get_generate_use_case,
     get_list_models_use_case,
     get_logger_adapter,
     get_metrics_adapter,
-    get_queue,
-    set_dependencies,
+    get_vlm_queue,
 )
 from shared_ollama.core.queue import RequestQueue
 from shared_ollama.infrastructure.adapters import (
@@ -49,14 +49,11 @@ def setup_dependency_overrides(
         client_adapter: Ollama client adapter.
         logger_adapter: Request logger adapter.
         metrics_adapter: Metrics collector adapter.
-        queue: Request queue instance.
+        queue: Request queue instance (used for both chat and VLM in tests).
         generate_use_case: Generate use case instance.
         chat_use_case: Chat use case instance.
         list_models_use_case: List models use case instance.
     """
-    # Set global dependencies
-    set_dependencies(client_adapter, logger_adapter, metrics_adapter, queue)
-
     # Override all dependencies in the chain
     app.dependency_overrides[get_client_adapter] = lambda: client_adapter
     app.dependency_overrides[get_logger_adapter] = lambda: logger_adapter
@@ -64,7 +61,9 @@ def setup_dependency_overrides(
     app.dependency_overrides[get_generate_use_case] = lambda: generate_use_case
     app.dependency_overrides[get_chat_use_case] = lambda: chat_use_case
     app.dependency_overrides[get_list_models_use_case] = lambda: list_models_use_case
-    app.dependency_overrides[get_queue] = lambda: queue
+    # Use same queue for both chat and VLM in tests for simplicity
+    app.dependency_overrides[get_chat_queue] = lambda: queue
+    app.dependency_overrides[get_vlm_queue] = lambda: queue
 
 
 def cleanup_dependency_overrides(app: FastAPI) -> None:
@@ -74,8 +73,6 @@ def cleanup_dependency_overrides(app: FastAPI) -> None:
         app: FastAPI application instance.
     """
     app.dependency_overrides.clear()
-    # Clear global state
-    set_dependencies(None, None, None, None)  # type: ignore[arg-type]
 
 
 def assert_response_structure(response: Response, expected_status: int = 200) -> dict[str, Any]:
@@ -247,4 +244,3 @@ async def read_streaming_response(
 
                         chunks.append(json.loads(chunk_data))
             return chunks
-

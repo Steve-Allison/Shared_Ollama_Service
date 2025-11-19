@@ -6,8 +6,6 @@ Uses real HTTP server (ollama_server fixture) - no mocks of internal logic.
 Only external Ollama service is mocked via test server.
 """
 
-import json
-from unittest.mock import patch
 
 import pytest
 import requests

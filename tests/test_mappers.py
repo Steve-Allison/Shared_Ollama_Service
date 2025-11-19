@@ -22,27 +22,23 @@ from shared_ollama.api.models import (
     ChatRequest as APIChatRequest,
     GenerateRequest as APIGenerateRequest,
     ImageContentPart,
-    Message as APIMessage,
     ModelInfo as APIModelInfo,
     ResponseFormat,
     TextContentPart,
     Tool as APITool,
     ToolCall as APIToolCall,
+    VLMMessage as APIMessage,
     VLMRequest as APIVLMRequest,
     VLMRequestOpenAI,
 )
 from shared_ollama.domain.entities import (
-    ChatMessage,
     ChatRequest,
-    GenerationOptions,
     GenerationRequest,
     ModelInfo,
     Tool,
     ToolCall,
-    VLMMessage,
     VLMRequest,
 )
-from shared_ollama.domain.value_objects import ModelName, Prompt, SystemMessage
 
 
 class TestToolMappers:
@@ -616,4 +612,3 @@ class TestMapperEdgeCases:
             assert isinstance(result, dict)
         else:
             assert result == expected
-

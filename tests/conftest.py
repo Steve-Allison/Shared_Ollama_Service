@@ -4,6 +4,7 @@ Pytest configuration and fixtures for Shared Ollama Service tests.
 
 import json
 import socketserver
+import sys
 import threading
 from http.server import BaseHTTPRequestHandler
 from pathlib import Path
@@ -11,8 +12,6 @@ from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 import pytest
-
-import sys
 
 SRC_ROOT = Path(__file__).resolve().parents[1] / "src"
 if str(SRC_ROOT) not in sys.path:
@@ -33,7 +32,7 @@ class OllamaRequestHandler(BaseHTTPRequestHandler):
         payload = json.dumps(data).encode("utf-8")
         self.wfile.write(payload)
 
-    def do_GET(self):  # noqa: N802
+    def do_GET(self):
         state = self.server.server_state  # type: ignore[attr-defined]
         if self.path == "/api/tags":
             status = state.get("tags_status", 200)
@@ -49,7 +48,7 @@ class OllamaRequestHandler(BaseHTTPRequestHandler):
 
         self._json_response({"error": "not found"}, status=404)
 
-    def do_POST(self):  # noqa: N802
+    def do_POST(self):
         state = self.server.server_state  # type: ignore[attr-defined]
         length = int(self.headers.get("Content-Length", "0"))
         raw = self.rfile.read(length) if length else b"{}"
@@ -115,7 +114,7 @@ class OllamaRequestHandler(BaseHTTPRequestHandler):
 
         self._json_response({"error": "not found"}, status=404)
 
-    def log_message(self, format, *args):  # noqa: A003
+    def log_message(self, format, *args):
         # Suppress default HTTP server logging to keep test output clean.
         return
 
@@ -303,4 +302,3 @@ def reset_global_state():
     if "shared_ollama.telemetry.performance" in sys.modules:
         from shared_ollama.telemetry.performance import PerformanceCollector
         PerformanceCollector.reset()
-

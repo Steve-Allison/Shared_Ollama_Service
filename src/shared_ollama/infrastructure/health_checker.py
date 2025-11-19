@@ -44,7 +44,7 @@ def check_ollama_health(
         return (False, f"Cannot connect to {base_url}. Is the service running?")
     except requests.exceptions.Timeout:
         return (False, f"Connection to {base_url} timed out after {timeout}s")
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         return (False, f"Unexpected error: {exc!s}")
 
 
@@ -69,4 +69,3 @@ def check_ollama_health_simple(
         return response.status_code == 200
     except Exception:
         return False
-

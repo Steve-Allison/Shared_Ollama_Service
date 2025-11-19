@@ -22,4 +22,3 @@ class InvalidPromptError(DomainError):
 
 class InvalidRequestError(DomainError):
     """Raised when a request violates business rules."""
-

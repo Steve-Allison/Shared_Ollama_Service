@@ -10,9 +10,9 @@ from shared_ollama.api.routes.system import router as system_router
 from shared_ollama.api.routes.vlm import router as vlm_router
 
 __all__ = [
-    "system_router",
-    "generation_router",
-    "chat_router",
-    "vlm_router",
     "batch_router",
+    "chat_router",
+    "generation_router",
+    "system_router",
+    "vlm_router",
 ]

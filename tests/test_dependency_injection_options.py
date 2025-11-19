@@ -6,14 +6,12 @@ with ASGITransport and AsyncClient.
 
 from __future__ import annotations
 
-import pytest
-import pytest_asyncio
-from fastapi import FastAPI
-from fastapi.testclient import TestClient
-from httpx import ASGITransport, AsyncClient
 from typing import Annotated
 
-from fastapi import Depends
+import pytest
+from fastapi import Depends, FastAPI
+from fastapi.testclient import TestClient
+from httpx import ASGITransport, AsyncClient
 
 
 # Test Option 1: Using TestClient (sync) - should work but limited
@@ -155,4 +153,3 @@ def test_option5_testclient_async_endpoint():
     assert response.json()["dep"] == "override_value"
 
     app.dependency_overrides.clear()
-

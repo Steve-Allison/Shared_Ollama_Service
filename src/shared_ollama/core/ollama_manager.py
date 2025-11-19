@@ -25,9 +25,8 @@ import os
 import platform
 import shutil
 import time
-from collections.abc import Mapping
 from pathlib import Path
-from typing import Any, Literal, Self, TypeAlias
+from typing import Any, TypeAlias
 
 import psutil
 
@@ -180,7 +179,7 @@ class OllamaManager:
                         if line.startswith("OLLAMA_MAX_RAM="):
                             optimizations["OLLAMA_MAX_RAM"] = line.split("=", 1)[1].strip()
                             break
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     logger.debug("Memory limit calculation timed out")
                     process.kill()
                     await process.wait()
@@ -231,7 +230,7 @@ class OllamaManager:
                         )
                         await asyncio.wait_for(stop_process.wait(), timeout=10.0)
                         await asyncio.sleep(2)  # Wait for service to stop
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     logger.debug("Homebrew service check timed out")
                     process.kill()
                     await process.wait()
@@ -359,7 +358,7 @@ class OllamaManager:
             # Note: Files will be closed when process terminates
             log_f = log_file.open("a")
             err_f = error_log_file.open("a")
-            
+
             # Use asyncio.create_subprocess_exec for non-blocking async subprocess
             # Note: File handles are passed to subprocess and will remain open
             self.process = await asyncio.create_subprocess_exec(
@@ -458,7 +457,7 @@ class OllamaManager:
                         logger.info("Ollama process stopped gracefully")
                         self.process = None
                         return True
-                    except asyncio.TimeoutError:
+                    except TimeoutError:
                         logger.warning(
                             "Ollama process did not stop gracefully, forcing termination..."
                         )
@@ -509,14 +508,12 @@ class OllamaManager:
                         proc = psutil.Process(process.pid)
                         if proc.is_running():
                             return True
-                        else:
-                            # Process exists but not running
-                            self.process = None
-                            return False
-                    else:
-                        # PID doesn't exist
+                        # Process exists but not running
                         self.process = None
                         return False
+                    # PID doesn't exist
+                    self.process = None
+                    return False
                 except (psutil.NoSuchProcess, psutil.AccessDenied) as exc:
                     logger.debug("Process check failed: %s", exc)
                     self.process = None

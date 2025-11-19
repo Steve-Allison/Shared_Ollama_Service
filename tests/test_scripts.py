@@ -4,16 +4,15 @@ import io
 import json
 from contextlib import redirect_stdout
 
+from scripts.async_load_test import run_load_test
+from scripts.performance_report import calculate_performance_stats, parse_performance_log
+from scripts.view_analytics import print_analytics_dashboard
 from shared_ollama import (
     AnalyticsCollector,
     MetricsCollector,
     track_request,
     track_request_with_project,
 )
-
-from scripts.async_load_test import run_load_test
-from scripts.performance_report import calculate_performance_stats, parse_performance_log
-from scripts.view_analytics import print_analytics_dashboard
 
 
 def test_async_load_test_cli_smoke(ollama_server):
@@ -78,4 +77,3 @@ def test_performance_report_parsing(tmp_path):
     assert stats["total_requests"] == 1
     assert stats["successful_requests"] == 1
     assert stats["avg_tokens_per_second"] == entry["tokens_per_second"]
-

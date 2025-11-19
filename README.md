@@ -26,7 +26,7 @@ This service provides a REST API (port 8000) that manages Ollama internally and 
 
 ## Models Available
 
-**Note**: Models are loaded on-demand. Only one model is in memory at a time based on which model is requested.
+**Note**: Models are loaded on-demand. Up to 3 models can be loaded simultaneously based on available RAM.
 
 - **Primary**: `qwen2.5vl:7b` (7B parameters, vision-language model) ⭐ **VLM SUPPORTED**
   - **Full multimodal capabilities**: Process images + text in the same request
@@ -36,21 +36,17 @@ This service provides a REST API (port 8000) that manages Ollama internally and 
   - Excellent performance for both vision and text tasks
   - Loaded into memory when requested (~6 GB RAM)
   - **See VLM Support section below for detailed usage and format examples**
-- **Standard**: `qwen2.5vl:7b` (7B parameters, text-only model)
-  - Efficient text-only model with excellent performance
-  - Fast inference for text generation tasks
-  - Loaded into memory when requested (~4.5 GB RAM)
-- **Secondary**: `qwen2.5:14b` (14.8B parameters)
+- **Secondary**: `qwen2.5:14b` (14.8B parameters, text-only model)
   - Large language model with excellent reasoning
-  - Good alternative for text-only tasks
+  - Excellent for complex text-only tasks
   - Loaded into memory when requested (~9 GB RAM)
-- **Granite 4.0**: `granite4:small-h` (7B total, 1B active, hybrid MoE)
-  - IBM Granite 4.0 H Tiny - Hybrid Mamba/Transformer architecture
+- **Granite 4.0 Small**: `granite4:small-h` (32B total, 9B active, hybrid MoE)
+  - IBM Granite 4.0 Small - Hybrid Mamba/Transformer architecture
   - Optimized for RAG, function calling, and agentic workflows
   - ~70% less RAM for long contexts compared to conventional transformers
-  - Up to 128K+ context length (validated to 128K, trained to 512K)
+  - **1M context length** (validated to 128K+, trained to 512K+)
   - Excellent instruction following and tool-calling capabilities
-  - Loaded into memory when requested (~8 GB RAM)
+  - Loaded into memory when requested (~19 GB RAM)
 
 Models remain in memory for 5 minutes after last use (OLLAMA_KEEP_ALIVE), then are automatically unloaded to free memory. Switching between models requires a brief load time (~2-3 seconds).
 
@@ -108,7 +104,7 @@ Both endpoints are optimized for `qwen2.5vl:7b` and share the same image process
 ### Model Requirements
 
 - **VLM Model**: Use `qwen2.5vl:7b` for vision tasks (images + text)
-- **Text-Only**: Use `/api/v1/chat` with `qwen2.5vl:7b` or `qwen2.5:14b`
+- **Text-Only**: Use `/api/v1/chat` with `qwen2.5vl:7b`, `qwen2.5:14b`, or `granite4:small-h`
 - **Image Support**: Only `qwen2.5vl:7b` supports images
 
 ### Image Format
@@ -129,7 +125,7 @@ import requests
 response = requests.post(
     "http://localhost:8000/api/v1/chat",
     json={
-        "model": "qwen2.5vl:7b",  # Text-only model
+        "model": "qwen2.5:14b",  # Text-only model
         "messages": [
             {"role": "user", "content": "Hello!"}
         ]
@@ -459,7 +455,7 @@ response = requests.post(
         "requests": [
             {
                 "messages": [{"role": "user", "content": f"Question {i}?"}],
-                "model": "qwen2.5vl:7b"
+                "model": "qwen2.5:14b"
             }
             for i in range(10)
         ]
@@ -985,16 +981,13 @@ All modules are shipped as a package (installable via `pip install -e .`) with t
 #### Option 1: Manual Pull
 
 ```bash
-# Pull primary model (qwen2.5vl:7b)
+# Pull primary VLM model (qwen2.5vl:7b)
 ollama pull qwen2.5vl:7b
 
-# Pull standard model (qwen2.5vl:7b)
-ollama pull qwen2.5vl:7b
-
-# Pull secondary model (qwen2.5:14b)
+# Pull secondary text model (qwen2.5:14b)
 ollama pull qwen2.5:14b
 
-# Pull Granite 4.0 H Tiny model (granite4:small-h)
+# Pull Granite 4.0 Small model (granite4:small-h)
 ollama pull granite4:small-h
 ```
 
@@ -1099,7 +1092,7 @@ pytest tests/test_api_server.py -v
 # Run async load test script (headless)
 python scripts/async_load_test.py --requests 200 --workers 20
 
-# Or use Makefile (if available)
+# Or use Makefile
 make lint        # Run linter
 make format      # Format code
 make type-check  # Type checking
@@ -1205,7 +1198,7 @@ response = requests.post(
     "http://localhost:8000/api/v1/generate",
     json={
         "prompt": "Hello, world!",
-        "model": "qwen2.5vl:7b"
+        "model": "qwen2.5:14b"
     }
 )
 print(response.json()["text"])
@@ -1219,7 +1212,7 @@ const res = await fetch("http://localhost:8000/api/v1/generate", {
   headers: { "Content-Type": "application/json" },
   body: JSON.stringify({
     prompt: "Hello, world!",
-    model: "qwen2.5vl:7b"
+    model: "qwen2.5:14b"
   })
 });
 const data = await res.json();
@@ -1290,7 +1283,7 @@ import requests
 # Streaming generate endpoint
 response = requests.post(
     "http://localhost:8000/api/v1/generate",
-    json={"prompt": "Write a story", "model": "qwen2.5vl:7b", "stream": True},
+    json={"prompt": "Write a story", "model": "qwen2.5:14b", "stream": True},
     stream=True
 )
 
@@ -1313,7 +1306,7 @@ const response = await fetch("http://localhost:8000/api/v1/generate", {
   headers: { "Content-Type": "application/json" },
   body: JSON.stringify({
     prompt: "Write a story",
-    model: "qwen2.5vl:7b",
+    model: "qwen2.5:14b",
     stream: true
   })
 });
@@ -1453,7 +1446,7 @@ from shared_ollama import OllamaConfig, SharedOllamaClient
 # Or configure via environment
 import os
 ollama_base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-default_model = "qwen2.5vl:7b"
+default_model = "qwen2.5:14b"  # or "qwen2.5vl:7b" for VLM tasks
 
 client = SharedOllamaClient(OllamaConfig(
     base_url=ollama_base_url,
@@ -1469,7 +1462,7 @@ Update `Course_Intelligence_Compiler/config/rag_config.yaml`:
 generation:
   ollama:
     base_url: "http://localhost:11434"  # Or use OLLAMA_BASE_URL env var
-    model: "qwen2.5vl:7b"  # or "qwen2.5:14b" for alternative model
+    model: "qwen2.5:14b"  # or "qwen2.5vl:7b" for VLM tasks
 ```
 
 #### Story Machine
@@ -1484,7 +1477,7 @@ from shared_ollama.core.utils import get_ollama_base_url
 
 # Auto-discover from environment
 base_url = get_ollama_base_url()
-model = "qwen2.5vl:7b"
+model = "qwen2.5:14b"  # or "qwen2.5vl:7b" for VLM tasks
 
 client = SharedOllamaClient()
 ```
@@ -1625,7 +1618,7 @@ curl http://localhost:8000/api/v1/models
 
 # Test generation (REST API)
 curl http://localhost:8000/api/v1/generate -d '{
-  "model": "qwen2.5vl:7b",
+  "model": "qwen2.5:14b",
   "prompt": "Why is the sky blue?"
 }'
 ```
@@ -1649,6 +1642,8 @@ ollama rm model_name
 ```bash
 # Pull latest version
 ollama pull qwen2.5vl:7b
+ollama pull qwen2.5:14b
+ollama pull granite4:small-h
 ```
 
 ## Service Management
@@ -1755,7 +1750,6 @@ tail -f logs/api.log
 ```bash
 # Pull models
 ollama pull qwen2.5vl:7b
-ollama pull qwen2.5vl:7b
 ollama pull qwen2.5:14b
 ollama pull granite4:small-h
 
@@ -1852,7 +1846,7 @@ tail -f logs/performance.jsonl
 python scripts/performance_report.py
 
 # Filter by model
-python scripts/performance_report.py --model qwen2.5vl:7b
+python scripts/performance_report.py --model qwen2.5:14b
 
 # Last hour
 python scripts/performance_report.py --window 60
@@ -1985,10 +1979,9 @@ The service collects comprehensive performance data:
 **Memory Usage:**
 
 - `qwen2.5vl:7b`: ~6 GB RAM when loaded
-- `qwen2.5vl:7b`: ~4.5 GB RAM when loaded
 - `qwen2.5:14b`: ~9 GB RAM when loaded
-- `granite4:small-h`: ~8 GB RAM when loaded (but ~70% less RAM for long contexts)
-- **Models can run simultaneously** if you have sufficient RAM
+- `granite4:small-h`: ~19 GB RAM when loaded (but ~70% less RAM for long contexts compared to conventional transformers)
+- **Up to 3 models can run simultaneously** if you have sufficient RAM (OLLAMA_NUM_PARALLEL=3)
 
 **Behavior**: Models are automatically loaded when requested and unloaded after 5 minutes of inactivity. Both models can be active at the same time if needed, reducing switching delays.
 
@@ -2074,7 +2067,7 @@ KEEP_ALIVE=60m ./scripts/warmup_models.sh
 ```bash
 # Warm up a specific model via REST API
 curl http://localhost:8000/api/v1/generate -d '{
-  "model": "qwen2.5vl:7b",
+  "model": "qwen2.5:14b",
   "prompt": "Hi",
   "options": {"num_predict": 1},
   "keep_alive": "30m"
@@ -2241,7 +2234,7 @@ import requests
 response = requests.post(
     "http://localhost:8000/api/v1/chat",
     headers={"X-Project-Name": "Docling_Machine"},
-    json={"model": "qwen2.5vl:7b", "messages": [...]}
+    json={"model": "qwen2.5:14b", "messages": [...]}
 )
 ```
 

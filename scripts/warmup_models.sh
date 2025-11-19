@@ -20,7 +20,6 @@ MODELS=(
     "qwen2.5vl:7b"
     "qwen2.5:7b"
     "qwen2.5:14b"
-    "granite4:tiny-h"
 )
 
 # Optional: keep-alive duration for warm-up (default: 30 minutes)

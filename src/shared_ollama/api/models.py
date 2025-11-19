@@ -171,6 +171,8 @@ class GenerateRequest(BaseModel):
             - "json" for JSON mode
             - dict with JSON schema for structured output
             - None for default text output
+        response_format: OpenAI-compatible response format. Optional.
+        tools: Tools/functions the model can call (POML compatible). Optional.
         temperature: Sampling temperature (0.0-2.0). Optional.
         top_p: Nucleus sampling parameter (0.0-1.0). Optional.
         top_k: Top-k sampling parameter (>=1). Optional.
@@ -197,6 +199,7 @@ class GenerateRequest(BaseModel):
         None,
         description="OpenAI-compatible response_format. Overrides format when provided.",
     )
+    tools: list[Tool] | None = Field(None, description="Tools/functions the model can call (POML compatible)")
     temperature: float | None = Field(None, ge=0.0, le=2.0, description="Temperature for sampling")
     top_p: float | None = Field(None, ge=0.0, le=1.0, description="Top-p sampling parameter")
     top_k: int | None = Field(None, ge=1, description="Top-k sampling parameter")
@@ -816,6 +819,7 @@ class VLMRequestOpenAI(BaseModel):
         max_tokens: Maximum tokens to generate (>=1). Optional.
         seed: Random seed for reproducibility. Optional.
         stop: List of stop sequences. Optional.
+        tools: Tools/functions the model can call (POML compatible). Optional.
         image_compression: Enable image compression (recommended). Defaults to True.
         max_dimension: Maximum image dimension for resizing (256-2048). Defaults to 1024.
         compression_format: Image compression format (jpeg, png, or webp). Defaults to jpeg.
@@ -846,6 +850,7 @@ class VLMRequestOpenAI(BaseModel):
     max_tokens: int | None = Field(None, ge=1, description="Maximum tokens to generate")
     seed: int | None = Field(None, description="Random seed for reproducibility")
     stop: list[str] | None = Field(None, description="Stop sequences")
+    tools: list[Tool] | None = Field(None, description="Tools/functions the model can call (POML compatible)")
     image_compression: bool = Field(True, description="Enable image compression (recommended)")
     max_dimension: int = Field(1024, ge=256, le=2048, description="Maximum image dimension for resizing")
     compression_format: Literal["jpeg", "png", "webp"] = Field(

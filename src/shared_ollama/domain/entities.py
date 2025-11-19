@@ -266,8 +266,8 @@ class ChatMessage:
         if self.role == "tool" and not self.tool_call_id:
             raise ValueError("Tool messages must have tool_call_id")
 
-        # Validate content is not empty if provided
-        if self.content is not None and (not self.content or not self.content.strip()):
+        # Validate content is not empty if provided (unless tool_calls present)
+        if self.content is not None and (not self.content or not self.content.strip()) and not self.tool_calls:
             raise ValueError("Message content cannot be empty string")
 
 
@@ -346,8 +346,8 @@ class VLMMessage:
         if self.role == "tool" and not self.tool_call_id:
             raise ValueError("Tool messages must have tool_call_id")
 
-        # Validate content is not empty if provided
-        if self.content is not None and (not self.content or not self.content.strip()):
+        # Validate content is not empty if provided (unless tool_calls present)
+        if self.content is not None and (not self.content or not self.content.strip()) and not self.tool_calls:
             raise ValueError("Message content cannot be empty string")
 
 

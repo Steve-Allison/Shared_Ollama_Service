@@ -19,6 +19,7 @@ from shared_ollama.api.mappers import (
 )
 from shared_ollama.api.models import (
     ChatMessage as APIChatMessage,
+    ChatMessageOpenAI as APIMessageOpenAI,
     ChatRequest as APIChatRequest,
     GenerateRequest as APIGenerateRequest,
     ImageContentPart,
@@ -27,6 +28,8 @@ from shared_ollama.api.models import (
     TextContentPart,
     Tool as APITool,
     ToolCall as APIToolCall,
+    ToolCallFunction as APIToolCallFunction,
+    ToolFunction as APIToolFunction,
     VLMMessage as APIMessage,
     VLMRequest as APIVLMRequest,
     VLMRequestOpenAI,
@@ -37,6 +40,7 @@ from shared_ollama.domain.entities import (
     ModelInfo,
     Tool,
     ToolCall,
+    ToolCallFunction,
     VLMRequest,
 )
 
@@ -48,12 +52,10 @@ class TestToolMappers:
         """Test that api_to_domain_tool converts API tool to domain tool."""
         api_tool = APITool(
             type="function",
-            function=APITool.function.model_validate(
-                {
-                    "name": "get_weather",
-                    "description": "Get weather for location",
-                    "parameters": {"type": "object", "properties": {"location": {"type": "string"}}},
-                }
+            function=APIToolFunction(
+                name="get_weather",
+                description="Get weather for location",
+                parameters={"type": "object", "properties": {"location": {"type": "string"}}},
             ),
         )
 
@@ -144,11 +146,12 @@ class TestResponseFormatResolution:
 
     def test_resolve_format_raises_error_for_missing_schema(self):
         """Test that _resolve_response_format raises error when schema missing."""
-        from shared_ollama.api.mappers import _resolve_response_format
+        from pydantic import ValidationError
 
-        response_format = ResponseFormat(type="json_schema", json_schema=None)
-        with pytest.raises(ValueError, match="json_schema is required"):
-            _resolve_response_format(direct_format=None, response_format=response_format)
+        # Pydantic V2 validates during construction, so ValidationError is raised
+        # when trying to create ResponseFormat with type='json_schema' but json_schema=None
+        with pytest.raises(ValidationError, match="json_schema"):
+            ResponseFormat(type="json_schema", json_schema=None)
 
     def test_resolve_format_returns_none_for_text_type(self):
         """Test that _resolve_response_format returns None for text type."""
@@ -244,8 +247,10 @@ class TestGenerationRequestMapper:
             tools=[
                 APITool(
                     type="function",
-                    function=APITool.function.model_validate(
-                        {"name": "test_func", "description": "Test", "parameters": {}}
+                    function=APIToolFunction(
+                        name="test_func",
+                        description="Test",
+                        parameters={},
                     ),
                 )
             ],
@@ -384,12 +389,12 @@ class TestChatRequestMapper:
         assert domain_req.messages[0].tool_call_id == "call_1"
 
     def test_api_to_domain_chat_request_handles_empty_messages(self):
-        """Test that mapper handles empty messages list."""
-        api_req = APIChatRequest(messages=[], model="qwen2.5vl:7b")
+        """Test that mapper rejects empty messages list (validation error)."""
+        from pydantic import ValidationError
 
-        domain_req = api_to_domain_chat_request(api_req)
-
-        assert len(domain_req.messages) == 0
+        # Chat requests must have at least one message
+        with pytest.raises(ValidationError, match="at least 1 item"):
+            APIChatRequest(messages=[], model="qwen2.5vl:7b")
 
     def test_api_to_domain_chat_request_handles_none_model(self):
         """Test that mapper handles None model correctly."""
@@ -438,7 +443,7 @@ class TestVLMRequestMapper:
         """Test that api_to_domain_vlm_request_openai converts OpenAI format."""
         api_req = VLMRequestOpenAI(
             messages=[
-                APIMessage(
+                APIMessageOpenAI(
                     role="user",
                     content=[
                         TextContentPart(type="text", text="What's in this image?"),
@@ -460,28 +465,26 @@ class TestVLMRequestMapper:
         assert "What's in this image?" in domain_req.messages[0].content
 
     def test_api_to_domain_vlm_request_openai_handles_text_only_messages(self):
-        """Test that mapper handles text-only messages in OpenAI format."""
-        api_req = VLMRequestOpenAI(
-            messages=[
-                APIMessage(
-                    role="user",
-                    content=[TextContentPart(type="text", text="Hello!")],
-                )
-            ],
-            model="qwen2.5vl:7b",
-        )
+        """Test that mapper rejects text-only messages (VLM requires images)."""
+        from pydantic import ValidationError
 
-        domain_req = api_to_domain_vlm_request_openai(api_req)
-
-        assert len(domain_req.messages) == 1
-        assert domain_req.messages[0].content == "Hello!"
-        assert len(domain_req.images) == 0
+        # VLM requests must contain at least one image
+        with pytest.raises(ValidationError, match="VLM requests must contain at least one image"):
+            VLMRequestOpenAI(
+                messages=[
+                    APIMessageOpenAI(
+                        role="user",
+                        content=[TextContentPart(type="text", text="Hello!")],
+                    )
+                ],
+                model="qwen2.5vl:7b",
+            )
 
     def test_api_to_domain_vlm_request_openai_handles_image_only_messages(self):
         """Test that mapper handles image-only messages (adds default prompt)."""
         api_req = VLMRequestOpenAI(
             messages=[
-                APIMessage(
+                APIMessageOpenAI(
                     role="user",
                     content=[
                         ImageContentPart(
@@ -507,13 +510,13 @@ class TestVLMRequestMapper:
             messages=[APIMessage(role="user", content="Test")],
             images=["data:image/jpeg;base64,/9j/4AAQSkZJRg=="],
             model="qwen2.5vl:7b",
-            image_compression="high",
+            image_compression=True,
             max_dimension=1024,
         )
 
         domain_req = api_to_domain_vlm_request(api_req)
 
-        assert domain_req.image_compression == "high"
+        assert domain_req.image_compression is True
         assert domain_req.max_dimension == 1024
 
 
@@ -550,12 +553,12 @@ class TestMapperEdgeCases:
     """Edge case and error handling tests for mappers."""
 
     def test_generation_request_mapper_handles_empty_prompt(self):
-        """Test that mapper handles empty prompt (should be validated by domain)."""
-        api_req = APIGenerateRequest(prompt="", model="qwen2.5vl:7b")
+        """Test that mapper rejects empty prompt (validation error)."""
+        from pydantic import ValidationError
 
-        # Empty prompt should still create domain request (validation happens in domain)
-        domain_req = api_to_domain_generation_request(api_req)
-        assert domain_req.prompt.value == ""
+        # Empty prompt should be rejected by Pydantic validation
+        with pytest.raises(ValidationError, match="at least 1 character"):
+            APIGenerateRequest(prompt="", model="qwen2.5vl:7b")
 
     def test_chat_request_mapper_handles_very_long_content(self):
         """Test that mapper handles very long message content."""

@@ -83,7 +83,7 @@ generation:
 generation:
   ollama:
     base_url: "http://localhost:11434"  # Already correct
-    model: "qwen2.5vl:7b"  # or "qwen2.5:7b" or "qwen2.5:14b" or "granite4:latest" for alternative models
+    model: "qwen2.5vl:7b"  # or "qwen2.5vl:7b" or "qwen2.5:14b" or "granite4:small-h" for alternative models
 ```
 
 **Optional**: Update client code to use shared client:
@@ -117,7 +117,7 @@ class OllamaConfig(BaseModel):
         default="http://localhost:11434"  # Already correct!
     )
     model: str = Field(
-        default="qwen2.5vl:7b"  # Or use qwen2.5:7b or qwen2.5:14b or granite4:latest if needed
+        default="qwen2.5vl:7b"  # Or use qwen2.5vl:7b or qwen2.5:14b or granite4:small-h if needed
     )
 ```
 
@@ -244,9 +244,9 @@ docker-compose up -d ollama
 ```bash
 cd Shared_Ollama_Service
 docker-compose exec ollama ollama pull qwen2.5vl:7b
-docker-compose exec ollama ollama pull qwen2.5:7b
+docker-compose exec ollama ollama pull qwen2.5vl:7b
 docker-compose exec ollama ollama pull qwen2.5:14b
-docker-compose exec ollama ollama pull granite4:latest
+docker-compose exec ollama ollama pull granite4:small-h
 ```
 
 ### Issue: Port 11434 already in use
@@ -281,7 +281,7 @@ docker-compose restart ollama
 
 ### Issue: Different model versions
 
-Some projects might expect specific model versions (e.g., `qwen2.5vl:7b` vs `qwen2.5:7b` vs `qwen2.5:14b`).
+Some projects might expect specific model versions (e.g., `qwen2.5vl:7b` vs `qwen2.5vl:7b` vs `qwen2.5:14b`).
 
 **Solution:**
 1. Pull both versions

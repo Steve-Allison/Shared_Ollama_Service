@@ -194,7 +194,7 @@ def create_mock_models_response() -> list[dict[str, Any]]:
             "modified_at": "2025-11-03T17:24:58Z",
         },
         {
-            "name": "qwen2.5:7b",
+            "name": "qwen2.5vl:7b",
             "size": 4730000000,
             "modified_at": "2025-11-03T15:00:00Z",
         },

@@ -278,7 +278,7 @@ ollama serve
 ./scripts/start.sh  # REST API manages Ollama internally
 
 # Preload models (first time)
-./scripts/preload_models.sh      # Downloads qwen2.5:7b, qwen2.5vl:7b, etc.
+./scripts/preload_models.sh      # Downloads qwen2.5vl:7b, qwen2.5vl:7b, etc.
 
 # Warm up models (optional, reduces first-request latency)
 ./scripts/warmup_models.sh

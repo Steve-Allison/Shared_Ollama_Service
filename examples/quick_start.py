@@ -57,11 +57,11 @@ def example_custom_config():
 
 
 def example_using_qwen7b():
-    """Example using qwen2.5:7b model."""
-    print("\nExample 2b: Using qwen2.5:7b Model")
+    """Example using qwen2.5vl:7b model."""
+    print("\nExample 2b: Using qwen2.5vl:7b Model")
     print("-" * 40)
 
-    # Use qwen2.5:7b for efficient text generation
+    # Use qwen2.5vl:7b for efficient text generation
     config = OllamaConfig(
         base_url=get_ollama_base_url(), default_model=Model.QWEN25_7B, timeout=120
     )

@@ -17,7 +17,6 @@ API_ENDPOINT="${OLLAMA_URL}/api"
 
 # Models to warm up (primary models, in priority order)
 MODELS=(
-    "qwen2.5:7b"
     "qwen2.5vl:7b"
     "qwen2.5:14b"
 )

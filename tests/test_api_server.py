@@ -163,7 +163,7 @@ class TestListModelsEndpoint:
         """Test successful model listing returns models list."""
         mock_models = [
             {"name": "qwen2.5vl:7b", "size": 5969245856, "modified_at": "2025-11-03T17:24:58Z"},
-            {"name": "qwen2.5:7b", "size": 4730000000, "modified_at": "2025-11-03T15:00:00Z"},
+            {"name": "qwen2.5vl:7b", "size": 4730000000, "modified_at": "2025-11-03T15:00:00Z"},
         ]
         mock_async_client.list_models = AsyncMock(return_value=mock_models)
 
@@ -172,7 +172,7 @@ class TestListModelsEndpoint:
         assert "models" in data
         assert len(data["models"]) == 2
         assert data["models"][0]["name"] == "qwen2.5vl:7b"
-        assert data["models"][1]["name"] == "qwen2.5:7b"
+        assert data["models"][1]["name"] == "qwen2.5vl:7b"
 
     def test_list_models_empty(self, api_client, mock_async_client):
         """Test listing models when none are available returns empty list."""

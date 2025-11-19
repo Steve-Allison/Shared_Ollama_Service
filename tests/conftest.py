@@ -125,7 +125,7 @@ def ollama_server():
     state = {
         "models": [
             {"name": "qwen2.5vl:7b"},
-            {"name": "qwen2.5:7b"},
+            {"name": "qwen2.5vl:7b"},
         ],
         "generate_failures": 0,
         "chat_failures": 0,
@@ -203,8 +203,8 @@ def sample_models_response():
                 },
             },
             {
-                "name": "qwen2.5:7b",
-                "model": "qwen2.5:7b",
+                "name": "qwen2.5vl:7b",
+                "model": "qwen2.5vl:7b",
                 "modified_at": "2025-11-03T15:00:00.000000000Z",
                 "size": 4730000000,
                 "digest": "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2",
@@ -233,8 +233,8 @@ def sample_models_response():
                 },
             },
             {
-                "name": "granite4:latest",
-                "model": "granite4:latest",
+                "name": "granite4:small-h",
+                "model": "granite4:small-h",
                 "modified_at": "2025-11-06T12:00:00.000000000Z",
                 "size": 4500000000,
                 "digest": "8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0",

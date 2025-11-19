@@ -29,12 +29,12 @@ class TestAsyncClientInitialization:
         """Test that client initializes with custom config."""
         config = AsyncOllamaConfig(
             base_url=ollama_server.base_url,
-            default_model="qwen2.5:7b",
+            default_model="qwen2.5vl:7b",
             timeout=120,
             max_concurrent_requests=5,
         )
         async with AsyncSharedOllamaClient(config=config, verify_on_init=False) as client:
-            assert client.config.default_model == "qwen2.5:7b"
+            assert client.config.default_model == "qwen2.5vl:7b"
             assert client.config.timeout == 120
             assert client.config.max_concurrent_requests == 5
 

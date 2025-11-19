@@ -61,7 +61,7 @@ def mock_async_client():
     client.list_models = AsyncMock(
         return_value=[
             {"name": "qwen2.5vl:7b", "size": 5969245856},
-            {"name": "qwen2.5:7b", "size": 4730000000},
+            {"name": "qwen2.5vl:7b", "size": 4730000000},
         ]
     )
     return client

@@ -36,7 +36,7 @@ This service provides a REST API (port 8000) that manages Ollama internally and 
   - Excellent performance for both vision and text tasks
   - Loaded into memory when requested (~6 GB RAM)
   - **See VLM Support section below for detailed usage and format examples**
-- **Standard**: `qwen2.5:7b` (7B parameters, text-only model)
+- **Standard**: `qwen2.5vl:7b` (7B parameters, text-only model)
   - Efficient text-only model with excellent performance
   - Fast inference for text generation tasks
   - Loaded into memory when requested (~4.5 GB RAM)
@@ -44,7 +44,7 @@ This service provides a REST API (port 8000) that manages Ollama internally and 
   - Large language model with excellent reasoning
   - Good alternative for text-only tasks
   - Loaded into memory when requested (~9 GB RAM)
-- **Granite 4.0**: `granite4:latest` (7B total, 1B active, hybrid MoE)
+- **Granite 4.0**: `granite4:small-h` (7B total, 1B active, hybrid MoE)
   - IBM Granite 4.0 H Tiny - Hybrid Mamba/Transformer architecture
   - Optimized for RAG, function calling, and agentic workflows
   - ~70% less RAM for long contexts compared to conventional transformers
@@ -108,7 +108,7 @@ Both endpoints are optimized for `qwen2.5vl:7b` and share the same image process
 ### Model Requirements
 
 - **VLM Model**: Use `qwen2.5vl:7b` for vision tasks (images + text)
-- **Text-Only**: Use `/api/v1/chat` with `qwen2.5:7b` or `qwen2.5:14b`
+- **Text-Only**: Use `/api/v1/chat` with `qwen2.5vl:7b` or `qwen2.5:14b`
 - **Image Support**: Only `qwen2.5vl:7b` supports images
 
 ### Image Format
@@ -129,7 +129,7 @@ import requests
 response = requests.post(
     "http://localhost:8000/api/v1/chat",
     json={
-        "model": "qwen2.5:7b",  # Text-only model
+        "model": "qwen2.5vl:7b",  # Text-only model
         "messages": [
             {"role": "user", "content": "Hello!"}
         ]
@@ -459,7 +459,7 @@ response = requests.post(
         "requests": [
             {
                 "messages": [{"role": "user", "content": f"Question {i}?"}],
-                "model": "qwen2.5:7b"
+                "model": "qwen2.5vl:7b"
             }
             for i in range(10)
         ]
@@ -988,14 +988,14 @@ All modules are shipped as a package (installable via `pip install -e .`) with t
 # Pull primary model (qwen2.5vl:7b)
 ollama pull qwen2.5vl:7b
 
-# Pull standard model (qwen2.5:7b)
-ollama pull qwen2.5:7b
+# Pull standard model (qwen2.5vl:7b)
+ollama pull qwen2.5vl:7b
 
 # Pull secondary model (qwen2.5:14b)
 ollama pull qwen2.5:14b
 
-# Pull Granite 4.0 H Tiny model (granite4:latest)
-ollama pull granite4:latest
+# Pull Granite 4.0 H Tiny model (granite4:small-h)
+ollama pull granite4:small-h
 ```
 
 #### Option 2: Automated Pre-download (Recommended)
@@ -1290,7 +1290,7 @@ import requests
 # Streaming generate endpoint
 response = requests.post(
     "http://localhost:8000/api/v1/generate",
-    json={"prompt": "Write a story", "model": "qwen2.5:7b", "stream": True},
+    json={"prompt": "Write a story", "model": "qwen2.5vl:7b", "stream": True},
     stream=True
 )
 
@@ -1313,7 +1313,7 @@ const response = await fetch("http://localhost:8000/api/v1/generate", {
   headers: { "Content-Type": "application/json" },
   body: JSON.stringify({
     prompt: "Write a story",
-    model: "qwen2.5:7b",
+    model: "qwen2.5vl:7b",
     stream: true
   })
 });
@@ -1755,9 +1755,9 @@ tail -f logs/api.log
 ```bash
 # Pull models
 ollama pull qwen2.5vl:7b
-ollama pull qwen2.5:7b
+ollama pull qwen2.5vl:7b
 ollama pull qwen2.5:14b
-ollama pull granite4:latest
+ollama pull granite4:small-h
 
 # Verify
 ollama list
@@ -1985,9 +1985,9 @@ The service collects comprehensive performance data:
 **Memory Usage:**
 
 - `qwen2.5vl:7b`: ~6 GB RAM when loaded
-- `qwen2.5:7b`: ~4.5 GB RAM when loaded
+- `qwen2.5vl:7b`: ~4.5 GB RAM when loaded
 - `qwen2.5:14b`: ~9 GB RAM when loaded
-- `granite4:latest`: ~8 GB RAM when loaded (but ~70% less RAM for long contexts)
+- `granite4:small-h`: ~8 GB RAM when loaded (but ~70% less RAM for long contexts)
 - **Models can run simultaneously** if you have sufficient RAM
 
 **Behavior**: Models are automatically loaded when requested and unloaded after 5 minutes of inactivity. Both models can be active at the same time if needed, reducing switching delays.

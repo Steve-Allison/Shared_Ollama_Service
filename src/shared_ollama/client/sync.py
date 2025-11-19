@@ -46,10 +46,9 @@ class Model(StrEnum):
     """
 
     QWEN25_VL_7B = "qwen2.5vl:7b"  # Primary: 7B params, vision-language model
-    QWEN25_7B = "qwen2.5:7b"  # Standard: 7B params, text-only model
     QWEN25_14B = "qwen2.5:14b"  # Secondary: 14.8B params
     GRANITE_4_SMALL = (
-        "granite4:latest"  # Granite 4.0 Small: 8B params, instruction-tuned
+        "granite4:small-h"  # Granite 4.0 Small: 8B params, instruction-tuned
     )
 
 

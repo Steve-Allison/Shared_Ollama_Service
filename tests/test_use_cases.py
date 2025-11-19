@@ -35,7 +35,7 @@ class MockGenerateResponse:
     """Mock GenerateResponse for testing."""
     def __init__(self):
         self.text = "Generated text"
-        self.model = "qwen2.5vl:7b"
+        self.model = "qwen3-vl:32b"
         self.total_duration = 500_000_000
         self.load_duration = 200_000_000
         self.prompt_eval_count = 5
@@ -48,7 +48,7 @@ class MockChatResponse:
     """Mock ChatResponse for testing."""
     def __init__(self):
         self.message = {"role": "assistant", "content": "Chat response"}
-        self.model = "qwen2.5vl:7b"
+        self.model = "qwen3-vl:32b"
         self.done = True
 
 
@@ -60,8 +60,8 @@ def mock_async_client():
     client.chat = AsyncMock(return_value=MockChatResponse())
     client.list_models = AsyncMock(
         return_value=[
-            {"name": "qwen2.5vl:7b", "size": 5969245856},
-            {"name": "qwen2.5vl:7b", "size": 4730000000},
+            {"name": "qwen3-vl:32b", "size": 5969245856},
+            {"name": "qwen3-vl:32b", "size": 4730000000},
         ]
     )
     return client
@@ -91,7 +91,7 @@ class TestGenerateUseCase:
 
         request = GenerationRequest(
             prompt=Prompt(value="Hello, world!"),
-            model=ModelName(value="qwen2.5vl:7b"),
+            model=ModelName(value="qwen3-vl:32b"),
         )
 
         result = await use_case.execute(request, request_id="test-1")
@@ -106,7 +106,7 @@ class TestGenerateUseCase:
 
         request = GenerationRequest(
             prompt=Prompt(value="Test"),
-            model=ModelName(value="qwen2.5vl:7b"),
+            model=ModelName(value="qwen3-vl:32b"),
         )
 
         result = await use_case.execute(request, request_id="test-1")
@@ -154,7 +154,7 @@ class TestGenerateUseCase:
 
         request = GenerationRequest(
             prompt=Prompt(value="Test"),
-            model=ModelName(value="qwen2.5vl:7b"),
+            model=ModelName(value="qwen3-vl:32b"),
             system=SystemMessage(value="You are helpful"),
         )
 
@@ -169,7 +169,7 @@ class TestGenerateUseCase:
 
         request = GenerationRequest(
             prompt=Prompt(value="Test"),
-            model=ModelName(value="qwen2.5vl:7b"),
+            model=ModelName(value="qwen3-vl:32b"),
             options=GenerationOptions(
                 temperature=0.7,
                 top_p=0.95,
@@ -192,7 +192,7 @@ class TestGenerateUseCase:
 
         request = GenerationRequest(
             prompt=Prompt(value="Test"),
-            model=ModelName(value="qwen2.5vl:7b"),
+            model=ModelName(value="qwen3-vl:32b"),
             options=GenerationOptions(
                 temperature=0.7,
                 max_tokens=None,  # None value
@@ -213,7 +213,7 @@ class TestGenerateUseCase:
 
         request = GenerationRequest(
             prompt=Prompt(value="Test"),
-            model=ModelName(value="qwen2.5vl:7b"),
+            model=ModelName(value="qwen3-vl:32b"),
             format="json",
         )
 
@@ -230,7 +230,7 @@ class TestGenerateUseCase:
 
         request = GenerationRequest(
             prompt=Prompt(value="Test"),
-            model=ModelName(value="qwen2.5vl:7b"),
+            model=ModelName(value="qwen3-vl:32b"),
             tools=(
                 Tool(
                     type="function",
@@ -258,7 +258,7 @@ class TestGenerateUseCase:
 
         request = GenerationRequest(
             prompt=Prompt(value="Test"),
-            model=ModelName(value="qwen2.5vl:7b"),
+            model=ModelName(value="qwen3-vl:32b"),
         )
 
         await use_case.execute(request, request_id="test-1")
@@ -274,7 +274,7 @@ class TestGenerateUseCase:
 
         request = GenerationRequest(
             prompt=Prompt(value="Test"),
-            model=ModelName(value="qwen2.5vl:7b"),
+            model=ModelName(value="qwen3-vl:32b"),
         )
 
         with pytest.raises(ConnectionError):
@@ -298,7 +298,7 @@ class TestGenerateUseCase:
 
         request = GenerationRequest(
             prompt=Prompt(value="Test"),
-            model=ModelName(value="qwen2.5vl:7b"),
+            model=ModelName(value="qwen3-vl:32b"),
         )
 
         result = await use_case.execute(request, request_id="test-1", stream=True)
@@ -316,7 +316,7 @@ class TestGenerateUseCase:
 
         request = GenerationRequest(
             prompt=Prompt(value="Test"),
-            model=ModelName(value="qwen2.5vl:7b"),
+            model=ModelName(value="qwen3-vl:32b"),
         )
 
         result = await use_case.execute(
@@ -332,7 +332,7 @@ class TestGenerateUseCase:
 
         request = GenerationRequest(
             prompt=Prompt(value="Test"),
-            model=ModelName(value="qwen2.5vl:7b"),
+            model=ModelName(value="qwen3-vl:32b"),
         )
 
         result = await use_case.execute(
@@ -353,7 +353,7 @@ class TestChatUseCase:
 
         request = ChatRequest(
             messages=(ChatMessage(role="user", content="Hello!"),),
-            model=ModelName(value="qwen2.5vl:7b"),
+            model=ModelName(value="qwen3-vl:32b"),
         )
 
         result = await use_case.execute(request, request_id="test-1")
@@ -371,7 +371,7 @@ class TestChatUseCase:
                 ChatMessage(role="system", content="You are helpful"),
                 ChatMessage(role="user", content="What is 2+2?"),
             ),
-            model=ModelName(value="qwen2.5vl:7b"),
+            model=ModelName(value="qwen3-vl:32b"),
         )
 
         await use_case.execute(request, request_id="test-1")
@@ -403,7 +403,7 @@ class TestChatUseCase:
                     ),
                 ),
             ),
-            model=ModelName(value="qwen2.5vl:7b"),
+            model=ModelName(value="qwen3-vl:32b"),
         )
 
         await use_case.execute(request, request_id="test-1")
@@ -419,7 +419,7 @@ class TestChatUseCase:
 
         request = ChatRequest(
             messages=(ChatMessage(role="user", content="Test"),),
-            model=ModelName(value="qwen2.5vl:7b"),
+            model=ModelName(value="qwen3-vl:32b"),
         )
 
         await use_case.execute(request, request_id="test-1")
@@ -449,7 +449,7 @@ class TestListModelsUseCase:
         result = await use_case.execute(request_id="test-1")
 
         assert isinstance(result[0], ModelInfo)
-        assert result[0].name == "qwen2.5vl:7b"
+        assert result[0].name == "qwen3-vl:32b"
         assert result[0].size == 5969245856
 
     async def test_execute_handles_empty_list(self, use_case_dependencies, mock_async_client):
@@ -482,7 +482,7 @@ class TestUseCaseEdgeCases:
 
         request = GenerationRequest(
             prompt=Prompt(value=""),
-            model=ModelName(value="qwen2.5vl:7b"),
+            model=ModelName(value="qwen3-vl:32b"),
         )
 
         # Should still execute (validation happens in domain)
@@ -495,7 +495,7 @@ class TestUseCaseEdgeCases:
 
         request = ChatRequest(
             messages=(),
-            model=ModelName(value="qwen2.5vl:7b"),
+            model=ModelName(value="qwen3-vl:32b"),
         )
 
         # Should still execute (validation happens in domain or client)
@@ -512,7 +512,7 @@ class TestUseCaseEdgeCases:
 
         request = GenerationRequest(
             prompt=Prompt(value="Test"),
-            model=ModelName(value="qwen2.5vl:7b"),
+            model=ModelName(value="qwen3-vl:32b"),
             options=GenerationOptions(
                 max_tokens=None,
                 seed=None,
@@ -535,7 +535,7 @@ class TestUseCaseEdgeCases:
         async def execute_request(i: int):
             request = GenerationRequest(
                 prompt=Prompt(value=f"Request {i}"),
-                model=ModelName(value="qwen2.5vl:7b"),
+                model=ModelName(value="qwen3-vl:32b"),
             )
             return await use_case.execute(request, request_id=f"test-{i}")
 

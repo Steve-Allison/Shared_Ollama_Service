@@ -23,10 +23,10 @@ class Model(StrEnum):
     the model names as recognized by the Ollama service.
     """
 
-    QWEN25_VL_7B = "qwen2.5vl:7b"  # Primary: 7B params, vision-language model
-    QWEN25_14B = "qwen2.5:14b"  # Secondary: 14.8B params
+    QWEN3_VL_32B = "qwen3-vl:32b"  # Primary: 32B params, vision-language model, 256K context
+    QWEN3_30B = "qwen3:30b"  # Secondary: 30B total (MoE), 256K context
     GRANITE_4_SMALL = (
-        "granite4:small-h"  # Granite 4.0 Small: 8B params, instruction-tuned
+        "granite4:small-h"  # Granite 4.0 Small: 32B total, 9B active, hybrid MoE, 1M context
     )
 
 
@@ -360,7 +360,7 @@ class VLMRequest:
     Attributes:
         messages: Text-only chat messages (native Ollama format).
         images: List of base64-encoded image data URLs.
-        model: Model name (should be VLM-capable like qwen2.5vl:7b).
+        model: Model name (should be VLM-capable like qwen3-vl:32b).
         options: Generation options.
         image_compression: Whether to compress images (default: True).
         max_dimension: Maximum image dimension for resizing (default: 1024).
@@ -504,7 +504,7 @@ class VLMRequestOpenAI:
 
     Attributes:
         messages: OpenAI-compatible chat messages with multimodal content.
-        model: Model name (should be VLM-capable like qwen2.5vl:7b).
+        model: Model name (should be VLM-capable like qwen3-vl:32b).
         options: Generation options.
         image_compression: Whether to compress images (default: True).
         max_dimension: Maximum image dimension for resizing (default: 1024).

@@ -365,7 +365,7 @@ def track_performance(
 
     Example:
         >>> response = None
-        >>> with track_performance("qwen2.5vl:7b", "generate"):
+        >>> with track_performance("qwen3-vl:32b", "generate"):
         ...     response = await client.generate("Hello")
         >>> # Note: response should be passed to record_performance separately
     """

@@ -18,8 +18,8 @@ echo ""
 
 # Required models
 MODELS=(
-    "qwen2.5vl:7b"
-    "qwen2.5:14b"
+    "qwen3-vl:32b"
+    "qwen3:30b"
     "granite4:small-h"
 )
 

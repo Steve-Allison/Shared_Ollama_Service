@@ -80,9 +80,9 @@ echo ""
 
 # Define models to pull
 MODELS=(
-    "qwen2.5vl:7b"
-    "qwen2.5vl:7b"
-    "qwen2.5:14b"
+    "qwen3-vl:32b"
+    "qwen3-vl:32b"
+    "qwen3:30b"
     "granite4:small-h"
 )
 
@@ -106,7 +106,7 @@ echo -e "  • The REST API will automatically start and manage Ollama"
 echo ""
 
 # Verify models are available
-MODELS_LIST=$(ollama list 2>/dev/null | grep -E "qwen2.5vl:7b|qwen2.5vl:7b|qwen2.5:14b" || echo "")
+MODELS_LIST=$(ollama list 2>/dev/null | grep -E "qwen3-vl:32b|qwen3-vl:32b|qwen3:30b" || echo "")
 if [ -n "$MODELS_LIST" ]; then
     echo -e "${GREEN}✓ Models verified:${NC}"
     echo "$MODELS_LIST" | while read -r line; do

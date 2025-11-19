@@ -35,9 +35,9 @@ echo ""
 
 # Model memory requirements (in GB)
 # Based on actual model sizes when loaded
-MODEL_QWEN25VL_7B=6      # qwen2.5vl:7b
-MODEL_QWEN25_7B=5       # qwen2.5vl:7b (4.5GB + buffer)
-MODEL_QWEN25_14B=10     # qwen2.5:14b (9GB + buffer)
+MODEL_QWEN25VL_7B=6      # qwen3-vl:32b
+MODEL_QWEN25_7B=5       # qwen3-vl:32b (4.5GB + buffer)
+MODEL_QWEN25_14B=10     # qwen3:30b (9GB + buffer)
 MODEL_GRANITE4_TINY=9   # granite4:small-h (8GB + buffer)
 
 # Find largest model (worst case scenario)
@@ -50,9 +50,9 @@ if [ "$PARALLEL_MODELS" -gt 3 ]; then
 fi
 
 echo -e "${CYAN}Model Memory Requirements:${NC}"
-echo "  - qwen2.5vl:7b: ${MODEL_QWEN25VL_7B} GB"
-echo "  - qwen2.5vl:7b: ${MODEL_QWEN25_7B} GB"
-echo "  - qwen2.5:14b: ${MODEL_QWEN25_14B} GB (largest)"
+echo "  - qwen3-vl:32b: ${MODEL_QWEN25VL_7B} GB"
+echo "  - qwen3-vl:32b: ${MODEL_QWEN25_7B} GB"
+echo "  - qwen3:30b: ${MODEL_QWEN25_14B} GB (largest)"
 echo "  - granite4:small-h: ${MODEL_GRANITE4_TINY} GB"
 echo ""
 

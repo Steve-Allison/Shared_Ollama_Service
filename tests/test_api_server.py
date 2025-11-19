@@ -162,8 +162,8 @@ class TestListModelsEndpoint:
     def test_list_models_success(self, api_client, mock_async_client):
         """Test successful model listing returns models list."""
         mock_models = [
-            {"name": "qwen2.5vl:7b", "size": 5969245856, "modified_at": "2025-11-03T17:24:58Z"},
-            {"name": "qwen2.5vl:7b", "size": 4730000000, "modified_at": "2025-11-03T15:00:00Z"},
+            {"name": "qwen3-vl:32b", "size": 5969245856, "modified_at": "2025-11-03T17:24:58Z"},
+            {"name": "qwen3-vl:32b", "size": 4730000000, "modified_at": "2025-11-03T15:00:00Z"},
         ]
         mock_async_client.list_models = AsyncMock(return_value=mock_models)
 
@@ -171,8 +171,8 @@ class TestListModelsEndpoint:
         data = assert_response_structure(response, 200)
         assert "models" in data
         assert len(data["models"]) == 2
-        assert data["models"][0]["name"] == "qwen2.5vl:7b"
-        assert data["models"][1]["name"] == "qwen2.5vl:7b"
+        assert data["models"][0]["name"] == "qwen3-vl:32b"
+        assert data["models"][1]["name"] == "qwen3-vl:32b"
 
     def test_list_models_empty(self, api_client, mock_async_client):
         """Test listing models when none are available returns empty list."""
@@ -226,7 +226,7 @@ class TestGenerateEndpoint:
         """Test successful generation returns GenerateResponse."""
         mock_response = GenerateResponse(
             text="Hello, world!",
-            model="qwen2.5vl:7b",
+            model="qwen3-vl:32b",
             context=None,
             total_duration=500_000_000,
             load_duration=200_000_000,
@@ -239,11 +239,11 @@ class TestGenerateEndpoint:
 
         response = api_client.post(
             "/api/v1/generate",
-            json={"prompt": "Hello", "model": "qwen2.5vl:7b"},
+            json={"prompt": "Hello", "model": "qwen3-vl:32b"},
         )
         data = assert_response_structure(response, 200)
         assert data["text"] == "Hello, world!"
-        assert data["model"] == "qwen2.5vl:7b"
+        assert data["model"] == "qwen3-vl:32b"
         assert "request_id" in data
         assert "latency_ms" in data
         assert data["model_warm_start"] is False  # load_duration > 0
@@ -252,7 +252,7 @@ class TestGenerateEndpoint:
         """Test generation with all optional parameters."""
         mock_response = GenerateResponse(
             text="Response",
-            model="qwen2.5vl:7b",
+            model="qwen3-vl:32b",
             context=None,
             total_duration=300_000_000,
             load_duration=0,  # Warm start
@@ -267,7 +267,7 @@ class TestGenerateEndpoint:
             "/api/v1/generate",
             json={
                 "prompt": "Test",
-                "model": "qwen2.5vl:7b",
+                "model": "qwen3-vl:32b",
                 "system": "You are helpful",
                 "temperature": 0.7,
                 "top_p": 0.9,
@@ -286,7 +286,7 @@ class TestGenerateEndpoint:
         """Ensure response_format=json_object becomes format='json' for backend."""
         mock_response = GenerateResponse(
             text="{}",
-            model="qwen2.5vl:7b",
+            model="qwen3-vl:32b",
             context=None,
             total_duration=100_000_000,
             load_duration=0,
@@ -318,7 +318,7 @@ class TestGenerateEndpoint:
         }
         mock_response = GenerateResponse(
             text='{"answer": "42"}',
-            model="qwen2.5vl:7b",
+            model="qwen3-vl:32b",
             context=None,
             total_duration=100_000_000,
             load_duration=0,
@@ -388,7 +388,7 @@ class TestGenerateEndpoint:
         """Test that generate endpoint uses queue for concurrency control."""
         mock_response = GenerateResponse(
             text="Response",
-            model="qwen2.5vl:7b",
+            model="qwen3-vl:32b",
             context=None,
             total_duration=300_000_000,
             load_duration=0,
@@ -470,7 +470,7 @@ class TestChatEndpoint:
         """Test successful chat returns ChatResponse."""
         mock_response = {
             "message": {"role": "assistant", "content": "Hello! How can I help?"},
-            "model": "qwen2.5vl:7b",
+            "model": "qwen3-vl:32b",
             "prompt_eval_count": 10,
             "eval_count": 15,
             "total_duration": 400_000_000,
@@ -482,13 +482,13 @@ class TestChatEndpoint:
             "/api/v1/chat",
             json={
                 "messages": [{"role": "user", "content": "Hello"}],
-                "model": "qwen2.5vl:7b",
+                "model": "qwen3-vl:32b",
             },
         )
         data = assert_response_structure(response, 200)
         assert data["message"]["role"] == "assistant"
         assert data["message"]["content"] == "Hello! How can I help?"
-        assert data["model"] == "qwen2.5vl:7b"
+        assert data["model"] == "qwen3-vl:32b"
         assert "request_id" in data
 
     def test_chat_validates_empty_messages(self, api_client, mock_async_client):
@@ -530,7 +530,7 @@ class TestChatEndpoint:
         """Test chat with conversation history."""
         mock_response = {
             "message": {"role": "assistant", "content": "Response"},
-            "model": "qwen2.5vl:7b",
+            "model": "qwen3-vl:32b",
             "prompt_eval_count": 20,
             "eval_count": 10,
             "total_duration": 500_000_000,
@@ -545,7 +545,7 @@ class TestChatEndpoint:
                     {"role": "system", "content": "You are helpful"},
                     {"role": "user", "content": "What is 2+2?"},
                 ],
-                "model": "qwen2.5vl:7b",
+                "model": "qwen3-vl:32b",
             },
         )
         data = assert_response_structure(response, 200)
@@ -555,7 +555,7 @@ class TestChatEndpoint:
         """Ensure chat response_format=json_object maps to format='json'."""
         mock_response = {
             "message": {"role": "assistant", "content": '{"name": "test"}'},
-            "model": "qwen2.5vl:7b",
+            "model": "qwen3-vl:32b",
             "prompt_eval_count": 1,
             "eval_count": 1,
             "total_duration": 100_000_000,
@@ -584,7 +584,7 @@ class TestChatEndpoint:
         }
         mock_response = {
             "message": {"role": "assistant", "content": '{"summary": "done"}'},
-            "model": "qwen2.5vl:7b",
+            "model": "qwen3-vl:32b",
             "prompt_eval_count": 1,
             "eval_count": 1,
             "total_duration": 100_000_000,
@@ -652,7 +652,7 @@ class TestRequestContext:
         """Test that X-Project-Name header is captured in context."""
         mock_response = GenerateResponse(
             text="Response",
-            model="qwen2.5vl:7b",
+            model="qwen3-vl:32b",
             context=None,
             total_duration=300_000_000,
             load_duration=0,
@@ -675,7 +675,7 @@ class TestRequestContext:
         """Test that each request gets unique request ID."""
         mock_response = GenerateResponse(
             text="Response",
-            model="qwen2.5vl:7b",
+            model="qwen3-vl:32b",
             context=None,
             total_duration=300_000_000,
             load_duration=0,
@@ -756,7 +756,7 @@ class TestAsyncFunctionality:
         """Test that endpoints handle async operations correctly."""
         mock_response = GenerateResponse(
             text="Async response",
-            model="qwen2.5vl:7b",
+            model="qwen3-vl:32b",
             context=None,
             total_duration=300_000_000,
             load_duration=0,

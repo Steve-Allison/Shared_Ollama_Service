@@ -7,7 +7,7 @@ Analyzes performance logs and generates detailed performance reports.
 
 Usage:
     python scripts/performance_report.py
-    python scripts/performance_report.py --model qwen2.5vl:7b
+    python scripts/performance_report.py --model qwen3-vl:32b
     python scripts/performance_report.py --window 60
 """
 

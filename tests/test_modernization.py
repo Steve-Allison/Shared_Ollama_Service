@@ -40,7 +40,7 @@ class TestNativeFeatures:
         MetricsCollector.reset()
         for i in range(100):
             MetricsCollector.record_request(
-                model="qwen2.5vl:7b",
+                model="qwen3-vl:32b",
                 operation="generate",
                 latency_ms=float(i),
                 success=True,
@@ -58,7 +58,7 @@ class TestNativeFeatures:
         """Test edge case: single data point for quantiles."""
         MetricsCollector.reset()
         MetricsCollector.record_request(
-            model="qwen2.5vl:7b",
+            model="qwen3-vl:32b",
             operation="generate",
             latency_ms=100.0,
             success=True,
@@ -86,7 +86,7 @@ class TestNativeFeatures:
         """Test that timestamps use UTC timezone."""
         MetricsCollector.reset()
         MetricsCollector.record_request(
-            model="qwen2.5vl:7b",
+            model="qwen3-vl:32b",
             operation="generate",
             latency_ms=50.0,
             success=True,
@@ -105,7 +105,7 @@ class TestNativeFeatures:
         MetricsCollector.reset()
 
         # Use track_request context manager which uses perf_counter
-        with track_request("qwen2.5vl:7b", "generate"):
+        with track_request("qwen3-vl:32b", "generate"):
             time.sleep(0.01)  # Sleep for 10ms
 
         metrics = MetricsCollector.get_metrics()
@@ -201,7 +201,7 @@ class TestAnalyticsExport:
         # Record some test metrics
         for i in range(10):
             AnalyticsCollector.record_request_with_project(
-                model="qwen2.5vl:7b",
+                model="qwen3-vl:32b",
                 operation="generate",
                 latency_ms=float(i * 10),
                 success=True,
@@ -231,7 +231,7 @@ class TestAnalyticsExport:
         # Record some test metrics
         for i in range(5):
             AnalyticsCollector.record_request_with_project(
-                model="qwen2.5vl:7b",
+                model="qwen3-vl:32b",
                 operation="generate",
                 latency_ms=float(i * 10),
                 success=True,
@@ -259,14 +259,14 @@ class TestAnalyticsExport:
 
         # Need at least 2 requests for analytics to have start/end times
         AnalyticsCollector.record_request_with_project(
-            model="qwen2.5vl:7b",
+            model="qwen3-vl:32b",
             operation="generate",
             latency_ms=50.0,
             success=True,
             project="datetime_test",
         )
         AnalyticsCollector.record_request_with_project(
-            model="qwen2.5vl:7b",
+            model="qwen3-vl:32b",
             operation="generate",
             latency_ms=60.0,
             success=True,
@@ -297,7 +297,7 @@ class TestPerformanceLogging:
         # Create a mock response with Ollama internal metrics
         mock_response = GenerateResponse(
             text="Hello!",
-            model="qwen2.5vl:7b",
+            model="qwen3-vl:32b",
             total_duration=1000000000,  # 1 second in nanoseconds
             load_duration=100000000,  # 100ms
             prompt_eval_count=10,
@@ -307,7 +307,7 @@ class TestPerformanceLogging:
         )
 
         PerformanceCollector.record_performance(
-            model="qwen2.5vl:7b",
+            model="qwen3-vl:32b",
             operation="generate",
             total_latency_ms=1000.0,
             success=True,
@@ -317,7 +317,7 @@ class TestPerformanceLogging:
         stats = PerformanceCollector.get_performance_stats()
         assert stats["total_requests"] == 1
         assert stats["avg_tokens_per_second"] > 0
-        assert "qwen2.5vl:7b" in stats["by_model"]
+        assert "qwen3-vl:32b" in stats["by_model"]
 
     def test_track_performance_context_manager(self):
         """Test track_performance context manager."""
@@ -325,13 +325,13 @@ class TestPerformanceLogging:
 
         # The context manager needs response to be passed after the block completes
         # So we need to test this differently - just verify it records the request
-        with track_performance("qwen2.5vl:7b", "generate"):
+        with track_performance("qwen3-vl:32b", "generate"):
             time.sleep(0.01)
 
         # Verify a metric was recorded (even without detailed performance data)
         metrics = getattr(PerformanceCollector, "_metrics", [])
         assert len(metrics) == 1
-        assert metrics[0].model == "qwen2.5vl:7b"
+        assert metrics[0].model == "qwen3-vl:32b"
         assert metrics[0].total_latency_ms >= 10.0
 
 
@@ -383,7 +383,7 @@ class TestProjectTracking:
         AnalyticsCollector._project_metadata.clear()
 
         AnalyticsCollector.record_request_with_project(
-            model="qwen2.5vl:7b",
+            model="qwen3-vl:32b",
             operation="generate",
             latency_ms=50.0,
             success=True,
@@ -401,7 +401,7 @@ class TestProjectTracking:
         AnalyticsCollector._project_metadata.clear()
 
         with track_request_with_project(
-            "qwen2.5vl:7b", "generate", project="test_project"
+            "qwen3-vl:32b", "generate", project="test_project"
         ):
             time.sleep(0.01)
 
@@ -416,14 +416,14 @@ class TestProjectTracking:
 
         # Record metrics for different projects
         AnalyticsCollector.record_request_with_project(
-            model="qwen2.5vl:7b",
+            model="qwen3-vl:32b",
             operation="generate",
             latency_ms=50.0,
             success=True,
             project="project_a",
         )
         AnalyticsCollector.record_request_with_project(
-            model="qwen2.5vl:7b",
+            model="qwen3-vl:32b",
             operation="generate",
             latency_ms=60.0,
             success=True,
@@ -450,7 +450,7 @@ class TestTypeHints:
         from contextlib import _GeneratorContextManager
 
         MetricsCollector.reset()
-        cm = track_request("qwen2.5vl:7b", "generate")
+        cm = track_request("qwen3-vl:32b", "generate")
 
         # Context managers from @contextmanager are _GeneratorContextManager
         assert isinstance(cm, _GeneratorContextManager)
@@ -460,7 +460,7 @@ class TestTypeHints:
         from contextlib import _GeneratorContextManager
 
         MetricsCollector.reset()
-        cm = track_request_with_project("qwen2.5vl:7b", "generate", project="test")
+        cm = track_request_with_project("qwen3-vl:32b", "generate", project="test")
 
         # Context managers from @contextmanager are _GeneratorContextManager
         assert isinstance(cm, _GeneratorContextManager)
@@ -475,7 +475,7 @@ class TestErrorPreservation:
 
         # Simulate an error during tracking
         try:
-            with track_request("qwen2.5vl:7b", "generate"):
+            with track_request("qwen3-vl:32b", "generate"):
                 raise ValueError("Test error message")
         except ValueError:
             pass

@@ -462,7 +462,7 @@ class ModelInfo(BaseModel):
     Represents metadata for a single model available in the Ollama service.
 
     Attributes:
-        name: Model name (e.g., "qwen2.5vl:7b").
+        name: Model name (e.g., "qwen3-vl:32b").
         size: Model size in bytes (>=0). None if size information unavailable.
         modified_at: Last modification time as ISO 8601 string. None if unavailable.
     """
@@ -626,7 +626,7 @@ class VLMRequest(BaseModel):
     Attributes:
         messages: List of text-only chat messages. Required.
         images: List of base64-encoded images (data URLs). Required, min 1 image.
-        model: VLM model name (default: qwen2.5vl:7b).
+        model: VLM model name (default: qwen3-vl:32b).
         stream: Whether to stream the response. Defaults to False.
         format: Output format specification. Can be:
             - "json" for JSON mode
@@ -658,7 +658,7 @@ class VLMRequest(BaseModel):
         min_length=1,
         description="List of base64-encoded images as data URLs (data:image/...;base64,...)",
     )
-    model: str | None = Field("qwen2.5vl:7b", description="VLM model (default: qwen2.5vl:7b)")
+    model: str | None = Field("qwen3-vl:32b", description="VLM model (default: qwen3-vl:32b)")
     stream: bool = Field(False, description="Whether to stream the response")
     format: str | dict[str, Any] | None = Field(
         None,
@@ -811,7 +811,7 @@ class VLMRequestOpenAI(BaseModel):
 
     Attributes:
         messages: List of OpenAI-compatible chat messages with multimodal content.
-        model: VLM model name (default: qwen2.5vl:7b).
+        model: VLM model name (default: qwen3-vl:32b).
         stream: Whether to stream the response. Defaults to False.
         temperature: Sampling temperature (0.0-2.0). Optional.
         top_p: Nucleus sampling parameter (0.0-1.0). Optional.
@@ -834,7 +834,7 @@ class VLMRequestOpenAI(BaseModel):
     messages: list[ChatMessageOpenAI] = Field(
         ..., min_length=1, description="List of OpenAI-compatible chat messages"
     )
-    model: str | None = Field("qwen2.5vl:7b", description="VLM model (default: qwen2.5vl:7b)")
+    model: str | None = Field("qwen3-vl:32b", description="VLM model (default: qwen3-vl:32b)")
     stream: bool = Field(False, description="Whether to stream the response")
     format: str | dict[str, Any] | None = Field(
         None,

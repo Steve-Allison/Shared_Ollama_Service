@@ -105,18 +105,18 @@ echo ""
 
 # Quick health test
 echo -e "${BLUE}Health Check:${NC}"
-if echo "$MODELS_LIST" | grep -q "qwen2.5vl:7b"; then
+if echo "$MODELS_LIST" | grep -q "qwen3-vl:32b"; then
     echo "  Testing model generation..."
     TEST_RESPONSE=$(curl -s -X POST "${API_ENDPOINT}/generate" \
         -H "Content-Type: application/json" \
-        -d '{"model": "qwen2.5vl:7b", "prompt": "Say OK", "stream": false}' \
+        -d '{"model": "qwen3-vl:32b", "prompt": "Say OK", "stream": false}' \
         2>/dev/null)
 
     # Check for error field first (model not found, etc.)
     if echo "$TEST_RESPONSE" | jq -e '.error' > /dev/null 2>&1; then
         ERROR_MSG=$(echo "$TEST_RESPONSE" | jq -r '.error' 2>/dev/null || echo "unknown error")
         echo -e "${RED}  ✗ Generation test failed: ${ERROR_MSG}${NC}"
-        echo "    Model is listed but not usable. Try: ollama pull qwen2.5vl:7b"
+        echo "    Model is listed but not usable. Try: ollama pull qwen3-vl:32b"
     # Check for successful response
     elif echo "$TEST_RESPONSE" | jq -e '.response' > /dev/null 2>&1; then
         echo -e "${GREEN}  ✓ Generation test passed${NC}"
@@ -125,7 +125,7 @@ if echo "$MODELS_LIST" | grep -q "qwen2.5vl:7b"; then
         echo "    Response: $(echo "$TEST_RESPONSE" | head -c 100)"
     fi
 else
-    echo -e "${YELLOW}  ⚠ Cannot test - qwen2.5vl:7b not available${NC}"
+    echo -e "${YELLOW}  ⚠ Cannot test - qwen3-vl:32b not available${NC}"
 fi
 
 echo ""

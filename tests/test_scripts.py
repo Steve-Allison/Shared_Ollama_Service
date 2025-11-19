@@ -18,7 +18,7 @@ from shared_ollama import (
 def test_async_load_test_cli_smoke(ollama_server):
     args = argparse.Namespace(
         base_url=ollama_server.base_url,
-        model="qwen2.5vl:7b",
+        model="qwen3-vl:32b",
         prompt="Load test prompt",
         workers=2,
         concurrency=None,
@@ -45,9 +45,9 @@ def test_view_analytics_dashboard_outputs(ollama_server):
     MetricsCollector.reset()
     AnalyticsCollector._project_metadata.clear()
 
-    with track_request("qwen2.5vl:7b", "generate"):
+    with track_request("qwen3-vl:32b", "generate"):
         pass
-    with track_request_with_project("qwen2.5vl:7b", "generate", project="proj-cli"):
+    with track_request_with_project("qwen3-vl:32b", "generate", project="proj-cli"):
         pass
 
     buffer = io.StringIO()
@@ -63,7 +63,7 @@ def test_performance_report_parsing(tmp_path):
     log_file = tmp_path / "perf.jsonl"
     entry = {
         "timestamp": "2025-11-12T12:00:00Z",
-        "model": "qwen2.5vl:7b",
+        "model": "qwen3-vl:32b",
         "success": True,
         "tokens_per_second": 120.0,
         "load_time_ms": 150.0,

@@ -65,9 +65,9 @@ rm -rf ~/.ollama/models/*
 
 ### Model Size Reference
 
-- **qwen2.5vl:7b**: ~6 GB
-- **qwen2.5vl:7b**: ~4.5 GB
-- **qwen2.5:14b**: ~9 GB
+- **qwen3-vl:32b**: ~6 GB
+- **qwen3-vl:32b**: ~4.5 GB
+- **qwen3:30b**: ~9 GB
 - **granite4:small-h**: ~4.2 GB
 
 **Total if all loaded**: ~23.7 GB in `~/.ollama/models/`
@@ -92,7 +92,7 @@ du -sh ~/.ollama/
 ollama list
 
 # Show model details
-ollama show qwen2.5vl:7b
+ollama show qwen3-vl:32b
 ```
 
 ### Disk Space Management

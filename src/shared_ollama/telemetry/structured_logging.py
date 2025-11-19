@@ -114,7 +114,7 @@ def log_request_event(event: dict[str, Any]) -> None:
         ...     "event": "api_request",
         ...     "operation": "generate",
         ...     "status": "success",
-        ...     "model": "qwen2.5vl:7b",
+        ...     "model": "qwen3-vl:32b",
         ...     "latency_ms": 1234.56
         ... })
     """

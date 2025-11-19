@@ -17,8 +17,8 @@ API_ENDPOINT="${OLLAMA_URL}/api"
 
 # Models to warm up (primary models, in priority order)
 MODELS=(
-    "qwen2.5vl:7b"
-    "qwen2.5:14b"
+    "qwen3-vl:32b"
+    "qwen3:30b"
 )
 
 # Optional: keep-alive duration for warm-up (default: 30 minutes)

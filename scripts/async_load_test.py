@@ -217,7 +217,7 @@ async def run_load_test(args: argparse.Namespace) -> dict[str, Any]:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Async load tester for the Shared Ollama Service.")
     parser.add_argument("--base-url", default="http://localhost:11434", help="Ollama service base URL.")
-    parser.add_argument("--model", default="qwen2.5vl:7b", help="Model to exercise during the test.")
+    parser.add_argument("--model", default="qwen3-vl:32b", help="Model to exercise during the test.")
     parser.add_argument(
         "--prompt",
         default="Summarize the concept of vector databases in one short paragraph.",

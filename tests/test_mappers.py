@@ -167,14 +167,14 @@ class TestGenerationRequestMapper:
 
     def test_api_to_domain_generation_request_converts_basic_request(self):
         """Test that api_to_domain_generation_request converts basic request."""
-        api_req = APIGenerateRequest(prompt="Hello, world!", model="qwen2.5vl:7b")
+        api_req = APIGenerateRequest(prompt="Hello, world!", model="qwen3-vl:32b")
 
         domain_req = api_to_domain_generation_request(api_req)
 
         assert isinstance(domain_req, GenerationRequest)
         assert domain_req.prompt.value == "Hello, world!"
         assert domain_req.model is not None
-        assert domain_req.model.value == "qwen2.5vl:7b"
+        assert domain_req.model.value == "qwen3-vl:32b"
         assert domain_req.system is None
         assert domain_req.options is None
 
@@ -182,7 +182,7 @@ class TestGenerationRequestMapper:
         """Test that mapper includes system message when provided."""
         api_req = APIGenerateRequest(
             prompt="Test",
-            model="qwen2.5vl:7b",
+            model="qwen3-vl:32b",
             system="You are helpful",
         )
 
@@ -195,7 +195,7 @@ class TestGenerationRequestMapper:
         """Test that mapper creates GenerationOptions when any option is provided."""
         api_req = APIGenerateRequest(
             prompt="Test",
-            model="qwen2.5vl:7b",
+            model="qwen3-vl:32b",
             temperature=0.7,
             top_p=0.95,
             max_tokens=100,
@@ -212,7 +212,7 @@ class TestGenerationRequestMapper:
         """Test that mapper handles None option values correctly."""
         api_req = APIGenerateRequest(
             prompt="Test",
-            model="qwen2.5vl:7b",
+            model="qwen3-vl:32b",
             temperature=None,
             top_p=None,
             max_tokens=None,
@@ -227,7 +227,7 @@ class TestGenerationRequestMapper:
         """Test that mapper uses defaults for partial option values."""
         api_req = APIGenerateRequest(
             prompt="Test",
-            model="qwen2.5vl:7b",
+            model="qwen3-vl:32b",
             temperature=0.7,
             # top_p and top_k not provided
         )
@@ -243,7 +243,7 @@ class TestGenerationRequestMapper:
         """Test that mapper includes tools when provided."""
         api_req = APIGenerateRequest(
             prompt="Test",
-            model="qwen2.5vl:7b",
+            model="qwen3-vl:32b",
             tools=[
                 APITool(
                     type="function",
@@ -266,7 +266,7 @@ class TestGenerationRequestMapper:
         """Test that mapper handles format='json' correctly."""
         api_req = APIGenerateRequest(
             prompt="Test",
-            model="qwen2.5vl:7b",
+            model="qwen3-vl:32b",
             format="json",
         )
 
@@ -278,7 +278,7 @@ class TestGenerationRequestMapper:
         """Test that mapper handles response_format with json_object type."""
         api_req = APIGenerateRequest(
             prompt="Test",
-            model="qwen2.5vl:7b",
+            model="qwen3-vl:32b",
             response_format=ResponseFormat(type="json_object"),
         )
 
@@ -291,7 +291,7 @@ class TestGenerationRequestMapper:
         schema = {"type": "object", "properties": {"name": {"type": "string"}}}
         api_req = APIGenerateRequest(
             prompt="Test",
-            model="qwen2.5vl:7b",
+            model="qwen3-vl:32b",
             response_format=ResponseFormat(type="json_schema", json_schema=schema),
         )
 
@@ -316,7 +316,7 @@ class TestChatRequestMapper:
         """Test that api_to_domain_chat_request converts basic request."""
         api_req = APIChatRequest(
             messages=[APIChatMessage(role="user", content="Hello!")],
-            model="qwen2.5vl:7b",
+            model="qwen3-vl:32b",
         )
 
         domain_req = api_to_domain_chat_request(api_req)
@@ -326,7 +326,7 @@ class TestChatRequestMapper:
         assert domain_req.messages[0].role == "user"
         assert domain_req.messages[0].content == "Hello!"
         assert domain_req.model is not None
-        assert domain_req.model.value == "qwen2.5vl:7b"
+        assert domain_req.model.value == "qwen3-vl:32b"
 
     def test_api_to_domain_chat_request_handles_multiple_messages(self):
         """Test that mapper handles multiple messages correctly."""
@@ -336,7 +336,7 @@ class TestChatRequestMapper:
                 APIChatMessage(role="user", content="What is 2+2?"),
                 APIChatMessage(role="assistant", content="4"),
             ],
-            model="qwen2.5vl:7b",
+            model="qwen3-vl:32b",
         )
 
         domain_req = api_to_domain_chat_request(api_req)
@@ -362,7 +362,7 @@ class TestChatRequestMapper:
                     ],
                 )
             ],
-            model="qwen2.5vl:7b",
+            model="qwen3-vl:32b",
         )
 
         domain_req = api_to_domain_chat_request(api_req)
@@ -381,7 +381,7 @@ class TestChatRequestMapper:
                     tool_call_id="call_1",
                 )
             ],
-            model="qwen2.5vl:7b",
+            model="qwen3-vl:32b",
         )
 
         domain_req = api_to_domain_chat_request(api_req)
@@ -394,7 +394,7 @@ class TestChatRequestMapper:
 
         # Chat requests must have at least one message
         with pytest.raises(ValidationError, match="at least 1 item"):
-            APIChatRequest(messages=[], model="qwen2.5vl:7b")
+            APIChatRequest(messages=[], model="qwen3-vl:32b")
 
     def test_api_to_domain_chat_request_handles_none_model(self):
         """Test that mapper handles None model correctly."""
@@ -413,7 +413,7 @@ class TestVLMRequestMapper:
         api_req = APIVLMRequest(
             messages=[APIMessage(role="user", content="What's in this image?")],
             images=["data:image/jpeg;base64,/9j/4AAQSkZJRg=="],
-            model="qwen2.5vl:7b",
+            model="qwen3-vl:32b",
         )
 
         domain_req = api_to_domain_vlm_request(api_req)
@@ -422,7 +422,7 @@ class TestVLMRequestMapper:
         assert len(domain_req.messages) == 1
         assert len(domain_req.images) == 1
         assert domain_req.model is not None
-        assert domain_req.model.value == "qwen2.5vl:7b"
+        assert domain_req.model.value == "qwen3-vl:32b"
 
     def test_api_to_domain_vlm_request_handles_multiple_images(self):
         """Test that mapper handles multiple images correctly."""
@@ -432,7 +432,7 @@ class TestVLMRequestMapper:
                 "data:image/jpeg;base64,/9j/4AAQSkZJRg==",
                 "data:image/png;base64,iVBORw0KGgoAAAANSUhEUg==",
             ],
-            model="qwen2.5vl:7b",
+            model="qwen3-vl:32b",
         )
 
         domain_req = api_to_domain_vlm_request(api_req)
@@ -454,7 +454,7 @@ class TestVLMRequestMapper:
                     ],
                 )
             ],
-            model="qwen2.5vl:7b",
+            model="qwen3-vl:32b",
         )
 
         domain_req = api_to_domain_vlm_request_openai(api_req)
@@ -477,7 +477,7 @@ class TestVLMRequestMapper:
                         content=[TextContentPart(type="text", text="Hello!")],
                     )
                 ],
-                model="qwen2.5vl:7b",
+                model="qwen3-vl:32b",
             )
 
     def test_api_to_domain_vlm_request_openai_handles_image_only_messages(self):
@@ -494,7 +494,7 @@ class TestVLMRequestMapper:
                     ],
                 )
             ],
-            model="qwen2.5vl:7b",
+            model="qwen3-vl:32b",
         )
 
         domain_req = api_to_domain_vlm_request_openai(api_req)
@@ -509,7 +509,7 @@ class TestVLMRequestMapper:
         api_req = APIVLMRequest(
             messages=[APIMessage(role="user", content="Test")],
             images=["data:image/jpeg;base64,/9j/4AAQSkZJRg=="],
-            model="qwen2.5vl:7b",
+            model="qwen3-vl:32b",
             image_compression=True,
             max_dimension=1024,
         )
@@ -526,7 +526,7 @@ class TestModelInfoMapper:
     def test_domain_to_api_model_info_converts_correctly(self):
         """Test that domain_to_api_model_info converts domain model to API model."""
         domain_model = ModelInfo(
-            name="qwen2.5vl:7b",
+            name="qwen3-vl:32b",
             size=5969245856,
             modified_at="2025-11-03T17:24:58.744838946Z",
         )
@@ -534,7 +534,7 @@ class TestModelInfoMapper:
         api_model = domain_to_api_model_info(domain_model)
 
         assert isinstance(api_model, APIModelInfo)
-        assert api_model.name == "qwen2.5vl:7b"
+        assert api_model.name == "qwen3-vl:32b"
         assert api_model.size == 5969245856
         assert api_model.modified_at == "2025-11-03T17:24:58.744838946Z"
 
@@ -558,14 +558,14 @@ class TestMapperEdgeCases:
 
         # Empty prompt should be rejected by Pydantic validation
         with pytest.raises(ValidationError, match="at least 1 character"):
-            APIGenerateRequest(prompt="", model="qwen2.5vl:7b")
+            APIGenerateRequest(prompt="", model="qwen3-vl:32b")
 
     def test_chat_request_mapper_handles_very_long_content(self):
         """Test that mapper handles very long message content."""
         long_content = "A" * 10000
         api_req = APIChatRequest(
             messages=[APIChatMessage(role="user", content=long_content)],
-            model="qwen2.5vl:7b",
+            model="qwen3-vl:32b",
         )
 
         domain_req = api_to_domain_chat_request(api_req)
@@ -578,7 +578,7 @@ class TestMapperEdgeCases:
         api_req = APIVLMRequest(
             messages=[APIMessage(role="user", content="Analyze these")],
             images=images,
-            model="qwen2.5vl:7b",
+            model="qwen3-vl:32b",
         )
 
         domain_req = api_to_domain_vlm_request(api_req)

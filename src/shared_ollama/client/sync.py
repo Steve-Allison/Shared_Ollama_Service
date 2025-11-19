@@ -45,10 +45,10 @@ class Model(StrEnum):
     the model names as recognized by the Ollama service.
     """
 
-    QWEN25_VL_7B = "qwen2.5vl:7b"  # Primary: 7B params, vision-language model
-    QWEN25_14B = "qwen2.5:14b"  # Secondary: 14.8B params
+    QWEN3_VL_32B = "qwen3-vl:32b"  # Primary: 32B params, vision-language model, 256K context
+    QWEN3_30B = "qwen3:30b"  # Secondary: 30B total (MoE), 256K context
     GRANITE_4_SMALL = (
-        "granite4:small-h"  # Granite 4.0 Small: 8B params, instruction-tuned
+        "granite4:small-h"  # Granite 4.0 Small: 32B total, 9B active, hybrid MoE, 1M context
     )
 
 
@@ -656,7 +656,7 @@ class SharedOllamaClient:
         This is a long-running operation that may take several minutes.
 
         Args:
-            model: Model name to pull (e.g., "qwen2.5vl:7b").
+            model: Model name to pull (e.g., "qwen3-vl:32b").
 
         Returns:
             Dictionary with pull response and status information.

@@ -577,7 +577,7 @@ def track_request_with_project(
         - Logs error information if exception occurs
 
     Example:
-        >>> with track_request_with_project("qwen2.5vl:7b", "generate", "my-project"):
+        >>> with track_request_with_project("qwen3-vl:32b", "generate", "my-project"):
         ...     result = await client.generate("Hello")
     """
     start_time = time.perf_counter()

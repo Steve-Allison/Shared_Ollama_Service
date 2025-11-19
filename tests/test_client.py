@@ -152,7 +152,7 @@ class TestSharedOllamaClient:
         models = client.list_models()
 
         assert len(models) >= 2
-        assert any(model["name"] == "qwen2.5vl:7b" for model in models)
+        assert any(model["name"] == "qwen3-vl:32b" for model in models)
 
     def test_list_models_handles_empty_response(self, ollama_server):
         """Test that list_models() handles empty models list."""
@@ -192,7 +192,7 @@ class TestSharedOllamaClient:
 
         assert isinstance(response, GenerateResponse)
         assert response.text.startswith("ECHO: Hello, world!")
-        assert response.model == "qwen2.5vl:7b"
+        assert response.model == "qwen3-vl:32b"
 
     def test_generate_extracts_all_metrics(self, ollama_server):
         """Test that generate() extracts all performance metrics from response."""
@@ -433,11 +433,11 @@ class TestSharedOllamaClient:
         config = OllamaConfig(base_url=ollama_server.base_url)
         client = SharedOllamaClient(config=config, verify_on_init=False)
 
-        model_info = client.get_model_info("qwen2.5vl:7b")
+        model_info = client.get_model_info("qwen3-vl:32b")
 
         assert model_info is not None
         assert isinstance(model_info, dict)
-        assert model_info["name"] == "qwen2.5vl:7b"
+        assert model_info["name"] == "qwen3-vl:32b"
 
     def test_get_model_info_returns_none_when_not_found(self, ollama_server):
         """Test that get_model_info() returns None when model not found."""
@@ -454,10 +454,10 @@ class TestSharedOllamaClient:
         client = SharedOllamaClient(config=config, verify_on_init=False)
 
         # First call should call list_models
-        model_info1 = client.get_model_info("qwen2.5vl:7b")
+        model_info1 = client.get_model_info("qwen3-vl:32b")
 
         # Second call should use cache (no additional HTTP call)
-        model_info2 = client.get_model_info("qwen2.5vl:7b")
+        model_info2 = client.get_model_info("qwen3-vl:32b")
 
         assert model_info1 == model_info2
         # Both should return the same model info

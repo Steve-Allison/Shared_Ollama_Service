@@ -65,7 +65,7 @@ fi
 # Verify required models are available
 echo "Checking required models..."
 
-REQUIRED_MODELS=("qwen2.5vl:7b" "qwen2.5vl:7b" "qwen2.5:14b" "granite4:small-h")
+REQUIRED_MODELS=("qwen3-vl:32b" "qwen3-vl:32b" "qwen3:30b" "granite4:small-h")
 MODELS_JSON=$(curl -s "${API_ENDPOINT}/tags" 2>/dev/null || echo "")
 MODELS_LIST=$(echo "$MODELS_JSON" | jq -r '.models[].name' 2>/dev/null || echo "")
 

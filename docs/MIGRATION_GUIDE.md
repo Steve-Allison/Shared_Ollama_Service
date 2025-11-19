@@ -50,7 +50,7 @@ class OllamaConfig(BaseSettings):
 **After:**
 ```python
 class OllamaConfig(BaseSettings):
-    default_model: str = "qwen2.5vl:7b"
+    default_model: str = "qwen3-vl:32b"
     base_url: str = "http://localhost:11434"  # Add this
 ```
 
@@ -83,7 +83,7 @@ generation:
 generation:
   ollama:
     base_url: "http://localhost:11434"  # Already correct
-    model: "qwen2.5vl:7b"  # or "qwen2.5vl:7b" or "qwen2.5:14b" or "granite4:small-h" for alternative models
+    model: "qwen3-vl:32b"  # or "qwen3-vl:32b" or "qwen3:30b" or "granite4:small-h" for alternative models
 ```
 
 **Optional**: Update client code to use shared client:
@@ -117,7 +117,7 @@ class OllamaConfig(BaseModel):
         default="http://localhost:11434"  # Already correct!
     )
     model: str = Field(
-        default="qwen2.5vl:7b"  # Or use qwen2.5vl:7b or qwen2.5:14b or granite4:small-h if needed
+        default="qwen3-vl:32b"  # Or use qwen3-vl:32b or qwen3:30b or granite4:small-h if needed
     )
 ```
 
@@ -243,9 +243,9 @@ docker-compose up -d ollama
 **Solution:**
 ```bash
 cd Shared_Ollama_Service
-docker-compose exec ollama ollama pull qwen2.5vl:7b
-docker-compose exec ollama ollama pull qwen2.5vl:7b
-docker-compose exec ollama ollama pull qwen2.5:14b
+docker-compose exec ollama ollama pull qwen3-vl:32b
+docker-compose exec ollama ollama pull qwen3-vl:32b
+docker-compose exec ollama ollama pull qwen3:30b
 docker-compose exec ollama ollama pull granite4:small-h
 ```
 
@@ -281,7 +281,7 @@ docker-compose restart ollama
 
 ### Issue: Different model versions
 
-Some projects might expect specific model versions (e.g., `qwen2.5vl:7b` vs `qwen2.5vl:7b` vs `qwen2.5:14b`).
+Some projects might expect specific model versions (e.g., `qwen3-vl:32b` vs `qwen3-vl:32b` vs `qwen3:30b`).
 
 **Solution:**
 1. Pull both versions
@@ -289,7 +289,7 @@ Some projects might expect specific model versions (e.g., `qwen2.5vl:7b` vs `qwe
 3. Or create aliases in Ollama:
 
 ```bash
-docker-compose exec ollama ollama create qwen2.5vl:7b -f Modelfile
+docker-compose exec ollama ollama create qwen3-vl:32b -f Modelfile
 ```
 
 ## Verification Checklist

@@ -138,6 +138,46 @@ response = requests.post(
 print(response.json()["message"]["content"])
 ```
 
+**Force JSON Output (OpenAI-Compatible `response_format`):**
+
+```python
+import requests
+
+response = requests.post(
+    "http://localhost:8000/api/v1/chat",
+    json={
+        "messages": [{"role": "user", "content": "Return a JSON object"}],
+        "response_format": {"type": "json_object"}  # Automatically forwards format="json" to Ollama
+    },
+)
+print(response.json()["message"]["content"])  # Guaranteed JSON string
+```
+
+**Custom JSON Schema Constraint:**
+
+```python
+schema = {
+    "type": "object",
+    "properties": {
+        "answer": {"type": "string"},
+        "confidence": {"type": "number"}
+    },
+    "required": ["answer"]
+}
+
+response = requests.post(
+    "http://localhost:8000/api/v1/chat",
+    json={
+        "messages": [{"role": "user", "content": "Summarize this in JSON"}],
+        "response_format": {
+            "type": "json_schema",
+            "json_schema": {"name": "summary_schema", "schema": schema}
+        }
+    },
+)
+print(response.json()["message"]["content"])
+```
+
 **VLM with Images (`/api/v1/vlm` - Native Ollama Format):**
 
 ```python

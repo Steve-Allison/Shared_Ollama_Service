@@ -1,7 +1,8 @@
 """Infrastructure adapters implementing application layer interfaces.
 
 These adapters wrap infrastructure implementations (HTTP clients, loggers,
-metrics collectors) to satisfy the protocols defined in the application layer.
+metrics collectors, image processors, caches, analytics, performance) to
+satisfy the protocols defined in the application layer.
 
 This enables dependency inversion: the application layer depends on interfaces,
 not concrete implementations.
@@ -12,13 +13,19 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING, Any
 
+from shared_ollama.telemetry.analytics import AnalyticsCollector
 from shared_ollama.telemetry.metrics import MetricsCollector
+from shared_ollama.telemetry.performance import PerformanceCollector
 from shared_ollama.telemetry.structured_logging import log_request_event
 
 if TYPE_CHECKING:
     from shared_ollama.client import AsyncSharedOllamaClient
+    from shared_ollama.infrastructure.image_cache import ImageCache
+    from shared_ollama.infrastructure.image_processing import ImageProcessor
 else:
     from shared_ollama.client import AsyncSharedOllamaClient
+    from shared_ollama.infrastructure.image_cache import ImageCache
+    from shared_ollama.infrastructure.image_processing import ImageProcessor
 
 from shared_ollama.client.sync import GenerateOptions
 
@@ -261,4 +268,185 @@ class MetricsCollectorAdapter:
             latency_ms=latency_ms,
             success=success,
             error=error,
+        )
+
+
+class ImageProcessorAdapter:
+    """Adapter that wraps ImageProcessor to implement ImageProcessorInterface.
+
+    This adapter bridges the gap between the infrastructure image processing
+    implementation and the application layer interface.
+    """
+
+    def __init__(self, processor: ImageProcessor) -> None:
+        """Initialize the adapter.
+
+        Args:
+            processor: ImageProcessor instance to wrap.
+        """
+        self._processor = processor
+
+    def validate_data_url(self, data_url: str) -> tuple[str, bytes]:
+        """Validate and parse image data URL.
+
+        Args:
+            data_url: Base64-encoded data URL.
+
+        Returns:
+            Tuple of (format, image_bytes).
+
+        Raises:
+            ValueError: If data URL is invalid.
+        """
+        return self._processor.validate_data_url(data_url)
+
+    def process_image(
+        self,
+        data_url: str,
+        target_format: str = "jpeg",
+    ) -> tuple[str, Any]:  # Returns (base64_string, ImageMetadata)
+        """Process and optimize image for VLM model.
+
+        Args:
+            data_url: Base64-encoded data URL.
+            target_format: Target image format ("jpeg", "png", or "webp").
+
+        Returns:
+            Tuple of (base64_string, metadata).
+
+        Raises:
+            ValueError: If image is invalid.
+        """
+        return self._processor.process_image(data_url, target_format=target_format)
+
+
+class ImageCacheAdapter:
+    """Adapter that wraps ImageCache to implement ImageCacheInterface.
+
+    This adapter bridges the gap between the infrastructure image cache
+    implementation and the application layer interface.
+    """
+
+    def __init__(self, cache: ImageCache) -> None:
+        """Initialize the adapter.
+
+        Args:
+            cache: ImageCache instance to wrap.
+        """
+        self._cache = cache
+
+    def get(
+        self,
+        data_url: str,
+        target_format: str,
+    ) -> tuple[str, Any] | None:  # Returns (base64_string, ImageMetadata) | None
+        """Get cached processed image.
+
+        Args:
+            data_url: Original data URL.
+            target_format: Target format.
+
+        Returns:
+            Tuple of (base64_string, metadata) if cached and valid, None otherwise.
+        """
+        return self._cache.get(data_url, target_format)
+
+    def put(
+        self,
+        data_url: str,
+        target_format: str,
+        base64_string: str,
+        metadata: Any,  # ImageMetadata
+    ) -> None:
+        """Cache processed image.
+
+        Args:
+            data_url: Original data URL.
+            target_format: Target format.
+            base64_string: Processed base64 string.
+            metadata: Image metadata.
+        """
+        self._cache.put(data_url, target_format, base64_string, metadata)
+
+    def get_stats(self) -> dict[str, int | float]:
+        """Get cache statistics.
+
+        Returns:
+            Dictionary with cache stats (size, hits, misses, hit_rate, etc.).
+        """
+        return self._cache.get_stats()
+
+
+class AnalyticsCollectorAdapter:
+    """Adapter that wraps AnalyticsCollector to implement AnalyticsCollectorInterface.
+
+    This adapter bridges the gap between the infrastructure analytics
+    implementation and the application layer interface.
+
+    Attributes:
+        None. Uses the global AnalyticsCollector class.
+    """
+
+    def record_request_with_project(
+        self,
+        model: str,
+        operation: str,
+        latency_ms: float,
+        success: bool,
+        project: str | None = None,
+        error: str | None = None,
+    ) -> None:
+        """Record a request metric with project tracking.
+
+        Args:
+            model: Model name or "system" for non-model operations.
+            operation: Operation name (e.g., "generate", "chat", "vlm").
+            latency_ms: Request latency in milliseconds.
+            success: Whether the request succeeded.
+            project: Project name from X-Project-Name header. Optional.
+            error: Error name if request failed, None if succeeded.
+        """
+        AnalyticsCollector.record_request_with_project(
+            model=model,
+            operation=operation,
+            latency_ms=latency_ms,
+            success=success,
+            project=project,
+            error=error,
+        )
+
+
+class PerformanceCollectorAdapter:
+    """Adapter that wraps PerformanceCollector to implement PerformanceCollectorInterface.
+
+    This adapter bridges the gap between the infrastructure performance
+    implementation and the application layer interface.
+
+    Attributes:
+        None. Uses the global PerformanceCollector class.
+    """
+
+    def record_performance(
+        self,
+        model: str,
+        operation: str,
+        total_latency_ms: float,
+        success: bool,
+        response: dict[str, Any] | None = None,
+    ) -> None:
+        """Record detailed performance metrics.
+
+        Args:
+            model: Model name used for the request.
+            operation: Operation type (e.g., "generate", "chat", "vlm").
+            total_latency_ms: Total request latency in milliseconds.
+            success: Whether the request succeeded.
+            response: Response dictionary with timing data. Optional.
+        """
+        PerformanceCollector.record_performance(
+            model=model,
+            operation=operation,
+            total_latency_ms=total_latency_ms,
+            success=success,
+            response=response,
         )

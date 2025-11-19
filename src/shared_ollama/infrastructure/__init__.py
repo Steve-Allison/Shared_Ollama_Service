@@ -12,8 +12,12 @@ The infrastructure layer:
 """
 
 from shared_ollama.infrastructure.adapters import (
+    AnalyticsCollectorAdapter,
     AsyncOllamaClientAdapter,
+    ImageCacheAdapter,
+    ImageProcessorAdapter,
     MetricsCollectorAdapter,
+    PerformanceCollectorAdapter,
     RequestLoggerAdapter,
 )
 from shared_ollama.infrastructure.health_checker import (
@@ -25,6 +29,10 @@ __all__ = [
     "AsyncOllamaClientAdapter",
     "RequestLoggerAdapter",
     "MetricsCollectorAdapter",
+    "ImageProcessorAdapter",
+    "ImageCacheAdapter",
+    "AnalyticsCollectorAdapter",
+    "PerformanceCollectorAdapter",
     "check_ollama_health",
     "check_ollama_health_simple",
 ]

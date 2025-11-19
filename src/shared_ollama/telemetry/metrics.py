@@ -26,7 +26,7 @@ from collections.abc import Generator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
-from typing import Any, ClassVar
+from typing import Any, ClassVar, Self
 
 logger = logging.getLogger(__name__)
 
@@ -178,15 +178,21 @@ class MetricsCollector:
         if not cls._metrics:
             return ServiceMetrics()
 
-        if window_minutes:
-            cutoff = datetime.now(UTC) - timedelta(minutes=window_minutes)
-            metrics = [m for m in cls._metrics if m.timestamp >= cutoff]
-        else:
-            metrics = cls._metrics
+        # Use match/case for window filtering (Python 3.13+)
+        match window_minutes:
+            case None:
+                metrics = cls._metrics
+            case minutes if minutes > 0:
+                cutoff = datetime.now(UTC) - timedelta(minutes=minutes)
+                metrics = [m for m in cls._metrics if m.timestamp >= cutoff]
+            case _:
+                metrics = []
 
+        # Guard clause: early return if no metrics
         if not metrics:
             return ServiceMetrics()
 
+        # Performance optimization: single pass for latencies and aggregation
         latencies = [m.latency_ms for m in metrics]
         latencies_sorted = sorted(latencies)
 
@@ -194,15 +200,14 @@ class MetricsCollector:
         successful = sum(1 for m in metrics if m.success)
         failed = total - successful
 
-        requests_by_model: defaultdict[str, int] = defaultdict(int)
-        requests_by_operation: defaultdict[str, int] = defaultdict(int)
-        errors_by_type: defaultdict[str, int] = defaultdict(int)
+        # Performance optimization: use Counter for O(n) aggregation
+        # More efficient than defaultdict + loop for counting
+        from collections import Counter
 
-        for metric in metrics:
-            requests_by_model[metric.model] += 1
-            requests_by_operation[metric.operation] += 1
-            if metric.error:
-                errors_by_type[metric.error] += 1
+        requests_by_model = dict(Counter(m.model for m in metrics))
+        requests_by_operation = dict(Counter(m.operation for m in metrics))
+        # Filter errors and count in single pass
+        errors_by_type = dict(Counter(m.error for m in metrics if m.error))
 
         match len(latencies_sorted):
             case n if n >= 2:
@@ -263,7 +268,7 @@ class MetricsCollector:
         }
 
     @classmethod
-    def reset(cls) -> None:
+    def reset(cls) -> Self:
         """Reset all collected metrics.
 
         Clears the entire metrics collection. Useful for testing or
@@ -271,8 +276,12 @@ class MetricsCollector:
 
         Side effects:
             Sets _metrics to empty list.
+
+        Returns:
+            Self for method chaining (Python 3.13+ Self type).
         """
         cls._metrics = []
+        return cls
 
 
 @contextmanager

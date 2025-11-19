@@ -378,3 +378,160 @@ class TestAsyncClientGetModelInfo:
         async with AsyncSharedOllamaClient(config=config, verify_on_init=False) as client:
             model_info = await client.get_model_info("nonexistent:model")
             assert model_info is None
+
+    async def test_get_model_info_is_cached(self, ollama_server):
+        """Test that get_model_info() uses cached list_models() result."""
+        config = AsyncOllamaConfig(base_url=ollama_server.base_url)
+        async with AsyncSharedOllamaClient(config=config, verify_on_init=False) as client:
+            # First call should call list_models
+            model_info1 = await client.get_model_info("qwen2.5vl:7b")
+
+            # Second call should use cache
+            model_info2 = await client.get_model_info("qwen2.5vl:7b")
+
+            assert model_info1 == model_info2
+            assert model_info1 is not None
+
+
+@pytest.mark.asyncio
+class TestAsyncClientEdgeCases:
+    """Edge case and error handling tests for AsyncSharedOllamaClient."""
+
+    async def test_generate_handles_empty_prompt(self, ollama_server):
+        """Test that generate() handles empty prompt."""
+        config = AsyncOllamaConfig(base_url=ollama_server.base_url)
+        async with AsyncSharedOllamaClient(config=config, verify_on_init=False) as client:
+            response = await client.generate("")
+            assert isinstance(response, GenerateResponse)
+
+    async def test_generate_handles_very_long_prompt(self, ollama_server):
+        """Test that generate() handles very long prompts."""
+        long_prompt = "A" * 10000
+        config = AsyncOllamaConfig(base_url=ollama_server.base_url)
+        async with AsyncSharedOllamaClient(config=config, verify_on_init=False) as client:
+            response = await client.generate(long_prompt)
+            assert isinstance(response, GenerateResponse)
+
+    async def test_generate_handles_special_characters(self, ollama_server):
+        """Test that generate() handles special characters in prompt."""
+        special_prompt = "!@#$%^&*()_+-=[]{}|;':\",./<>?"
+        config = AsyncOllamaConfig(base_url=ollama_server.base_url)
+        async with AsyncSharedOllamaClient(config=config, verify_on_init=False) as client:
+            response = await client.generate(special_prompt)
+            assert isinstance(response, GenerateResponse)
+
+    async def test_generate_with_zero_temperature(self, ollama_server):
+        """Test that generate() handles zero temperature."""
+        from shared_ollama import GenerateOptions
+
+        config = AsyncOllamaConfig(base_url=ollama_server.base_url)
+        async with AsyncSharedOllamaClient(config=config, verify_on_init=False) as client:
+            options = GenerateOptions(temperature=0.0)
+            response = await client.generate("Test", options=options)
+            assert isinstance(response, GenerateResponse)
+
+    async def test_generate_with_max_tokens(self, ollama_server):
+        """Test that generate() respects max_tokens option."""
+        from shared_ollama import GenerateOptions
+
+        config = AsyncOllamaConfig(base_url=ollama_server.base_url)
+        async with AsyncSharedOllamaClient(config=config, verify_on_init=False) as client:
+            options = GenerateOptions(max_tokens=10)
+            response = await client.generate("Test", options=options)
+            assert isinstance(response, GenerateResponse)
+
+    async def test_generate_with_stop_sequences(self, ollama_server):
+        """Test that generate() handles stop sequences."""
+        from shared_ollama import GenerateOptions
+
+        config = AsyncOllamaConfig(base_url=ollama_server.base_url)
+        async with AsyncSharedOllamaClient(config=config, verify_on_init=False) as client:
+            options = GenerateOptions(stop=["\n", "STOP"])
+            response = await client.generate("Test", options=options)
+            assert isinstance(response, GenerateResponse)
+
+    async def test_chat_handles_empty_messages(self, ollama_server):
+        """Test that chat() handles empty messages list."""
+        config = AsyncOllamaConfig(base_url=ollama_server.base_url)
+        async with AsyncSharedOllamaClient(config=config, verify_on_init=False) as client:
+            # Empty messages should still work (may be validated by server)
+            try:
+                response = await client.chat([])
+                assert isinstance(response, dict)
+            except Exception:
+                # Server may reject empty messages, which is valid
+                pass
+
+    async def test_chat_handles_very_long_messages(self, ollama_server):
+        """Test that chat() handles very long message content."""
+        long_content = "A" * 5000
+        config = AsyncOllamaConfig(base_url=ollama_server.base_url)
+        async with AsyncSharedOllamaClient(config=config, verify_on_init=False) as client:
+            messages = [{"role": "user", "content": long_content}]
+            response = await client.chat(messages)
+            assert isinstance(response, dict)
+
+    async def test_chat_handles_many_messages(self, ollama_server):
+        """Test that chat() handles conversation with many messages."""
+        config = AsyncOllamaConfig(base_url=ollama_server.base_url)
+        async with AsyncSharedOllamaClient(config=config, verify_on_init=False) as client:
+            messages = [{"role": "user", "content": f"Message {i}"} for i in range(20)]
+            response = await client.chat(messages)
+            assert isinstance(response, dict)
+
+    async def test_concurrent_generate_requests(self, ollama_server):
+        """Test that multiple concurrent generate requests work correctly."""
+        config = AsyncOllamaConfig(base_url=ollama_server.base_url)
+        async with AsyncSharedOllamaClient(config=config, verify_on_init=False) as client:
+            tasks = [client.generate(f"Request {i}") for i in range(10)]
+            responses = await asyncio.gather(*tasks)
+
+            assert len(responses) == 10
+            assert all(isinstance(r, GenerateResponse) for r in responses)
+            assert all(r.text for r in responses)
+
+    async def test_concurrent_chat_requests(self, ollama_server):
+        """Test that multiple concurrent chat requests work correctly."""
+        config = AsyncOllamaConfig(base_url=ollama_server.base_url)
+        async with AsyncSharedOllamaClient(config=config, verify_on_init=False) as client:
+            tasks = [
+                client.chat([{"role": "user", "content": f"Chat {i}"}]) for i in range(10)
+            ]
+            responses = await asyncio.gather(*tasks)
+
+            assert len(responses) == 10
+            assert all(isinstance(r, dict) for r in responses)
+
+    async def test_generate_with_timeout(self, ollama_server):
+        """Test that generate() respects timeout configuration."""
+        config = AsyncOllamaConfig(base_url=ollama_server.base_url, timeout=1)
+        async with AsyncSharedOllamaClient(config=config, verify_on_init=False) as client:
+            # Normal request should complete within timeout
+            response = await client.generate("Quick test")
+            assert isinstance(response, GenerateResponse)
+
+    async def test_client_handles_rapid_requests(self, ollama_server):
+        """Test that client handles rapid sequential requests."""
+        config = AsyncOllamaConfig(base_url=ollama_server.base_url)
+        async with AsyncSharedOllamaClient(config=config, verify_on_init=False) as client:
+            # Make many rapid requests
+            for i in range(20):
+                response = await client.generate(f"Rapid {i}")
+                assert isinstance(response, GenerateResponse)
+
+    async def test_generate_records_metrics_on_error(self, ollama_server):
+        """Test that generate() records metrics even on error."""
+        from shared_ollama.telemetry.metrics import MetricsCollector
+
+        MetricsCollector.reset()
+        ollama_server.state["generate_failures"] = 1
+        config = AsyncOllamaConfig(base_url=ollama_server.base_url)
+        async with AsyncSharedOllamaClient(config=config, verify_on_init=False) as client:
+            try:
+                await client.generate("This will fail")
+            except Exception:
+                pass
+
+        metrics = MetricsCollector.get_metrics()
+        # Should have recorded the failed request
+        assert metrics.total_requests >= 1

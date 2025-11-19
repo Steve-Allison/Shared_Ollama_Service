@@ -15,6 +15,7 @@ from shared_ollama.api.models import (
     ChatRequest as APIChatRequest,
     GenerateRequest as APIGenerateRequest,
     ModelInfo as APIModelInfo,
+    ResponseFormat,
     Tool as APITool,
     ToolCall as APIToolCall,
     ToolCallFunction as APIToolCallFunction,
@@ -89,6 +90,52 @@ def domain_to_api_tool_call(domain_tool_call: ToolCall) -> APIToolCall:
 
 
 # ============================================================================
+# Response Format Helpers
+# ============================================================================
+
+
+def _resolve_response_format(
+    direct_format: str | dict[str, Any] | None,
+    response_format: ResponseFormat | None,
+) -> str | dict[str, Any] | None:
+    """Resolve native format + OpenAI response_format into Ollama format payload.
+
+    Uses match/case for cleaner pattern matching (Python 3.13+).
+
+    Args:
+        direct_format: Native Ollama format field (deprecated).
+        response_format: OpenAI-compatible response_format field.
+
+    Returns:
+        Resolved format value for Ollama backend.
+    """
+    # Guard clause: if no response_format, use direct format
+    if response_format is None:
+        return direct_format
+
+    # Use match/case for response format type resolution
+    match response_format.type:
+        case "json_object":
+            return "json"
+
+        case "json_schema":
+            schema_payload: dict[str, Any] | None = response_format.json_schema
+            if not schema_payload:
+                raise ValueError("response_format.json_schema is required when type='json_schema'")
+
+            # OpenAI wraps schema as {"name": "...", "schema": {...}}.
+            match schema_payload:
+                case {"schema": dict() as nested_schema}:
+                    return nested_schema
+                case _:
+                    return schema_payload
+
+        case "text" | _:
+            # Fall back to native field for text or unknown types
+            return None
+
+
+# ============================================================================
 # Generation Request Mappers
 # ============================================================================
 
@@ -110,14 +157,15 @@ def api_to_domain_generation_request(api_req: APIGenerateRequest) -> GenerationR
     system = SystemMessage(value=api_req.system) if api_req.system else None
 
     options: GenerationOptions | None = None
-    if any([
+    # Build options only if any option is provided (performance: use generator)
+    if any(
         api_req.temperature is not None,
         api_req.top_p is not None,
         api_req.top_k is not None,
         api_req.max_tokens is not None,
         api_req.seed is not None,
         api_req.stop is not None,
-    ]):
+    ):
         options = GenerationOptions(
             temperature=api_req.temperature or 0.2,
             top_p=api_req.top_p or 0.9,
@@ -132,12 +180,14 @@ def api_to_domain_generation_request(api_req: APIGenerateRequest) -> GenerationR
     if api_req.tools:
         tools = tuple(api_to_domain_tool(t) for t in api_req.tools)
 
+    resolved_format = _resolve_response_format(api_req.format, api_req.response_format)
+
     return GenerationRequest(
         prompt=prompt,
         model=model,
         system=system,
         options=options,
-        format=api_req.format,
+        format=resolved_format,
         tools=tools,
     )
 
@@ -175,14 +225,15 @@ def api_to_domain_chat_request(api_req: APIChatRequest) -> ChatRequest:
     model = ModelName(value=api_req.model) if api_req.model else None
 
     options: GenerationOptions | None = None
-    if any([
+    # Build options only if any option is provided (performance: use generator)
+    if any(
         api_req.temperature is not None,
         api_req.top_p is not None,
         api_req.top_k is not None,
         api_req.max_tokens is not None,
         api_req.seed is not None,
         api_req.stop is not None,
-    ]):
+    ):
         options = GenerationOptions(
             temperature=api_req.temperature or 0.2,
             top_p=api_req.top_p or 0.9,
@@ -197,11 +248,13 @@ def api_to_domain_chat_request(api_req: APIChatRequest) -> ChatRequest:
     if api_req.tools:
         tools = tuple(api_to_domain_tool(t) for t in api_req.tools)
 
+    resolved_format = _resolve_response_format(api_req.format, api_req.response_format)
+
     return ChatRequest(
         messages=messages,
         model=model,
         options=options,
-        format=api_req.format,
+        format=resolved_format,
         tools=tools,
     )
 
@@ -246,15 +299,14 @@ def api_to_domain_vlm_request(api_req: Any) -> Any:  # VLMRequest from models
 
     # Convert options
     options = None
+    # Convert options (performance: use generator instead of list)
     if any(
-        [
-            api_req.temperature,
-            api_req.top_p,
-            api_req.top_k,
-            api_req.max_tokens,
-            api_req.seed,
-            api_req.stop,
-        ]
+        api_req.temperature is not None,
+        api_req.top_p is not None,
+        api_req.top_k is not None,
+        api_req.max_tokens is not None,
+        api_req.seed is not None,
+        api_req.stop is not None,
     ):
         options = GenerationOptions(
             temperature=api_req.temperature,
@@ -270,6 +322,8 @@ def api_to_domain_vlm_request(api_req: Any) -> Any:  # VLMRequest from models
     if api_req.tools:
         tools = tuple(api_to_domain_tool(t) for t in api_req.tools)
 
+    resolved_format = _resolve_response_format(api_req.format, api_req.response_format)
+
     return VLMRequest(
         messages=tuple(messages),
         images=tuple(api_req.images),  # Native Ollama format: separate images
@@ -277,7 +331,7 @@ def api_to_domain_vlm_request(api_req: Any) -> Any:  # VLMRequest from models
         options=options,
         image_compression=api_req.image_compression,
         max_dimension=api_req.max_dimension,
-        format=api_req.format,
+        format=resolved_format,
         tools=tools,
     )
 
@@ -338,15 +392,14 @@ def api_to_domain_vlm_request_openai(api_req: Any) -> Any:
 
     # Convert options
     options = None
+    # Convert options (performance: use generator instead of list)
     if any(
-        [
-            api_req.temperature,
-            api_req.top_p,
-            api_req.top_k,
-            api_req.max_tokens,
-            api_req.seed,
-            api_req.stop,
-        ]
+        api_req.temperature is not None,
+        api_req.top_p is not None,
+        api_req.top_k is not None,
+        api_req.max_tokens is not None,
+        api_req.seed is not None,
+        api_req.stop is not None,
     ):
         options = GenerationOptions(
             temperature=api_req.temperature,
@@ -362,6 +415,8 @@ def api_to_domain_vlm_request_openai(api_req: Any) -> Any:
     if api_req.tools:
         tools = tuple(api_to_domain_tool(t) for t in api_req.tools)
 
+    resolved_format = _resolve_response_format(api_req.format, api_req.response_format)
+
     # Return native Ollama format (text-only messages + separate images)
     return VLMRequest(
         messages=tuple(messages),
@@ -370,7 +425,7 @@ def api_to_domain_vlm_request_openai(api_req: Any) -> Any:
         options=options,
         image_compression=api_req.image_compression,
         max_dimension=api_req.max_dimension,
-        format=api_req.format,
+        format=resolved_format,
         tools=tools,
     )
 

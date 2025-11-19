@@ -12,8 +12,12 @@ The application layer:
 """
 
 from shared_ollama.application.interfaces import (
+    AnalyticsCollectorInterface,
+    ImageCacheInterface,
+    ImageProcessorInterface,
     MetricsCollectorInterface,
     OllamaClientInterface,
+    PerformanceCollectorInterface,
     RequestLoggerInterface,
 )
 from shared_ollama.application.use_cases import (
@@ -27,6 +31,10 @@ __all__ = [
     "OllamaClientInterface",
     "RequestLoggerInterface",
     "MetricsCollectorInterface",
+    "ImageProcessorInterface",
+    "ImageCacheInterface",
+    "AnalyticsCollectorInterface",
+    "PerformanceCollectorInterface",
     # Use Cases
     "GenerateUseCase",
     "ChatUseCase",

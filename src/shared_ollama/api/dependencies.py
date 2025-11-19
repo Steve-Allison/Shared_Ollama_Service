@@ -22,37 +22,43 @@ from shared_ollama.application.use_cases import (
     ListModelsUseCase,
 )
 from shared_ollama.application.vlm_use_cases import VLMUseCase
-from shared_ollama.core.config import settings
+from shared_ollama.infrastructure.config import settings
 
 if TYPE_CHECKING:
     from fastapi import Request
 
     from shared_ollama.core.queue import RequestQueue
     from shared_ollama.infrastructure.adapters import (
+        AnalyticsCollectorAdapter,
         AsyncOllamaClientAdapter,
+        ImageCacheAdapter,
+        ImageProcessorAdapter,
         MetricsCollectorAdapter,
+        PerformanceCollectorAdapter,
         RequestLoggerAdapter,
     )
-    from shared_ollama.infrastructure.image_cache import ImageCache
-    from shared_ollama.infrastructure.image_processing import ImageProcessor
 else:
     from shared_ollama.core.queue import RequestQueue
     from shared_ollama.infrastructure.adapters import (
+        AnalyticsCollectorAdapter,
         AsyncOllamaClientAdapter,
+        ImageCacheAdapter,
+        ImageProcessorAdapter,
         MetricsCollectorAdapter,
+        PerformanceCollectorAdapter,
         RequestLoggerAdapter,
     )
-    from shared_ollama.infrastructure.image_cache import ImageCache
-    from shared_ollama.infrastructure.image_processing import ImageProcessor
 
 # Global instances (initialized in lifespan)
 _client_adapter: AsyncOllamaClientAdapter | None = None
 _logger_adapter: RequestLoggerAdapter | None = None
 _metrics_adapter: MetricsCollectorAdapter | None = None
+_analytics_adapter: AnalyticsCollectorAdapter | None = None
+_performance_adapter: PerformanceCollectorAdapter | None = None
 _chat_queue: RequestQueue | None = None
 _vlm_queue: RequestQueue | None = None
-_image_processor: ImageProcessor | None = None
-_image_cache: ImageCache | None = None
+_image_processor_adapter: ImageProcessorAdapter | None = None
+_image_cache_adapter: ImageCacheAdapter | None = None
 
 
 def set_dependencies(
@@ -61,8 +67,10 @@ def set_dependencies(
     metrics_adapter: MetricsCollectorAdapter,
     chat_queue: RequestQueue,
     vlm_queue: RequestQueue,
-    image_processor: ImageProcessor,
-    image_cache: ImageCache,
+    image_processor_adapter: ImageProcessorAdapter,
+    image_cache_adapter: ImageCacheAdapter,
+    analytics_adapter: AnalyticsCollectorAdapter | None = None,
+    performance_adapter: PerformanceCollectorAdapter | None = None,
 ) -> None:
     """Set global dependencies (called during lifespan startup).
 
@@ -72,17 +80,31 @@ def set_dependencies(
         metrics_adapter: Metrics collector adapter.
         chat_queue: Chat request queue instance.
         vlm_queue: VLM request queue instance.
-        image_processor: Image processor for VLM.
-        image_cache: Image cache for VLM.
+        image_processor_adapter: Image processor adapter for VLM.
+        image_cache_adapter: Image cache adapter for VLM.
+        analytics_adapter: Analytics collector adapter. Optional.
+        performance_adapter: Performance collector adapter. Optional.
     """
-    global _client_adapter, _logger_adapter, _metrics_adapter, _chat_queue, _vlm_queue, _image_processor, _image_cache
+    global (
+        _client_adapter,
+        _logger_adapter,
+        _metrics_adapter,
+        _analytics_adapter,
+        _performance_adapter,
+        _chat_queue,
+        _vlm_queue,
+        _image_processor_adapter,
+        _image_cache_adapter,
+    )
     _client_adapter = client_adapter
     _logger_adapter = logger_adapter
     _metrics_adapter = metrics_adapter
+    _analytics_adapter = analytics_adapter
+    _performance_adapter = performance_adapter
     _chat_queue = chat_queue
     _vlm_queue = vlm_queue
-    _image_processor = image_processor
-    _image_cache = image_cache
+    _image_processor_adapter = image_processor_adapter
+    _image_cache_adapter = image_cache_adapter
 
 
 def get_client_adapter() -> AsyncOllamaClientAdapter:
@@ -170,38 +192,38 @@ def get_vlm_queue() -> RequestQueue:
     return _vlm_queue
 
 
-def get_image_processor() -> ImageProcessor:
-    """Get the image processor.
+def get_image_processor() -> ImageProcessorAdapter:
+    """Get the image processor adapter.
 
     Returns:
-        ImageProcessor instance.
+        ImageProcessorAdapter instance.
 
     Raises:
         HTTPException: If processor not initialized.
     """
-    if _image_processor is None:
+    if _image_processor_adapter is None:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Image processor not initialized",
         )
-    return _image_processor
+    return _image_processor_adapter
 
 
-def get_image_cache() -> ImageCache:
-    """Get the image cache.
+def get_image_cache() -> ImageCacheAdapter:
+    """Get the image cache adapter.
 
     Returns:
-        ImageCache instance.
+        ImageCacheAdapter instance.
 
     Raises:
         HTTPException: If cache not initialized.
     """
-    if _image_cache is None:
+    if _image_cache_adapter is None:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Image cache not initialized",
         )
-    return _image_cache
+    return _image_cache_adapter
 
 
 def get_request_context(request: Request) -> RequestContext:  # type: ignore[valid-type]
@@ -294,8 +316,8 @@ def get_vlm_use_case(
     client_adapter: Annotated[AsyncOllamaClientAdapter, Depends(get_client_adapter)],
     logger_adapter: Annotated[RequestLoggerAdapter, Depends(get_logger_adapter)],
     metrics_adapter: Annotated[MetricsCollectorAdapter, Depends(get_metrics_adapter)],
-    image_processor: Annotated[ImageProcessor, Depends(get_image_processor)],
-    image_cache: Annotated[ImageCache, Depends(get_image_cache)],
+    image_processor_adapter: Annotated[ImageProcessorAdapter, Depends(get_image_processor)],
+    image_cache_adapter: Annotated[ImageCacheAdapter, Depends(get_image_cache)],
 ) -> VLMUseCase:
     """Get VLMUseCase instance.
 
@@ -303,18 +325,24 @@ def get_vlm_use_case(
         client_adapter: Ollama client adapter (injected).
         logger_adapter: Request logger adapter (injected).
         metrics_adapter: Metrics collector adapter (injected).
-        image_processor: Image processor (injected).
-        image_cache: Image cache (injected).
+        image_processor_adapter: Image processor adapter (injected).
+        image_cache_adapter: Image cache adapter (injected).
 
     Returns:
         VLMUseCase instance.
     """
+    # Get optional analytics and performance adapters
+    analytics_adapter = _analytics_adapter
+    performance_adapter = _performance_adapter
+
     return VLMUseCase(
         client=client_adapter,
         logger=logger_adapter,
         metrics=metrics_adapter,
-        image_processor=image_processor,
-        image_cache=image_cache,
+        image_processor=image_processor_adapter,
+        image_cache=image_cache_adapter,
+        analytics=analytics_adapter,
+        performance=performance_adapter,
     )
 
 

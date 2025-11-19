@@ -19,6 +19,7 @@ Key behaviors:
 from __future__ import annotations
 
 import asyncio
+import functools
 import logging
 import os
 import platform
@@ -26,7 +27,7 @@ import shutil
 import time
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Any, Literal, TypeAlias
+from typing import Any, Literal, Self, TypeAlias
 
 import psutil
 
@@ -68,7 +69,6 @@ class OllamaManager:
         "log_dir",
         "auto_detect_optimizations",
         "force_manage",
-        "_ollama_path",
     )
 
     def __init__(
@@ -95,7 +95,6 @@ class OllamaManager:
         self.log_dir = log_dir or self._get_default_log_dir()
         self.auto_detect_optimizations = auto_detect_optimizations
         self.force_manage = force_manage
-        self._ollama_path: str | None = None
 
     def _get_default_log_dir(self) -> Path:
         """Get default log directory path.
@@ -111,28 +110,24 @@ class OllamaManager:
         log_dir.mkdir(exist_ok=True)
         return log_dir
 
-    @property
+    @functools.cached_property
     def ollama_executable(self) -> str | None:
         """Find and cache the Ollama executable path.
 
-        Searches for 'ollama' in the system PATH. Result is cached for
-        performance since the executable location doesn't change at runtime.
+        Uses functools.cached_property for automatic caching (Python 3.13+).
+        Result is cached since the executable location doesn't change at runtime.
 
         Returns:
             Absolute path to ollama executable, or None if not found in PATH.
         """
-        if self._ollama_path:
-            return self._ollama_path
-
         ollama_path = shutil.which("ollama")
         if ollama_path:
-            self._ollama_path = ollama_path
             return ollama_path
 
         logger.warning("Ollama executable not found in PATH")
         return None
 
-    def _detect_system_optimizations(self) -> OptimizationConfig:
+    async def _detect_system_optimizations(self) -> OptimizationConfig:
         """Detect system-specific optimizations for Ollama.
 
         Analyzes the system architecture and platform to determine optimal
@@ -146,7 +141,7 @@ class OllamaManager:
             OLLAMA_HOST and OLLAMA_KEEP_ALIVE defaults.
 
         Side effects:
-            May execute subprocess to calculate memory limits if helper script
+            May execute async subprocess to calculate memory limits if helper script
             exists. Logs debug messages for system detection.
         """
         optimizations: OptimizationConfig = {}
@@ -174,23 +169,29 @@ class OllamaManager:
         }
         optimizations = defaults | optimizations
 
-        # Auto-calculate memory limit if script exists
+        # Auto-calculate memory limit if script exists (async subprocess)
         try:
             from shared_ollama.core.utils import get_project_root
 
             calc_script = get_project_root() / "scripts" / "calculate_memory_limit.sh"
             if calc_script.exists():
-                result = subprocess.run(
-                    ["bash", str(calc_script)],
-                    capture_output=True,
-                    text=True,
-                    timeout=5,
-                    check=False,
+                process = await asyncio.create_subprocess_exec(
+                    "bash",
+                    str(calc_script),
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
                 )
-                for line in result.stdout.splitlines():
-                    if line.startswith("OLLAMA_MAX_RAM="):
-                        optimizations["OLLAMA_MAX_RAM"] = line.split("=", 1)[1].strip()
-                        break
+                try:
+                    stdout, _ = await asyncio.wait_for(process.communicate(), timeout=5.0)
+                    output = stdout.decode("utf-8") if stdout else ""
+                    for line in output.splitlines():
+                        if line.startswith("OLLAMA_MAX_RAM="):
+                            optimizations["OLLAMA_MAX_RAM"] = line.split("=", 1)[1].strip()
+                            break
+                except asyncio.TimeoutError:
+                    logger.debug("Memory limit calculation timed out")
+                    process.kill()
+                    await process.wait()
         except Exception as exc:
             logger.debug("Could not auto-calculate memory limit: %s", exc)
 
@@ -199,10 +200,11 @@ class OllamaManager:
     async def _stop_external_ollama(self) -> None:
         """Stop external Ollama instances (Homebrew/launchd).
 
-        Attempts to stop Ollama services managed by external systems:
+        Attempts to stop Ollama services managed by external systems using
+        async subprocess for non-blocking operations:
         - Homebrew services (brew services stop ollama)
         - Launchd services (launchctl unload)
-        - Direct processes (kill by PID)
+        - Direct processes (kill by PID using psutil)
 
         Side effects:
             - Stops Homebrew service if running
@@ -210,74 +212,77 @@ class OllamaManager:
             - Kills remaining ollama serve processes
             - Waits briefly for processes to terminate
         """
-        import shutil
-
         logger.info("Stopping external Ollama instances...")
 
-        # Stop Homebrew service
+        # Stop Homebrew service (async subprocess)
         if shutil.which("brew"):
             try:
-                result = subprocess.run(
-                    ["brew", "services", "list"],
-                    capture_output=True,
-                    text=True,
-                    timeout=5,
+                process = await asyncio.create_subprocess_exec(
+                    "brew",
+                    "services",
+                    "list",
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.DEVNULL,
                 )
-                if "ollama" in result.stdout and "started" in result.stdout:
-                    logger.info("Stopping Homebrew Ollama service...")
-                    subprocess.run(
-                        ["brew", "services", "stop", "ollama"],
-                        capture_output=True,
-                        timeout=10,
-                    )
-                    await asyncio.sleep(2)  # Wait for service to stop
+                try:
+                    stdout, _ = await asyncio.wait_for(process.communicate(), timeout=5.0)
+                    output = stdout.decode("utf-8") if stdout else ""
+                    if "ollama" in output and "started" in output:
+                        logger.info("Stopping Homebrew Ollama service...")
+                        stop_process = await asyncio.create_subprocess_exec(
+                            "brew",
+                            "services",
+                            "stop",
+                            "ollama",
+                            stdout=asyncio.subprocess.DEVNULL,
+                            stderr=asyncio.subprocess.DEVNULL,
+                        )
+                        await asyncio.wait_for(stop_process.wait(), timeout=10.0)
+                        await asyncio.sleep(2)  # Wait for service to stop
+                except asyncio.TimeoutError:
+                    logger.debug("Homebrew service check timed out")
+                    process.kill()
+                    await process.wait()
             except Exception as exc:
                 logger.debug("Could not stop Homebrew service: %s", exc)
 
-        # Stop launchd service
+        # Stop launchd service (async subprocess)
         launchd_plist = Path.home() / "Library/LaunchAgents/com.ollama.service.plist"
         if launchd_plist.exists():
             try:
                 logger.info("Unloading launchd Ollama service...")
-                subprocess.run(
-                    ["launchctl", "unload", str(launchd_plist)],
-                    capture_output=True,
-                    timeout=10,
+                process = await asyncio.create_subprocess_exec(
+                    "launchctl",
+                    "unload",
+                    str(launchd_plist),
+                    stdout=asyncio.subprocess.DEVNULL,
+                    stderr=asyncio.subprocess.DEVNULL,
                 )
+                await asyncio.wait_for(process.wait(), timeout=10.0)
                 await asyncio.sleep(1)
             except Exception as exc:
                 logger.debug("Could not unload launchd service: %s", exc)
 
-        # Kill any remaining ollama serve processes
+        # Kill any remaining ollama serve processes using psutil (more reliable)
         try:
-            result = subprocess.run(
-                ["pgrep", "-f", "ollama serve"],
-                capture_output=True,
-                text=True,
-                timeout=5,
-            )
-            if result.returncode == 0:
-                pids = result.stdout.strip().split("\n")
-                for pid in pids:
-                    if pid.strip():
-                        try:
-                            logger.info("Killing Ollama process PID %s", pid.strip())
-                            subprocess.run(
-                                ["kill", "-TERM", pid.strip()],
-                                capture_output=True,
-                                timeout=5,
-                            )
-                        except Exception as exc:
-                            logger.debug("Could not kill process %s: %s", pid, exc)
-                await asyncio.sleep(2)  # Wait for processes to terminate
+            for proc in psutil.process_iter(["pid", "name", "cmdline"]):
+                try:
+                    cmdline = proc.info.get("cmdline", [])
+                    if cmdline and "ollama" in cmdline and "serve" in cmdline:
+                        logger.info("Killing Ollama process PID %s", proc.info["pid"])
+                        proc.terminate()
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    continue
+            await asyncio.sleep(2)  # Wait for processes to terminate
         except Exception as exc:
             logger.debug("Could not find/kill Ollama processes: %s", exc)
 
         # Verify Ollama is stopped
-        if self._check_ollama_running(timeout=1):
-            logger.warning("External Ollama instance may still be running")
-        else:
-            logger.info("External Ollama instances stopped successfully")
+        match self._check_ollama_running(timeout=1):
+            case True:
+                logger.warning("External Ollama instance may still be running")
+            case False:
+                logger.info("External Ollama instances stopped successfully")
 
     def _check_ollama_running(self, timeout: int = 2) -> bool:
         """Check if Ollama service is currently running.
@@ -349,7 +354,7 @@ class OllamaManager:
         # Prepare environment with optimizations
         env: ProcessEnv = os.environ.copy()
         if self.auto_detect_optimizations:
-            optimizations = self._detect_system_optimizations()
+            optimizations = await self._detect_system_optimizations()
             env.update(optimizations)
             logger.info("Applied system optimizations: %s", optimizations)
 

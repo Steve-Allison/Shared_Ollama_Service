@@ -11,12 +11,14 @@ from shared_ollama.domain.exceptions import InvalidRequestError
 
 if TYPE_CHECKING:
     from shared_ollama.application.interfaces import (
+        AnalyticsCollectorInterface,
+        ImageCacheInterface,
+        ImageProcessorInterface,
         MetricsCollectorInterface,
         OllamaClientInterface,
+        PerformanceCollectorInterface,
         RequestLoggerInterface,
     )
-    from shared_ollama.infrastructure.image_cache import ImageCache
-    from shared_ollama.infrastructure.image_processing import ImageProcessor
 
 
 class VLMUseCase:
@@ -30,8 +32,10 @@ class VLMUseCase:
         client: OllamaClientInterface,
         logger: RequestLoggerInterface,
         metrics: MetricsCollectorInterface,
-        image_processor: ImageProcessor,
-        image_cache: ImageCache,
+        image_processor: ImageProcessorInterface,
+        image_cache: ImageCacheInterface,
+        analytics: AnalyticsCollectorInterface | None = None,
+        performance: PerformanceCollectorInterface | None = None,
     ) -> None:
         """Initialize VLM use case.
 
@@ -41,12 +45,16 @@ class VLMUseCase:
             metrics: Metrics collector implementation.
             image_processor: Image processing utility.
             image_cache: Image cache for reusing compressed images.
+            analytics: Analytics collector implementation. Optional.
+            performance: Performance collector implementation. Optional.
         """
         self._client = client
         self._logger = logger
         self._metrics = metrics
         self._image_processor = image_processor
         self._image_cache = image_cache
+        self._analytics = analytics
+        self._performance = performance
 
     async def execute(
         self,
@@ -233,26 +241,24 @@ class VLMUseCase:
                 )
 
                 # Record project-based analytics
-                from shared_ollama.telemetry.analytics import AnalyticsCollector
-
-                AnalyticsCollector.record_request_with_project(
-                    model=model_used,
-                    operation="vlm",
-                    latency_ms=latency_ms,
-                    success=True,
-                    project=project_name,
-                )
+                if self._analytics:
+                    self._analytics.record_request_with_project(
+                        model=model_used,
+                        operation="vlm",
+                        latency_ms=latency_ms,
+                        success=True,
+                        project=project_name,
+                    )
 
                 # Record detailed performance metrics
-                from shared_ollama.telemetry.performance import PerformanceCollector
-
-                PerformanceCollector.record_performance(
-                    model=model_used,
-                    operation="vlm",
-                    total_latency_ms=latency_ms,
-                    success=True,
-                    response=result,
-                )
+                if self._performance:
+                    self._performance.record_performance(
+                        model=model_used,
+                        operation="vlm",
+                        total_latency_ms=latency_ms,
+                        success=True,
+                        response=result,
+                    )
 
                 # Add compression savings to result if compression was enabled
                 if request.image_compression and total_compression_savings > 0:
@@ -288,16 +294,15 @@ class VLMUseCase:
                 error="ValueError",
             )
 
-            from shared_ollama.telemetry.analytics import AnalyticsCollector
-
-            AnalyticsCollector.record_request_with_project(
-                model=model_str,
-                operation="vlm",
-                latency_ms=latency_ms,
-                success=False,
-                project=project_name,
-                error="ValueError",
-            )
+            if self._analytics:
+                self._analytics.record_request_with_project(
+                    model=model_str,
+                    operation="vlm",
+                    latency_ms=latency_ms,
+                    success=False,
+                    project=project_name,
+                    error="ValueError",
+                )
 
             raise InvalidRequestError(f"Invalid VLM request: {exc!s}") from exc
 
@@ -329,15 +334,14 @@ class VLMUseCase:
                 error=type(exc).__name__,
             )
 
-            from shared_ollama.telemetry.analytics import AnalyticsCollector
-
-            AnalyticsCollector.record_request_with_project(
-                model=model_str,
-                operation="vlm",
-                latency_ms=latency_ms,
-                success=False,
-                project=project_name,
-                error=type(exc).__name__,
-            )
+            if self._analytics:
+                self._analytics.record_request_with_project(
+                    model=model_str,
+                    operation="vlm",
+                    latency_ms=latency_ms,
+                    success=False,
+                    project=project_name,
+                    error=type(exc).__name__,
+                )
 
             raise

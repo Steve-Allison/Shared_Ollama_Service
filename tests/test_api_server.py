@@ -290,6 +290,68 @@ class TestGenerateEndpoint:
         assert data["text"] == "Response"
         assert data["model_warm_start"] is True  # load_duration == 0
 
+    def test_generate_response_format_json_object_forwards_format(self, api_client, mock_async_client):
+        """Ensure response_format=json_object becomes format='json' for backend."""
+        mock_response = GenerateResponse(
+            text="{}",
+            model="qwen2.5vl:7b",
+            context=None,
+            total_duration=100_000_000,
+            load_duration=0,
+            prompt_eval_count=1,
+            prompt_eval_duration=0,
+            eval_count=1,
+            eval_duration=0,
+        )
+        mock_async_client.generate = AsyncMock(return_value=mock_response)
+
+        response = api_client.post(
+            "/api/v1/generate",
+            json={
+                "prompt": "Return JSON",
+                "response_format": {"type": "json_object"},
+            },
+        )
+        data = assert_response_structure(response, 200)
+        assert data["text"] == "{}"
+        mock_async_client.generate.assert_awaited_once()
+        assert mock_async_client.generate.await_args.kwargs["format"] == "json"
+
+    def test_generate_response_format_json_schema_forwards_schema(self, api_client, mock_async_client):
+        """Ensure response_format json_schema passes schema to backend."""
+        schema = {
+            "type": "object",
+            "properties": {"answer": {"type": "string"}},
+            "required": ["answer"],
+        }
+        mock_response = GenerateResponse(
+            text='{"answer": "42"}',
+            model="qwen2.5vl:7b",
+            context=None,
+            total_duration=100_000_000,
+            load_duration=0,
+            prompt_eval_count=1,
+            prompt_eval_duration=0,
+            eval_count=1,
+            eval_duration=0,
+        )
+        mock_async_client.generate = AsyncMock(return_value=mock_response)
+
+        response = api_client.post(
+            "/api/v1/generate",
+            json={
+                "prompt": "Return JSON",
+                "response_format": {
+                    "type": "json_schema",
+                    "json_schema": {"name": "answer_schema", "schema": schema},
+                },
+            },
+        )
+        data = assert_response_structure(response, 200)
+        assert data["text"] == '{"answer": "42"}'
+        forwarded_format = mock_async_client.generate.await_args.kwargs["format"]
+        assert forwarded_format == schema
+
     def test_generate_validates_empty_prompt(self, api_client, mock_async_client):
         """Test that empty prompt is rejected."""
         response = api_client.post("/api/v1/generate", json={"prompt": ""})
@@ -496,6 +558,62 @@ class TestChatEndpoint:
         )
         data = assert_response_structure(response, 200)
         assert data["message"]["content"] == "Response"
+
+    def test_chat_response_format_json_object_forwards_format(self, api_client, mock_async_client):
+        """Ensure chat response_format=json_object maps to format='json'."""
+        mock_response = {
+            "message": {"role": "assistant", "content": '{"name": "test"}'},
+            "model": "qwen2.5vl:7b",
+            "prompt_eval_count": 1,
+            "eval_count": 1,
+            "total_duration": 100_000_000,
+            "load_duration": 0,
+        }
+        mock_async_client.chat = AsyncMock(return_value=mock_response)
+
+        response = api_client.post(
+            "/api/v1/chat",
+            json={
+                "messages": [{"role": "user", "content": "Return JSON"}],
+                "response_format": {"type": "json_object"},
+            },
+        )
+        data = assert_response_structure(response, 200)
+        assert data["message"]["content"] == '{"name": "test"}'
+        forwarded_format = mock_async_client.chat.await_args.kwargs["format"]
+        assert forwarded_format == "json"
+
+    def test_chat_response_format_json_schema_forwards_schema(self, api_client, mock_async_client):
+        """Ensure chat response_format json_schema passes schema to backend."""
+        schema = {
+            "type": "object",
+            "properties": {"summary": {"type": "string"}},
+            "required": ["summary"],
+        }
+        mock_response = {
+            "message": {"role": "assistant", "content": '{"summary": "done"}'},
+            "model": "qwen2.5vl:7b",
+            "prompt_eval_count": 1,
+            "eval_count": 1,
+            "total_duration": 100_000_000,
+            "load_duration": 0,
+        }
+        mock_async_client.chat = AsyncMock(return_value=mock_response)
+
+        response = api_client.post(
+            "/api/v1/chat",
+            json={
+                "messages": [{"role": "user", "content": "Return JSON"}],
+                "response_format": {
+                    "type": "json_schema",
+                    "json_schema": {"name": "summary", "schema": schema},
+                },
+            },
+        )
+        data = assert_response_structure(response, 200)
+        assert data["message"]["content"] == '{"summary": "done"}'
+        forwarded_format = mock_async_client.chat.await_args.kwargs["format"]
+        assert forwarded_format == schema
 
     def test_chat_error_returns_400(self, api_client, mock_async_client):
         """Test that chat validation errors return 400."""

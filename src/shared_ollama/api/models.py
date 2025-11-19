@@ -22,7 +22,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Literal, Union
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, FieldValidationInfo, field_validator
 
 
 # ============================================================================
@@ -123,6 +123,40 @@ class ToolCall(BaseModel):
 # ============================================================================
 
 
+class ResponseFormat(BaseModel):
+    """OpenAI-compatible response_format wrapper."""
+
+    model_config = ConfigDict(
+        validate_assignment=True,
+        extra="forbid",
+    )
+
+    type: Literal["text", "json_object", "json_schema"] = Field(
+        ...,
+        description="Response format type ('text', 'json_object', or 'json_schema')",
+    )
+    json_schema: dict[str, Any] | None = Field(
+        None,
+        description=(
+            "JSON schema definition required when type='json_schema'. "
+            "Supports both OpenAI's {\"name\": ..., \"schema\": {...}} structure "
+            "and direct JSON Schema objects."
+        ),
+    )
+
+    @field_validator("json_schema")
+    @classmethod
+    def validate_schema_for_type(
+        cls,
+        value: dict[str, Any] | None,
+        info: FieldValidationInfo,
+    ) -> dict[str, Any] | None:
+        """Ensure json_schema is provided when required."""
+        if info.data.get("type") == "json_schema" and not value:
+            raise ValueError("json_schema is required when type='json_schema'")
+        return value
+
+
 class GenerateRequest(BaseModel):
     """Request model for text generation endpoint.
 
@@ -158,7 +192,11 @@ class GenerateRequest(BaseModel):
     stream: bool = Field(False, description="Whether to stream the response")
     format: str | dict[str, Any] | None = Field(
         None,
-        description="Output format: 'json' for JSON mode, or JSON schema object for structured output",
+        description="(Deprecated) Native Ollama format field. Prefer response_format for OpenAI compatibility.",
+    )
+    response_format: ResponseFormat | None = Field(
+        None,
+        description="OpenAI-compatible response_format. Overrides format when provided.",
     )
     temperature: float | None = Field(None, ge=0.0, le=2.0, description="Temperature for sampling")
     top_p: float | None = Field(None, ge=0.0, le=1.0, description="Top-p sampling parameter")
@@ -241,7 +279,11 @@ class ChatRequest(BaseModel):
     stream: bool = Field(False, description="Whether to stream the response")
     format: str | dict[str, Any] | None = Field(
         None,
-        description="Output format: 'json' for JSON mode, or JSON schema object for structured output",
+        description="(Deprecated) Native Ollama format field. Prefer response_format for OpenAI compatibility.",
+    )
+    response_format: ResponseFormat | None = Field(
+        None,
+        description="OpenAI-compatible response_format. Overrides format when provided.",
     )
     tools: list[Tool] | None = Field(None, description="Tools/functions the model can call (POML compatible)")
     temperature: float | None = Field(None, ge=0.0, le=2.0, description="Temperature for sampling")
@@ -618,7 +660,11 @@ class VLMRequest(BaseModel):
     stream: bool = Field(False, description="Whether to stream the response")
     format: str | dict[str, Any] | None = Field(
         None,
-        description="Output format: 'json' for JSON mode, or JSON schema object for structured output",
+        description="(Deprecated) Native Ollama format field. Prefer response_format for OpenAI compatibility.",
+    )
+    response_format: ResponseFormat | None = Field(
+        None,
+        description="OpenAI-compatible response_format. Overrides format when provided.",
     )
     tools: list[Tool] | None = Field(None, description="Tools/functions the model can call (POML compatible)")
     temperature: float | None = Field(None, ge=0.0, le=2.0, description="Temperature for sampling")
@@ -787,6 +833,14 @@ class VLMRequestOpenAI(BaseModel):
     )
     model: str | None = Field("qwen2.5vl:7b", description="VLM model (default: qwen2.5vl:7b)")
     stream: bool = Field(False, description="Whether to stream the response")
+    format: str | dict[str, Any] | None = Field(
+        None,
+        description="(Deprecated) Native Ollama format field. Prefer response_format for OpenAI compatibility.",
+    )
+    response_format: ResponseFormat | None = Field(
+        None,
+        description="OpenAI-compatible response_format. Overrides format when provided.",
+    )
     temperature: float | None = Field(None, ge=0.0, le=2.0, description="Temperature for sampling")
     top_p: float | None = Field(None, ge=0.0, le=1.0, description="Top-p sampling parameter")
     top_k: int | None = Field(None, ge=1, description="Top-k sampling parameter")

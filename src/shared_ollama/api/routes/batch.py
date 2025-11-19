@@ -29,7 +29,7 @@ from shared_ollama.application.batch_use_cases import (
     BatchChatUseCase,
     BatchVLMUseCase,
 )
-from shared_ollama.core.config import settings
+from shared_ollama.infrastructure.config import settings
 from shared_ollama.domain.exceptions import InvalidRequestError
 
 logger = logging.getLogger(__name__)

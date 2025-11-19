@@ -13,13 +13,17 @@ from typing import TYPE_CHECKING
 
 from shared_ollama.api.dependencies import set_dependencies
 from shared_ollama.client import AsyncOllamaConfig, AsyncSharedOllamaClient
-from shared_ollama.core.config import settings
+from shared_ollama.infrastructure.config import settings
 from shared_ollama.core.ollama_manager import initialize_ollama_manager
 from shared_ollama.core.queue import RequestQueue
 from shared_ollama.core.utils import get_project_root
 from shared_ollama.infrastructure.adapters import (
+    AnalyticsCollectorAdapter,
     AsyncOllamaClientAdapter,
+    ImageCacheAdapter,
+    ImageProcessorAdapter,
     MetricsCollectorAdapter,
+    PerformanceCollectorAdapter,
     RequestLoggerAdapter,
 )
 from shared_ollama.infrastructure.image_cache import ImageCache
@@ -177,6 +181,14 @@ async def lifespan_context(app: FastAPI):
     logger.info("LIFESPAN: Image processor and cache initialized")
     print("LIFESPAN: Image processing ready", flush=True)
 
+    # Create adapters for image processing
+    image_processor_adapter = ImageProcessorAdapter(image_processor)
+    image_cache_adapter = ImageCacheAdapter(image_cache)
+
+    # Create optional analytics and performance adapters
+    analytics_adapter = AnalyticsCollectorAdapter()
+    performance_adapter = PerformanceCollectorAdapter()
+
     # Set dependencies for dependency injection
     if client_adapter and logger_adapter and metrics_adapter:
         set_dependencies(
@@ -185,8 +197,10 @@ async def lifespan_context(app: FastAPI):
             metrics_adapter,
             chat_queue,
             vlm_queue,
-            image_processor,
-            image_cache,
+            image_processor_adapter,
+            image_cache_adapter,
+            analytics_adapter=analytics_adapter,
+            performance_adapter=performance_adapter,
         )
         logger.info("LIFESPAN: Dependencies initialized for dependency injection")
 

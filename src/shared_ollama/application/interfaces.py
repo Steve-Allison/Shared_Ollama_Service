@@ -161,3 +161,151 @@ class MetricsCollectorInterface(Protocol):
         """
         ...
 
+
+class ImageProcessorInterface(Protocol):
+    """Protocol for image processing implementations.
+
+    Defines the interface for image validation, compression, and conversion.
+    Allows different image processing backends without coupling to specific
+    implementations.
+    """
+
+    def validate_data_url(self, data_url: str) -> tuple[str, bytes]:
+        """Validate and parse image data URL.
+
+        Args:
+            data_url: Base64-encoded data URL.
+
+        Returns:
+            Tuple of (format, image_bytes).
+
+        Raises:
+            ValueError: If data URL is invalid.
+        """
+        ...
+
+    def process_image(
+        self,
+        data_url: str,
+        target_format: str = "jpeg",
+    ) -> tuple[str, Any]:  # Returns (base64_string, ImageMetadata)
+        """Process and optimize image for VLM model.
+
+        Args:
+            data_url: Base64-encoded data URL.
+            target_format: Target image format ("jpeg", "png", or "webp").
+
+        Returns:
+            Tuple of (base64_string, metadata).
+
+        Raises:
+            ValueError: If image is invalid.
+        """
+        ...
+
+
+class ImageCacheInterface(Protocol):
+    """Protocol for image cache implementations.
+
+    Defines the interface for caching processed images. Allows different
+    cache backends (in-memory, Redis, etc.) without coupling to specific
+    implementations.
+    """
+
+    def get(
+        self,
+        data_url: str,
+        target_format: str,
+    ) -> tuple[str, Any] | None:  # Returns (base64_string, ImageMetadata) | None
+        """Get cached processed image.
+
+        Args:
+            data_url: Original data URL.
+            target_format: Target format.
+
+        Returns:
+            Tuple of (base64_string, metadata) if cached and valid, None otherwise.
+        """
+        ...
+
+    def put(
+        self,
+        data_url: str,
+        target_format: str,
+        base64_string: str,
+        metadata: Any,  # ImageMetadata
+    ) -> None:
+        """Cache processed image.
+
+        Args:
+            data_url: Original data URL.
+            target_format: Target format.
+            base64_string: Processed base64 string.
+            metadata: Image metadata.
+        """
+        ...
+
+    def get_stats(self) -> dict[str, int | float]:
+        """Get cache statistics.
+
+        Returns:
+            Dictionary with cache stats (size, hits, misses, hit_rate, etc.).
+        """
+        ...
+
+
+class AnalyticsCollectorInterface(Protocol):
+    """Protocol for analytics collection implementations.
+
+    Defines the interface for project-based analytics tracking. Allows
+    different analytics backends without coupling to specific implementations.
+    """
+
+    def record_request_with_project(
+        self,
+        model: str,
+        operation: str,
+        latency_ms: float,
+        success: bool,
+        project: str | None = None,
+        error: str | None = None,
+    ) -> None:
+        """Record a request metric with project tracking.
+
+        Args:
+            model: Model name or "system" for non-model operations.
+            operation: Operation name (e.g., "generate", "chat", "vlm").
+            latency_ms: Request latency in milliseconds.
+            success: Whether the request succeeded.
+            project: Project name from X-Project-Name header. Optional.
+            error: Error name if request failed, None if succeeded.
+        """
+        ...
+
+
+class PerformanceCollectorInterface(Protocol):
+    """Protocol for performance metrics collection implementations.
+
+    Defines the interface for detailed performance metrics tracking. Allows
+    different performance backends without coupling to specific implementations.
+    """
+
+    def record_performance(
+        self,
+        model: str,
+        operation: str,
+        total_latency_ms: float,
+        success: bool,
+        response: dict[str, Any] | None = None,
+    ) -> None:
+        """Record detailed performance metrics.
+
+        Args:
+            model: Model name used for the request.
+            operation: Operation type (e.g., "generate", "chat", "vlm").
+            total_latency_ms: Total request latency in milliseconds.
+            success: Whether the request succeeded.
+            response: Response dictionary with timing data. Optional.
+        """
+        ...
+

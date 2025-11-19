@@ -192,6 +192,7 @@ class RequestQueue:
                 )
                 raise
 
+            # Use match/case for cleaner error handling (Python 3.13+)
             try:
                 queued_id, queued_time = await asyncio.wait_for(
                     self._queue.get(), timeout=1.0
@@ -204,14 +205,15 @@ class RequestQueue:
                     self._stats.max_wait_time_ms = max(self._stats.max_wait_time_ms, wait_time_ms)
                     self._stats.queued = self._queue.qsize()
                     self._stats.in_progress = len(self._active_requests) + 1
-                    # Calculate average wait time only if we have completed requests
-                    if total_completed > 0:
-                        self._stats.avg_wait_time_ms = (
-                            self._stats.total_wait_time_ms / total_completed
-                        )
-                    elif total_completed == 0:
-                        # First request - average equals current wait time
-                        self._stats.avg_wait_time_ms = wait_time_ms
+                    # Calculate average wait time using match/case for clarity
+                    match total_completed:
+                        case count if count > 0:
+                            self._stats.avg_wait_time_ms = (
+                                self._stats.total_wait_time_ms / count
+                            )
+                        case 0:
+                            # First request - average equals current wait time
+                            self._stats.avg_wait_time_ms = wait_time_ms
 
                 self._active_requests.add(request_id)
 
@@ -237,6 +239,19 @@ class RequestQueue:
 
             logger.debug("request_completed: request_id=%s", request_id)
 
+        except* ExceptionGroup as eg:
+            # Handle exception groups (Python 3.11+)
+            async with self._stats_lock:
+                if request_id in self._active_requests:
+                    self._stats.failed += 1
+                    self._stats.in_progress = len(self._active_requests) - 1
+
+            logger.error(
+                "request_failed_exception_group: request_id=%s, exceptions=%s",
+                request_id,
+                [str(e) for e in eg.exceptions],
+            )
+            raise
         except Exception as exc:
             async with self._stats_lock:
                 if request_id in self._active_requests:

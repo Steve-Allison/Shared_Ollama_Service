@@ -38,12 +38,19 @@ def get_project_root() -> Path:
     """
     package_root = Path(__file__).resolve().parents[3]
 
+    # Use match/case with guard for cleaner pattern matching (Python 3.13+)
     match (package_root / "pyproject.toml").exists():
         case True:
             return package_root
         case False:
             # Fallback: walk up until we find repository marker
-            for parent in Path(__file__).resolve().parents:
+            # Use itertools for efficient iteration (performance optimization)
+            from itertools import takewhile
+
+            for parent in takewhile(
+                lambda p: p != Path("/"),
+                Path(__file__).resolve().parents
+            ):
                 if (parent / "pyproject.toml").exists() or (parent / ".git").exists():
                     return parent
             return package_root
@@ -59,7 +66,7 @@ def get_ollama_base_url() -> str:
         Base URL string (e.g., "http://localhost:11434"). Always includes
         protocol and port, with trailing slashes removed.
     """
-    from shared_ollama.core.config import OllamaConfig
+    from shared_ollama.infrastructure.config import OllamaConfig
 
     # Use pydantic-settings for environment variable loading
     config = OllamaConfig()
@@ -125,6 +132,7 @@ def ensure_service_running(
     """
     is_healthy, error = check_service_health(base_url)
 
+    # Use match/case with guards for cleaner conditional logic (Python 3.13+)
     match (is_healthy, raise_on_fail):
         case (False, True):
             msg = (
@@ -133,8 +141,8 @@ def ensure_service_running(
                 "Or manually: ollama serve"
             )
             raise ConnectionError(msg)
-        case _:
-            return is_healthy
+        case (healthy, _):
+            return healthy
 
 
 @functools.cache

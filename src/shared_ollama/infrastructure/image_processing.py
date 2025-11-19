@@ -125,24 +125,29 @@ class ImageProcessor:
         except Exception as exc:
             raise ValueError(f"Invalid image data: {exc}") from exc
 
-        # Convert RGBA to RGB for JPEG
-        if target_format == "jpeg" and img.mode == "RGBA":
-            # Create white background
-            background = Image.new("RGB", img.size, (255, 255, 255))
-            background.paste(img, mask=img.split()[3])  # Use alpha as mask
-            img = background
-        elif img.mode not in ("RGB", "RGBA"):
-            img = img.convert("RGB")
+        # Convert RGBA to RGB for JPEG using match/case (Python 3.13+)
+        match (target_format, img.mode):
+            case ("jpeg", "RGBA"):
+                # Create white background for JPEG (doesn't support alpha)
+                background = Image.new("RGB", img.size, (255, 255, 255))
+                background.paste(img, mask=img.split()[3])  # Use alpha as mask
+                img = background
+            case (_, mode) if mode not in ("RGB", "RGBA"):
+                img = img.convert("RGB")
+            case _:
+                pass  # Already in correct format
 
         # Resize if needed (preserve aspect ratio)
         width, height = img.size
         if width > self.max_dimension or height > self.max_dimension:
-            if width > height:
-                new_width = self.max_dimension
-                new_height = int(height * (self.max_dimension / width))
-            else:
-                new_height = self.max_dimension
-                new_width = int(width * (self.max_dimension / height))
+            # Use match/case for cleaner conditional logic
+            match width > height:
+                case True:
+                    new_width = self.max_dimension
+                    new_height = int(height * (self.max_dimension / width))
+                case False:
+                    new_height = self.max_dimension
+                    new_width = int(width * (self.max_dimension / height))
 
             img = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
             logger.info(
@@ -150,30 +155,33 @@ class ImageProcessor:
             )
             width, height = new_width, new_height
 
-        # Compress
+        # Compress using match/case for format selection (Python 3.13+)
         output = io.BytesIO()
-        if target_format == "jpeg":
-            img.save(
-                output,
-                format="JPEG",
-                quality=self.jpeg_quality,
-                optimize=True,
-            )
-        elif target_format == "webp":
-            # WebP supports both lossy and lossless - use lossy with same quality as JPEG
-            img.save(
-                output,
-                format="WEBP",
-                quality=self.jpeg_quality,
-                method=6,  # Slowest/best compression
-            )
-        else:  # PNG
-            img.save(
-                output,
-                format="PNG",
-                compress_level=self.png_compression,
-                optimize=True,
-            )
+        match target_format:
+            case "jpeg":
+                img.save(
+                    output,
+                    format="JPEG",
+                    quality=self.jpeg_quality,
+                    optimize=True,
+                )
+            case "webp":
+                # WebP supports both lossy and lossless - use lossy with same quality as JPEG
+                img.save(
+                    output,
+                    format="WEBP",
+                    quality=self.jpeg_quality,
+                    method=6,  # Slowest/best compression
+                )
+            case "png":
+                img.save(
+                    output,
+                    format="PNG",
+                    compress_level=self.png_compression,
+                    optimize=True,
+                )
+            case _:
+                raise ValueError(f"Unsupported target format: {target_format}")
 
         compressed_bytes = output.getvalue()
         compressed_size = len(compressed_bytes)

@@ -12,7 +12,7 @@ from shared_ollama.core.resilience import (
     RetryConfig,
     exponential_backoff_retry,
 )
-from shared_ollama.core.config import (
+from shared_ollama.infrastructure.config import (
     APIConfig,
     BatchConfig,
     ClientConfig,

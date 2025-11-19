@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import time
 from collections.abc import AsyncIterator
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from shared_ollama.domain.entities import (
     ChatMessage,
@@ -24,6 +24,13 @@ from shared_ollama.domain.entities import (
 )
 from shared_ollama.domain.exceptions import InvalidRequestError
 from shared_ollama.domain.value_objects import ModelName, Prompt, SystemMessage
+
+if TYPE_CHECKING:
+    from shared_ollama.application.interfaces import (
+        MetricsCollectorInterface,
+        OllamaClientInterface,
+        RequestLoggerInterface,
+    )
 
 
 class GenerateUseCase:
@@ -40,9 +47,9 @@ class GenerateUseCase:
 
     def __init__(
         self,
-        client: Any,  # OllamaClientInterface
-        logger: Any,  # RequestLoggerInterface
-        metrics: Any,  # MetricsCollectorInterface
+        client: OllamaClientInterface,
+        logger: RequestLoggerInterface,
+        metrics: MetricsCollectorInterface,
     ) -> None:
         """Initialize the generate use case.
 
@@ -285,9 +292,9 @@ class ChatUseCase:
 
     def __init__(
         self,
-        client: Any,  # OllamaClientInterface
-        logger: Any,  # RequestLoggerInterface
-        metrics: Any,  # MetricsCollectorInterface
+        client: OllamaClientInterface,
+        logger: RequestLoggerInterface,
+        metrics: MetricsCollectorInterface,
     ) -> None:
         """Initialize the chat use case.
 
@@ -557,9 +564,9 @@ class ListModelsUseCase:
 
     def __init__(
         self,
-        client: Any,  # OllamaClientInterface
-        logger: Any,  # RequestLoggerInterface
-        metrics: Any,  # MetricsCollectorInterface
+        client: OllamaClientInterface,
+        logger: RequestLoggerInterface,
+        metrics: MetricsCollectorInterface,
     ) -> None:
         """Initialize the list models use case.
 

@@ -1,0 +1,93 @@
+# Shared Ollama Service Configuration
+# TOML format - portable, version-controllable configuration
+
+# ==============================================================================
+# Ollama Service Configuration
+# ==============================================================================
+[ollama]
+host = "localhost"
+port = 11434
+# base_url = "http://localhost:11434"  # Overrides host/port if set
+debug = false
+metal = true                 # Apple Silicon GPU acceleration
+num_gpu = -1                 # -1 = use all GPU cores
+# num_thread = 14            # Auto-detected if not set
+# max_ram = "44GB"           # Auto-calculated if not set
+# num_parallel = 3           # Auto-calculated if not set
+keep_alive = "30m"
+origins = "*"
+
+# ==============================================================================
+# API Server Configuration
+# ==============================================================================
+[api]
+host = "0.0.0.0"
+port = 8000
+reload = false               # Enable auto-reload (development only)
+log_level = "info"           # debug, info, warning, error, critical
+title = "Shared Ollama Service API"
+version = "2.0.0"
+docs_url = "/api/docs"
+openapi_url = "/api/openapi.json"
+
+# ==============================================================================
+# Request Queue Configuration
+# ==============================================================================
+[queue]
+# Chat queue settings
+chat_max_concurrent = 6      # Max concurrent chat requests (1-100)
+chat_max_queue_size = 50     # Max chat queue depth (1-1000)
+chat_default_timeout = 60.0  # Default chat timeout in seconds (1.0-600.0)
+
+# VLM queue settings (more resource-intensive)
+vlm_max_concurrent = 3       # Max concurrent VLM requests (1-50)
+vlm_max_queue_size = 20      # Max VLM queue depth (1-500)
+vlm_default_timeout = 120.0  # Default VLM timeout in seconds (1.0-1200.0)
+
+# ==============================================================================
+# Batch Processing Configuration
+# ==============================================================================
+[batch]
+chat_max_concurrent = 5      # Max concurrent batch chat requests (1-50)
+chat_max_requests = 50       # Max requests per batch chat (1-1000)
+vlm_max_concurrent = 3       # Max concurrent batch VLM requests (1-20)
+vlm_max_requests = 20        # Max requests per batch VLM (1-500)
+
+# ==============================================================================
+# Image Processing Configuration (for VLM)
+# ==============================================================================
+[image]
+max_dimension = 1024         # Max image dimension in pixels (256-2048)
+jpeg_quality = 85            # JPEG compression quality (1-100)
+png_compression = 6          # PNG compression level (0-9)
+max_size_bytes = 10485760    # Max image size in bytes (10MB default, 1MB-100MB)
+
+# ==============================================================================
+# Image Cache Configuration
+# ==============================================================================
+[image_cache]
+max_size = 100               # Max cached images (1-10000)
+ttl_seconds = 3600.0         # Cache TTL in seconds (60.0-86400.0)
+
+# ==============================================================================
+# Async Client Configuration
+# ==============================================================================
+[client]
+timeout = 300                        # Request timeout in seconds (1-3600)
+health_check_timeout = 5             # Health check timeout in seconds (1-60)
+max_connections = 50                 # Max HTTP connections (1-1000)
+max_keepalive_connections = 20       # Max keep-alive connections (1-500)
+# max_concurrent_requests = null     # Max concurrent requests (null = unlimited)
+max_retries = 3                      # Max retry attempts (0-10)
+retry_delay = 1.0                    # Retry delay in seconds (0.1-10.0)
+verbose = false                      # Verbose logging
+
+# ==============================================================================
+# Ollama Manager Configuration
+# ==============================================================================
+[ollama_manager]
+auto_detect_optimizations = true     # Auto-detect system optimizations
+wait_for_ready = true                # Wait for service to be ready on start
+max_wait_time = 30                   # Max wait time for readiness in seconds (1-300)
+shutdown_timeout = 10                # Shutdown timeout in seconds (1-60)
+force_manage = true                  # Stop external Ollama instances and manage our own

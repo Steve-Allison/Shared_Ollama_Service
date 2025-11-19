@@ -1,10 +1,9 @@
 """Centralized configuration management for Shared Ollama Service.
 
 This module provides a single source of truth for all configuration values,
-using pydantic-settings for environment variable loading and validation.
+using TOML config files with pydantic validation.
 
-All configuration values can be set via environment variables with sensible defaults.
-Supports .env files for local development.
+Configuration is loaded from config.toml in the project root.
 
 Usage:
     from shared_ollama.infrastructure.config import settings
@@ -16,21 +15,16 @@ Usage:
 
 from __future__ import annotations
 
+import tomllib
 from functools import lru_cache
-from typing import Literal
+from pathlib import Path
+from typing import Any, Literal
 
-from pydantic import Field, field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import BaseModel, Field, field_validator
 
 
-class OllamaConfig(BaseSettings):
+class OllamaConfig(BaseModel):
     """Ollama service configuration."""
-
-    model_config = SettingsConfigDict(
-        env_prefix="OLLAMA_",
-        case_sensitive=False,
-        extra="ignore",
-    )
 
     host: str = Field(default="localhost", description="Ollama service host")
     port: int = Field(default=11434, ge=1, le=65535, description="Ollama service port")
@@ -61,14 +55,8 @@ class OllamaConfig(BaseSettings):
         return v
 
 
-class APIConfig(BaseSettings):
+class APIConfig(BaseModel):
     """FastAPI server configuration."""
-
-    model_config = SettingsConfigDict(
-        env_prefix="API_",
-        case_sensitive=False,
-        extra="ignore",
-    )
 
     host: str = Field(default="0.0.0.0", description="API server host")  # noqa: S104
     port: int = Field(default=8000, ge=1, le=65535, description="API server port")
@@ -82,14 +70,8 @@ class APIConfig(BaseSettings):
     openapi_url: str = Field(default="/api/openapi.json", description="OpenAPI spec URL")
 
 
-class QueueConfig(BaseSettings):
+class QueueConfig(BaseModel):
     """Request queue configuration."""
-
-    model_config = SettingsConfigDict(
-        env_prefix="QUEUE_",
-        case_sensitive=False,
-        extra="ignore",
-    )
 
     # Chat queue settings
     chat_max_concurrent: int = Field(
@@ -114,14 +96,8 @@ class QueueConfig(BaseSettings):
     )
 
 
-class BatchConfig(BaseSettings):
+class BatchConfig(BaseModel):
     """Batch processing configuration."""
-
-    model_config = SettingsConfigDict(
-        env_prefix="BATCH_",
-        case_sensitive=False,
-        extra="ignore",
-    )
 
     chat_max_concurrent: int = Field(
         default=5, ge=1, le=50, description="Max concurrent batch chat requests"
@@ -137,14 +113,8 @@ class BatchConfig(BaseSettings):
     )
 
 
-class ImageProcessingConfig(BaseSettings):
+class ImageProcessingConfig(BaseModel):
     """Image processing configuration for VLM."""
-
-    model_config = SettingsConfigDict(
-        env_prefix="IMAGE_",
-        case_sensitive=False,
-        extra="ignore",
-    )
 
     max_dimension: int = Field(
         default=1024, ge=256, le=2048, description="Max image dimension (pixels)"
@@ -163,14 +133,8 @@ class ImageProcessingConfig(BaseSettings):
     )
 
 
-class ImageCacheConfig(BaseSettings):
+class ImageCacheConfig(BaseModel):
     """Image cache configuration."""
-
-    model_config = SettingsConfigDict(
-        env_prefix="IMAGE_CACHE_",
-        case_sensitive=False,
-        extra="ignore",
-    )
 
     max_size: int = Field(
         default=100, ge=1, le=10000, description="Max cached images"
@@ -180,14 +144,8 @@ class ImageCacheConfig(BaseSettings):
     )
 
 
-class ClientConfig(BaseSettings):
+class ClientConfig(BaseModel):
     """Async client configuration."""
-
-    model_config = SettingsConfigDict(
-        env_prefix="CLIENT_",
-        case_sensitive=False,
-        extra="ignore",
-    )
 
     timeout: int = Field(
         default=300, ge=1, le=3600, description="Request timeout (seconds)"
@@ -211,14 +169,8 @@ class ClientConfig(BaseSettings):
     verbose: bool = Field(default=False, description="Verbose logging")
 
 
-class OllamaManagerConfig(BaseSettings):
+class OllamaManagerConfig(BaseModel):
     """Ollama manager configuration."""
-
-    model_config = SettingsConfigDict(
-        env_prefix="OLLAMA_MANAGER_",
-        case_sensitive=False,
-        extra="ignore",
-    )
 
     auto_detect_optimizations: bool = Field(
         default=True, description="Auto-detect system optimizations"
@@ -234,19 +186,12 @@ class OllamaManagerConfig(BaseSettings):
     )
     force_manage: bool = Field(
         default=True,
-        description="Stop external Ollama instances and manage our own. If True, stops Homebrew/launchd services before starting.",
+        description="Stop external Ollama instances and manage our own",
     )
 
 
-class Settings(BaseSettings):
+class Settings(BaseModel):
     """Root settings class containing all configuration sections."""
-
-    model_config = SettingsConfigDict(
-        env_file=".env",
-        env_file_encoding="utf-8",
-        case_sensitive=False,
-        extra="ignore",
-    )
 
     ollama: OllamaConfig = Field(default_factory=OllamaConfig)
     api: APIConfig = Field(default_factory=APIConfig)
@@ -258,14 +203,58 @@ class Settings(BaseSettings):
     ollama_manager: OllamaManagerConfig = Field(default_factory=OllamaManagerConfig)
 
     @classmethod
-    @lru_cache(maxsize=1)
-    def get_settings(cls) -> Settings:
-        """Get cached settings instance (singleton pattern)."""
-        return cls()
+    def from_toml(cls, config_path: Path | None = None) -> Settings:
+        """Load settings from TOML file.
+
+        Args:
+            config_path: Path to config.toml. If None, searches for config.toml
+                in project root.
+
+        Returns:
+            Settings instance populated from TOML file, or default settings
+            if file not found.
+
+        Raises:
+            ValueError: If TOML file is invalid or contains validation errors.
+        """
+        if config_path is None:
+            # Find project root (assumes this file is in src/shared_ollama/infrastructure/)
+            current_file = Path(__file__)
+            project_root = current_file.parent.parent.parent.parent
+            config_path = project_root / "config.toml"
+
+        if not config_path.exists():
+            # Return default settings if no config file found
+            return cls()
+
+        try:
+            with open(config_path, "rb") as f:
+                config_data = tomllib.load(f)
+
+            # Create nested config objects
+            return cls(
+                ollama=OllamaConfig(**config_data.get("ollama", {})),
+                api=APIConfig(**config_data.get("api", {})),
+                queue=QueueConfig(**config_data.get("queue", {})),
+                batch=BatchConfig(**config_data.get("batch", {})),
+                image=ImageProcessingConfig(**config_data.get("image", {})),
+                image_cache=ImageCacheConfig(**config_data.get("image_cache", {})),
+                client=ClientConfig(**config_data.get("client", {})),
+                ollama_manager=OllamaManagerConfig(**config_data.get("ollama_manager", {})),
+            )
+        except Exception as exc:
+            msg = f"Failed to load config from {config_path}: {exc}"
+            raise ValueError(msg) from exc
+
+
+@lru_cache(maxsize=1)
+def get_settings() -> Settings:
+    """Get cached settings instance (singleton pattern)."""
+    return Settings.from_toml()
 
 
 # Global settings instance
-settings = Settings.get_settings()
+settings = get_settings()
 
 __all__ = [
     "APIConfig",
@@ -277,6 +266,6 @@ __all__ = [
     "OllamaManagerConfig",
     "QueueConfig",
     "Settings",
+    "get_settings",
     "settings",
 ]
-

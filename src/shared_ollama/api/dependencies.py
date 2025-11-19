@@ -85,17 +85,9 @@ def set_dependencies(
         analytics_adapter: Analytics collector adapter. Optional.
         performance_adapter: Performance collector adapter. Optional.
     """
-    global (
-        _client_adapter,
-        _logger_adapter,
-        _metrics_adapter,
-        _analytics_adapter,
-        _performance_adapter,
-        _chat_queue,
-        _vlm_queue,
-        _image_processor_adapter,
-        _image_cache_adapter,
-    )
+    global _client_adapter, _logger_adapter, _metrics_adapter, _analytics_adapter
+    global _performance_adapter, _chat_queue, _vlm_queue
+    global _image_processor_adapter, _image_cache_adapter
     _client_adapter = client_adapter
     _logger_adapter = logger_adapter
     _metrics_adapter = metrics_adapter

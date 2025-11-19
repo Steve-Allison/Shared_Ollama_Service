@@ -1,6 +1,5 @@
-# Environment variables
-.env
-.env.local
+# Configuration (use config.toml.example as template)
+config.toml
 
 # Python
 __pycache__/

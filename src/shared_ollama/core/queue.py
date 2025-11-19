@@ -239,26 +239,21 @@ class RequestQueue:
 
             logger.debug("request_completed: request_id=%s", request_id)
 
-        except* ExceptionGroup as eg:
-            # Handle exception groups (Python 3.11+)
-            async with self._stats_lock:
-                if request_id in self._active_requests:
-                    self._stats.failed += 1
-                    self._stats.in_progress = len(self._active_requests) - 1
-
-            logger.error(
-                "request_failed_exception_group: request_id=%s, exceptions=%s",
-                request_id,
-                [str(e) for e in eg.exceptions],
-            )
-            raise
         except Exception as exc:
             async with self._stats_lock:
                 if request_id in self._active_requests:
                     self._stats.failed += 1
                     self._stats.in_progress = len(self._active_requests) - 1
 
-            logger.error("request_failed: request_id=%s, error=%s", request_id, exc)
+            # Log differently for exception groups vs regular exceptions
+            if isinstance(exc, ExceptionGroup):
+                logger.error(
+                    "request_failed_exception_group: request_id=%s, exceptions=%s",
+                    request_id,
+                    [str(e) for e in exc.exceptions],
+                )
+            else:
+                logger.error("request_failed: request_id=%s, error=%s", request_id, exc)
             raise
 
         finally:

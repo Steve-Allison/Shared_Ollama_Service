@@ -63,14 +63,6 @@ class OllamaManager:
         - Stop process with stop()
     """
 
-    __slots__ = (
-        "base_url",
-        "process",
-        "log_dir",
-        "auto_detect_optimizations",
-        "force_manage",
-    )
-
     def __init__(
         self,
         base_url: str = "http://localhost:11434",
@@ -114,7 +106,7 @@ class OllamaManager:
     def ollama_executable(self) -> str | None:
         """Find and cache the Ollama executable path.
 
-        Uses functools.cached_property for automatic caching (Python 3.13+).
+        Uses functools.cached_property for automatic caching (Python 3.8+).
         Result is cached since the executable location doesn't change at runtime.
 
         Returns:

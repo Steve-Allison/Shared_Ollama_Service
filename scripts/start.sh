@@ -135,10 +135,10 @@ echo -e "${BLUE}Configuration:${NC}"
 echo "  ✓ REST API Port: ${API_PORT}"
 echo "  ✓ Logs: ${LOG_DIR}/"
 echo "  ✓ Ollama: Managed internally by REST API"
-if [ -f "$PROJECT_ROOT/.env" ]; then
-    echo "  ✓ Configuration: .env file loaded"
+if [ -f "$PROJECT_ROOT/config.toml" ]; then
+    echo "  ✓ Configuration: config.toml loaded"
 else
-    echo "  ⚠ Configuration: Using defaults (no .env file)"
+    echo "  ⚠ Configuration: Using defaults (no config.toml file)"
 fi
 echo ""
 

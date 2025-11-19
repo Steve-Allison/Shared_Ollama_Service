@@ -4,9 +4,9 @@ from enum import StrEnum
 from typing import Any
 
 class Model(StrEnum):
-    QWEN25_VL_7B: str
+    QWEN3_VL_32B: str
     QWEN25_7B: str
-    QWEN25_14B: str
+    QWEN3_30B: str
     GRANITE_4_H_TINY: str
 
 class OllamaConfig:

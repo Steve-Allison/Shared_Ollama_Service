@@ -26,7 +26,7 @@ class TestOllamaConfig:
         """Test that default config uses expected values."""
         config = OllamaConfig()
         assert config.base_url == "http://localhost:11434"
-        assert config.default_model == Model.QWEN25_VL_7B
+        assert config.default_model == Model.QWEN3_VL_32B
         assert config.timeout == 300
         assert config.health_check_timeout == 5
         assert config.verbose is False
@@ -41,12 +41,12 @@ class TestOllamaConfig:
         """Test that custom config values are preserved."""
         config = OllamaConfig(
             base_url="http://custom:11434",
-            default_model=Model.QWEN25_14B,
+            default_model=Model.QWEN3_30B,
             timeout=120,
             verbose=True,
         )
         assert config.base_url == "http://custom:11434"
-        assert config.default_model == Model.QWEN25_14B
+        assert config.default_model == Model.QWEN3_30B
         assert config.timeout == 120
         assert config.verbose is True
 
@@ -112,12 +112,12 @@ class TestSharedOllamaClient:
         """Test client initialization with custom config."""
         config = OllamaConfig(
             base_url=ollama_server.base_url,
-            default_model=Model.QWEN25_14B,
+            default_model=Model.QWEN3_30B,
             timeout=120,
         )
         client = SharedOllamaClient(config=config, verify_on_init=False)
         assert client.config == config
-        assert client.config.default_model == Model.QWEN25_14B
+        assert client.config.default_model == Model.QWEN3_30B
         assert client.config.timeout == 120
 
     def test_client_verifies_connection_on_init(self, ollama_server):

@@ -56,7 +56,7 @@ class AsyncOllamaConfig:
 
     Attributes:
         base_url: Base URL for Ollama service (default: "http://localhost:11434").
-        default_model: Default model to use if not specified (default: Model.QWEN25_VL_7B).
+        default_model: Default model to use if not specified (default: Model.QWEN3_VL_32B).
         timeout: Request timeout for long operations like generation (default: 300).
         health_check_timeout: Timeout for quick health checks (default: 5).
         verbose: Whether to enable verbose logging (default: False).
@@ -70,7 +70,7 @@ class AsyncOllamaConfig:
     """
 
     base_url: str = "http://localhost:11434"
-    default_model: str = Model.QWEN25_VL_7B
+    default_model: str = Model.QWEN3_VL_32B
     timeout: int = 300
     health_check_timeout: int = 5
     verbose: bool = False

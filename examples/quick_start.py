@@ -48,7 +48,7 @@ def example_custom_config():
 
     # Create custom config with qwen3:30b
     config = OllamaConfig(
-        base_url=get_ollama_base_url(), default_model=Model.QWEN25_14B, timeout=120
+        base_url=get_ollama_base_url(), default_model=Model.QWEN3_30B, timeout=120
     )
 
     client = SharedOllamaClient(config)

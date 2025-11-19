@@ -61,7 +61,7 @@ class OllamaConfig:
     Attributes:
         base_url: Base URL for Ollama service (default: "http://localhost:11434").
         default_model: Default model to use if not specified in requests
-            (default: Model.QWEN25_VL_7B).
+            (default: Model.QWEN3_VL_32B).
         timeout: Request timeout in seconds for long operations like generation
             (default: 300).
         health_check_timeout: Timeout for quick health checks in seconds
@@ -70,7 +70,7 @@ class OllamaConfig:
     """
 
     base_url: str = "http://localhost:11434"
-    default_model: str = Model.QWEN25_VL_7B
+    default_model: str = Model.QWEN3_VL_32B
     timeout: int = 300
     health_check_timeout: int = 5
     verbose: bool = False

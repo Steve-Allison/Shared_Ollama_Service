@@ -38,7 +38,7 @@ echo ""
 MODEL_QWEN25VL_7B=6      # qwen2.5vl:7b
 MODEL_QWEN25_7B=5       # qwen2.5:7b (4.5GB + buffer)
 MODEL_QWEN25_14B=10     # qwen2.5:14b (9GB + buffer)
-MODEL_GRANITE4_TINY=9   # granite4:tiny-h (8GB + buffer)
+MODEL_GRANITE4_TINY=9   # granite4:latest (8GB + buffer)
 
 # Find largest model (worst case scenario)
 LARGEST_MODEL=$MODEL_QWEN25_14B
@@ -53,7 +53,7 @@ echo -e "${CYAN}Model Memory Requirements:${NC}"
 echo "  - qwen2.5vl:7b: ${MODEL_QWEN25VL_7B} GB"
 echo "  - qwen2.5:7b: ${MODEL_QWEN25_7B} GB"
 echo "  - qwen2.5:14b: ${MODEL_QWEN25_14B} GB (largest)"
-echo "  - granite4:tiny-h: ${MODEL_GRANITE4_TINY} GB"
+echo "  - granite4:latest: ${MODEL_GRANITE4_TINY} GB"
 echo ""
 
 # Calculate Ollama memory needs based on actual requirements

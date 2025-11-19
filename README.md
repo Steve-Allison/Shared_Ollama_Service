@@ -44,7 +44,7 @@ This service provides a REST API (port 8000) that manages Ollama internally and 
   - Large language model with excellent reasoning
   - Good alternative for text-only tasks
   - Loaded into memory when requested (~9 GB RAM)
-- **Granite 4.0**: `granite4:tiny-h` (7B total, 1B active, hybrid MoE)
+- **Granite 4.0**: `granite4:latest` (7B total, 1B active, hybrid MoE)
   - IBM Granite 4.0 H Tiny - Hybrid Mamba/Transformer architecture
   - Optimized for RAG, function calling, and agentic workflows
   - ~70% less RAM for long contexts compared to conventional transformers
@@ -994,8 +994,8 @@ ollama pull qwen2.5:7b
 # Pull secondary model (qwen2.5:14b)
 ollama pull qwen2.5:14b
 
-# Pull Granite 4.0 H Tiny model (granite4:tiny-h)
-ollama pull granite4:tiny-h
+# Pull Granite 4.0 H Tiny model (granite4:latest)
+ollama pull granite4:latest
 ```
 
 #### Option 2: Automated Pre-download (Recommended)
@@ -1757,7 +1757,7 @@ tail -f logs/api.log
 ollama pull qwen2.5vl:7b
 ollama pull qwen2.5:7b
 ollama pull qwen2.5:14b
-ollama pull granite4:tiny-h
+ollama pull granite4:latest
 
 # Verify
 ollama list
@@ -1987,7 +1987,7 @@ The service collects comprehensive performance data:
 - `qwen2.5vl:7b`: ~6 GB RAM when loaded
 - `qwen2.5:7b`: ~4.5 GB RAM when loaded
 - `qwen2.5:14b`: ~9 GB RAM when loaded
-- `granite4:tiny-h`: ~8 GB RAM when loaded (but ~70% less RAM for long contexts)
+- `granite4:latest`: ~8 GB RAM when loaded (but ~70% less RAM for long contexts)
 - **Models can run simultaneously** if you have sufficient RAM
 
 **Behavior**: Models are automatically loaded when requested and unloaded after 5 minutes of inactivity. Both models can be active at the same time if needed, reducing switching delays.

@@ -22,7 +22,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, FieldValidationInfo, field_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator
 
 # ============================================================================
 # Tool/Function Calling Models (for POML and OpenAI compatibility)
@@ -148,7 +148,7 @@ class ResponseFormat(BaseModel):
     def validate_schema_for_type(
         cls,
         value: dict[str, Any] | None,
-        info: FieldValidationInfo,
+        info: ValidationInfo,
     ) -> dict[str, Any] | None:
         """Ensure json_schema is provided when required."""
         if info.data.get("type") == "json_schema" and not value:

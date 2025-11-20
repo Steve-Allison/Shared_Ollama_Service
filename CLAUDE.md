@@ -233,23 +233,24 @@ async def chat(request: Request, use_case: ChatUseCase = Depends(get_chat_use_ca
 
 ## Configuration Management
 
-Environment variables via `.env` (see `env.example`):
+- Hardware + model defaults live in `config/model_profiles.yaml` (auto-selected per machine)
+- Additional overrides come from exported environment variables (no `.env` is required)
 
 ```bash
 # API Settings
-API_HOST=0.0.0.0
-API_PORT=8000
+export API_HOST=0.0.0.0
+export API_PORT=8000
 
 # Ollama Settings
-OLLAMA_HOST=localhost:11434
-OLLAMA_METAL=1                 # Apple Silicon GPU acceleration
-OLLAMA_NUM_GPU=-1              # Use all GPU cores
-OLLAMA_KEEP_ALIVE=5m           # Model unload delay
-OLLAMA_MAX_RAM=24GB            # Auto-computed for your system
+export OLLAMA_HOST=localhost:11434
+export OLLAMA_METAL=1                 # Apple Silicon GPU acceleration
+export OLLAMA_NUM_GPU=-1              # Use all GPU cores
+export OLLAMA_KEEP_ALIVE=5m           # Model unload delay
+export OLLAMA_MAX_RAM=24GB            # Auto-computed for your system
 
 # Logging
-LOG_LEVEL=info
-STRUCTURED_LOGGING=true        # JSON log format
+export LOG_LEVEL=info
+export STRUCTURED_LOGGING=true        # JSON log format
 ```
 
 **Config Loading:** `core/config.py` uses `pydantic-settings` for validation

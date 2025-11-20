@@ -29,7 +29,6 @@ echo ""
 # Get project root directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-ENV_FILE="$PROJECT_ROOT/.env"
 DETECT_SCRIPT="$SCRIPT_DIR/detect_system.sh"
 MEMORY_SCRIPT="$SCRIPT_DIR/calculate_memory_limit.sh"
 source "$SCRIPT_DIR/lib/model_config.sh"
@@ -55,34 +54,17 @@ print_warning() {
 }
 
 # ============================================================================
-# Step 0: Generate Optimal Configuration (if needed)
+# Step 0: Detect Hardware Profile
 # ============================================================================
-echo -e "${BLUE}[0/7]${NC} Checking and generating optimal configuration..."
-
-# Check if .env exists and has key settings
-NEEDS_CONFIG=false
-if [ ! -f "$ENV_FILE" ]; then
-    NEEDS_CONFIG=true
-    print_info ".env file not found - will generate optimal configuration"
-elif ! grep -q "^OLLAMA_MAX_RAM=" "$ENV_FILE" 2>/dev/null; then
-    NEEDS_CONFIG=true
-    print_info ".env missing OLLAMA_MAX_RAM - will update configuration"
-fi
-
-if [ "$NEEDS_CONFIG" = true ]; then
-    if [ -f "$SCRIPT_DIR/generate_optimal_config.sh" ]; then
-        print_info "Generating optimal configuration based on system hardware..."
-        if bash "$SCRIPT_DIR/generate_optimal_config.sh" > /dev/null 2>&1; then
-            print_status 0 "Optimal configuration generated"
-            AUTO_FIXED=$((AUTO_FIXED + 1))
-        else
-            print_status 1 "Failed to generate configuration (continuing anyway)"
-        fi
+echo -e "${BLUE}[0/7]${NC} Loading hardware profile from config/model_profiles.yaml..."
+if [ -f "$SCRIPT_DIR/generate_optimal_config.sh" ]; then
+    if bash "$SCRIPT_DIR/generate_optimal_config.sh" > /dev/null 2>&1; then
+        print_status 0 "Hardware profile detected and defaults loaded"
     else
-        print_warning "generate_optimal_config.sh not found - skipping config generation"
+        print_status 1 "Failed to detect hardware profile (continuing with defaults)"
     fi
 else
-    print_status 0 "Configuration file exists with key settings"
+    print_warning "generate_optimal_config.sh not found - using baked-in defaults"
 fi
 
 echo ""

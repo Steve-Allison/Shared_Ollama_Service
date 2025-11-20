@@ -6,22 +6,20 @@ This document describes the comprehensive configuration system for the Shared Ol
 
 The Shared Ollama Service uses a centralized configuration system built on `pydantic-settings` that:
 
-- Loads configuration from environment variables
-- Supports `.env` files for local development
+- Loads configuration from environment variables and detected hardware profiles
+- Auto-selects sensible defaults from `config/model_profiles.yaml`
 - Provides type-safe configuration access
 - Validates all configuration values
 - Offers sensible defaults for all settings
 
 ## Quick Start
 
-1. Copy `env.example` to `.env`:
+1. Run the detection script to view your hardware profile and recommended settings:
    ```bash
-   cp env.example .env
+   ./scripts/generate_optimal_config.sh
    ```
-
-2. Edit `.env` with your desired settings (all variables are optional)
-
-3. Start the service - configuration is automatically loaded
+2. Export any overrides directly in your shell (all variables are optional)
+3. Start the service - configuration is automatically applied
 
 ## Configuration Structure
 
@@ -57,7 +55,7 @@ All configuration can be set via environment variables using the prefix pattern:
 - `QUEUE_CHAT_MAX_CONCURRENT` → `settings.queue.chat_max_concurrent`
 - `BATCH_CHAT_MAX_REQUESTS` → `settings.batch.chat_max_requests`
 
-See `env.example` for the complete list of available variables.
+See this guide for the complete list of available variables.
 
 ## Configuration Sections
 
@@ -239,7 +237,7 @@ Invalid values will raise `ValidationError` at startup.
 Configuration is loaded in this order (later overrides earlier):
 
 1. Default values (in code)
-2. `.env` file (if present)
+2. Auto-selected hardware profile (`config/model_profiles.yaml`)
 3. Environment variables (system/process)
 
 ## Examples
@@ -247,49 +245,46 @@ Configuration is loaded in this order (later overrides earlier):
 ### Development Configuration
 
 ```bash
-# .env
-API_HOST=127.0.0.1
-API_PORT=8000
-API_RELOAD=true
-API_LOG_LEVEL=debug
-QUEUE_CHAT_MAX_CONCURRENT=2
-QUEUE_VLM_MAX_CONCURRENT=1
+export API_HOST=127.0.0.1
+export API_PORT=8000
+export API_RELOAD=true
+export API_LOG_LEVEL=debug
+export QUEUE_CHAT_MAX_CONCURRENT=2
+export QUEUE_VLM_MAX_CONCURRENT=1
 ```
 
 ### Production Configuration
 
 ```bash
-# .env
-API_HOST=0.0.0.0
-API_PORT=8000
-API_RELOAD=false
-API_LOG_LEVEL=info
-QUEUE_CHAT_MAX_CONCURRENT=10
-QUEUE_CHAT_MAX_QUEUE_SIZE=100
-QUEUE_VLM_MAX_CONCURRENT=5
-CLIENT_MAX_CONNECTIONS=200
-CLIENT_MAX_KEEPALIVE_CONNECTIONS=100
+export API_HOST=0.0.0.0
+export API_PORT=8000
+export API_RELOAD=false
+export API_LOG_LEVEL=info
+export QUEUE_CHAT_MAX_CONCURRENT=10
+export QUEUE_CHAT_MAX_QUEUE_SIZE=100
+export QUEUE_VLM_MAX_CONCURRENT=5
+export CLIENT_MAX_CONNECTIONS=200
+export CLIENT_MAX_KEEPALIVE_CONNECTIONS=100
 ```
 
 ### High-Performance Configuration
 
 ```bash
-# .env
-QUEUE_CHAT_MAX_CONCURRENT=20
-QUEUE_CHAT_MAX_QUEUE_SIZE=200
-QUEUE_VLM_MAX_CONCURRENT=10
-QUEUE_VLM_MAX_QUEUE_SIZE=50
-CLIENT_MAX_CONNECTIONS=500
-CLIENT_MAX_KEEPALIVE_CONNECTIONS=250
-BATCH_CHAT_MAX_CONCURRENT=10
-BATCH_CHAT_MAX_REQUESTS=100
+export QUEUE_CHAT_MAX_CONCURRENT=20
+export QUEUE_CHAT_MAX_QUEUE_SIZE=200
+export QUEUE_VLM_MAX_CONCURRENT=10
+export QUEUE_VLM_MAX_QUEUE_SIZE=50
+export CLIENT_MAX_CONNECTIONS=500
+export CLIENT_MAX_KEEPALIVE_CONNECTIONS=250
+export BATCH_CHAT_MAX_CONCURRENT=10
+export BATCH_CHAT_MAX_REQUESTS=100
 ```
 
 ## Best Practices
 
-1. **Use `.env` for local development**: Keep local overrides in `.env` (gitignored)
+1. **Rely on auto-detected profiles**: Let `config/model_profiles.yaml` handle defaults whenever possible
 
-2. **Use environment variables for deployment**: Set variables in your deployment system (Docker, Kubernetes, etc.)
+2. **Use environment variables for overrides**: Export variables in your shell or deployment system (Docker, Kubernetes, etc.)
 
 3. **Validate configuration early**: The service validates all configuration at startup
 
@@ -303,14 +298,14 @@ BATCH_CHAT_MAX_REQUESTS=100
 
 ### Configuration Not Loading
 
-- Check that `.env` file is in the project root
+- Re-run `./scripts/generate_optimal_config.sh` to confirm the detected profile
 - Verify environment variable names match exactly (case-insensitive but prefix matters)
 - Check for typos in variable names
 
 ### Validation Errors
 
 - Check the error message for the specific field and constraint
-- Verify values are within the allowed ranges (see `env.example` comments)
+- Verify values are within the allowed ranges (see comments in this guide)
 - Ensure numeric values are actually numbers (not strings)
 
 ### Configuration Not Applied
@@ -321,7 +316,6 @@ BATCH_CHAT_MAX_REQUESTS=100
 
 ## See Also
 
-- `env.example` - Complete list of all configuration variables
 - `src/shared_ollama/core/config.py` - Configuration implementation
 - API documentation at `/api/docs` - Runtime configuration values
 

@@ -32,7 +32,7 @@ Welcome to the Shared Ollama Service documentation. This directory contains comp
 ## 🚀 Quick Start
 
 1. **Install**: See main [README.md](../README.md)
-2. **Configure**: Copy `env.example` to `.env` and customize
+2. **Configure**: Run `./scripts/generate_optimal_config.sh` (auto-detects hardware profile)
 3. **Start**: Run `./scripts/start.sh`
 4. **Integrate**: See [Integration Guide](INTEGRATION_GUIDE.md)
 

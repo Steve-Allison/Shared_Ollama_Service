@@ -33,20 +33,18 @@ fi
 echo -e "${GREEN}✓ Total System RAM: ${TOTAL_RAM_GB} GB${NC}"
 echo ""
 
-# Load environment configuration if available
-PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-ENV_FILE="$PROJECT_ROOT/.env"
+# Load model configuration from config/model_profiles.yaml
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/lib/model_config.sh"
+load_model_config
 
-if [ -f "$ENV_FILE" ]; then
-    set -a
-    source "$ENV_FILE"
-    set +a
+if [[ -n "${OLLAMA_REQUIRED_MODELS:-}" ]]; then
+    REQUIRED_MODELS_CSV="$OLLAMA_REQUIRED_MODELS"
+else
+    IFS=',' read -r REQUIRED_MODELS_CSV <<< "$(IFS=','; echo "${REQUIRED_MODELS[*]}")"
 fi
 
-DEFAULT_VLM_MODEL="${OLLAMA_DEFAULT_VLM_MODEL:-qwen3-vl:8b-instruct-q4_K_M}"
-DEFAULT_TEXT_MODEL="${OLLAMA_DEFAULT_TEXT_MODEL:-qwen3:14b-q4_K_M}"
-REQUIRED_MODELS_CSV="${OLLAMA_REQUIRED_MODELS:-$DEFAULT_VLM_MODEL,$DEFAULT_TEXT_MODEL}"
-MODEL_MEMORY_HINTS="${OLLAMA_MODEL_MEMORY_HINTS:-$DEFAULT_VLM_MODEL:6,$DEFAULT_TEXT_MODEL:8}"
+MODEL_MEMORY_HINTS="${OLLAMA_MODEL_MEMORY_HINTS:-$MODEL_MEMORY_HINTS}"
 
 IFS=',' read -r -a REQUIRED_MODELS <<< "$REQUIRED_MODELS_CSV"
 declare -A MODEL_MEMORY_MAP
@@ -59,7 +57,7 @@ for pair in "${HINT_PAIRS[@]}"; do
     fi
 done
 
-LARGEST_MODEL=${OLLAMA_LARGEST_MODEL_GB:-19}
+LARGEST_MODEL=${OLLAMA_LARGEST_MODEL_GB:-$LARGEST_MODEL_GB}
 
 # Get parallel model count (default to 2 if not set, max 3)
 PARALLEL_MODELS=${OLLAMA_NUM_PARALLEL:-2}
@@ -83,8 +81,8 @@ echo ""
 
 # Calculate Ollama memory needs based on actual requirements
 # Formula: (largest_model × parallel_count) + inference_buffer + overhead
-INFERENCE_BUFFER=${OLLAMA_INFERENCE_BUFFER_GB:-4}
-OVERHEAD=${OLLAMA_SERVICE_OVERHEAD_GB:-2}
+INFERENCE_BUFFER=${OLLAMA_INFERENCE_BUFFER_GB:-$INFERENCE_BUFFER_GB}
+OVERHEAD=${OLLAMA_SERVICE_OVERHEAD_GB:-$SERVICE_OVERHEAD_GB}
 
 OLLAMA_REQUIRED_GB=$((LARGEST_MODEL * PARALLEL_MODELS + INFERENCE_BUFFER + OVERHEAD))
 
@@ -154,12 +152,6 @@ echo ""
 echo "  # Or add to your shell profile (~/.zshrc or ~/.bashrc):"
 echo "  echo 'export OLLAMA_MAX_RAM=${OLLAMA_MAX_RAM_GB}GB' >> ~/.zshrc"
 echo ""
-echo "  # Or set in .env file (see scripts/generate_optimal_config.sh):"
-echo "  # Add to EnvironmentVariables in plist:"
-echo "  # <key>OLLAMA_MAX_RAM</key>"
-echo "  # <string>${OLLAMA_MAX_RAM_GB}GB</string>"
-echo ""
-
 # Customization options
 echo "Customization Options:"
 echo ""

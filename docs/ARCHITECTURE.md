@@ -295,7 +295,7 @@ Infrastructure (Adapters implement Application Interfaces)
 
 - **Centralized**: Single source of truth for all configuration
 - **Type-Safe**: Pydantic models with validation
-- **Environment-Based**: Supports `.env` files and environment variables
+- **Profile-Driven**: Auto-selects defaults from `config/model_profiles.yaml` with optional environment overrides
 - **Validated**: All values validated at startup
 
 ### 4. Request Queuing

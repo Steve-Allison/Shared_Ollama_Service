@@ -30,13 +30,9 @@ pip install -e ".[dev]" -c constraints.txt
 
 ### Configuration
 
-Copy `env.example` to `.env` and customize for your development environment:
-
-```bash
-cp env.example .env
-```
-
-See [CONFIGURATION.md](CONFIGURATION.md) for all configuration options.
+- Model defaults are auto-selected from `config/model_profiles.yaml`
+- No `.env` file is required; overrides can be exported directly in your shell
+- See [CONFIGURATION.md](CONFIGURATION.md) for all available options
 
 ## Testing
 
@@ -286,7 +282,7 @@ Follow conventional commits:
 - **Solution**: Ensure using `async_api_client` fixture for async endpoints
 
 **Issue**: Configuration not loading
-- **Solution**: Check `.env` file exists and variables are correctly named
+- **Solution**: Re-run `./scripts/generate_optimal_config.sh` to confirm the detected profile or export overrides in your shell
 
 **Issue**: Type checking errors
 - **Solution**: Some false positives may require `# type: ignore` comments

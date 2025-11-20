@@ -23,11 +23,6 @@ Set environment variable (recommended):
 export OLLAMA_BASE_URL="http://localhost:11434"
 ```
 
-Or add to your `.env` file:
-```env
-OLLAMA_BASE_URL=http://localhost:11434
-```
-
 ### Step 3: Use the Client
 
 #### Option A: Import from Shared Service (Recommended)

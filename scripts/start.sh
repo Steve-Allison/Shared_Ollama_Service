@@ -89,7 +89,7 @@ fi
 if [ "$SKIP_VERIFY" = false ]; then
     echo -e "${BLUE}[Setup]${NC} Verifying configuration and setup..."
     if [ -f "$SCRIPT_DIR/verify_setup.sh" ]; then
-        # Run verify_setup.sh - it will auto-generate .env if needed
+        # Run verify_setup.sh - it will auto-detect hardware profile if needed
         # Don't fail the start process if verification has minor issues
         # (verify_setup.sh will still auto-fix what it can)
         VERIFY_OUTPUT=$(bash "$SCRIPT_DIR/verify_setup.sh" 2>&1) || VERIFY_EXIT=$?

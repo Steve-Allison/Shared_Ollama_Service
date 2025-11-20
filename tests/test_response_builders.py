@@ -74,3 +74,21 @@ def test_build_openai_stream_chunk_formats_intermediate_and_final_chunks() -> No
     assert final_payload["usage"]["completion_tokens"] == 2
     assert final_payload["usage"]["total_tokens"] == 12
 
+
+def test_build_openai_chat_response_accepts_iso_created_at() -> None:
+    result = {
+        "message": {
+            "role": "assistant",
+            "content": "Hi there",
+        },
+        "model": "qwen",
+        "prompt_eval_count": 1,
+        "eval_count": 2,
+        "created_at": "2025-11-20T14:16:04.94573Z",
+    }
+
+    response = build_openai_chat_response(result, _ctx())
+
+    assert response["created"] > 0
+    assert response["choices"][0]["message"]["content"] == "Hi there"
+

@@ -590,7 +590,7 @@ def get_ollama_manager() -> OllamaManager:
             initialize_ollama_manager().
     """
     if _ollama_manager is None:
-        raise RuntimeError("Ollama manager not initialized")  # noqa: TRY003
+        raise RuntimeError("Ollama manager not initialized")
     return _ollama_manager
 
 
@@ -617,7 +617,7 @@ def initialize_ollama_manager(
     Side effects:
         Sets the global _ollama_manager variable.
     """
-    global _ollama_manager  # noqa: PLW0603
+    global _ollama_manager
     _ollama_manager = OllamaManager(
         base_url=base_url,
         log_dir=log_dir,

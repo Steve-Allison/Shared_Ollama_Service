@@ -19,7 +19,6 @@ Thread safety:
 
 from __future__ import annotations
 
-import functools
 import json
 import logging
 import os
@@ -79,6 +78,8 @@ _DEFAULT_CLIENT_MODEL = os.getenv(
     "OLLAMA_DEFAULT_VLM_MODEL",
     Model.QWEN3_VL_8B_Q4.value,
 )
+
+MODEL_INFO_CACHE_LIMIT = 128
 
 
 @dataclass(slots=True, frozen=True)
@@ -178,7 +179,7 @@ class SharedOllamaClient:
         ideally use its own client instance for best performance.
     """
 
-    __slots__ = ("config", "session", "_model_info_cache")
+    __slots__ = ("_model_info_cache", "config", "session")
 
     def __init__(
         self, config: OllamaConfig | None = None, verify_on_init: bool = True
@@ -880,7 +881,7 @@ class SharedOllamaClient:
         info = next((item for item in models if item.get("name") == model), None)
         self._model_info_cache[model] = info
         self._model_info_cache.move_to_end(model)
-        if len(self._model_info_cache) > 128:
+        if len(self._model_info_cache) > MODEL_INFO_CACHE_LIMIT:
             self._model_info_cache.popitem(last=False)
         return info
 

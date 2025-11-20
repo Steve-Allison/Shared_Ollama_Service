@@ -15,31 +15,45 @@ Usage:
 """
 
 import json
+from collections.abc import Callable
+from typing import Any, TypedDict, cast
 
 import poml
 import requests
+
+PomlRender = Callable[..., dict[str, Any]]
+POML_RENDER: PomlRender = cast(Any, poml).poml
 
 # API endpoint
 API_BASE = "http://localhost:8000/api/v1"
 
 
-def get_weather(location: str, unit: str = "celsius") -> dict:
+class WeatherData(TypedDict):
+    temperature: float
+    condition: str
+    humidity: int
+
+
+def get_weather(location: str, unit: str = "celsius") -> WeatherData:
     """Simulate weather API call.
 
     In production, this would call a real weather API.
     """
     # Simulated weather data
-    weather_data = {
-        "Paris": {"temperature": 22, "condition": "sunny", "humidity": 65},
-        "London": {"temperature": 15, "condition": "rainy", "humidity": 80},
-        "New York": {"temperature": 25, "condition": "partly cloudy", "humidity": 70},
+    weather_data: dict[str, WeatherData] = {
+        "Paris": {"temperature": 22.0, "condition": "sunny", "humidity": 65},
+        "London": {"temperature": 15.0, "condition": "rainy", "humidity": 80},
+        "New York": {"temperature": 25.0, "condition": "partly cloudy", "humidity": 70},
     }
 
-    data = weather_data.get(location, {"temperature": 20, "condition": "unknown", "humidity": 50})
+    data = weather_data.get(
+        location, {"temperature": 20.0, "condition": "unknown", "humidity": 50}
+    )
 
     # Convert to Fahrenheit if requested
     if unit == "fahrenheit":
-        data["temperature"] = int(data["temperature"] * 9/5 + 32)
+        temp = data["temperature"]
+        data["temperature"] = round(temp * 9 / 5 + 32, 2)
 
     return data
 
@@ -53,7 +67,11 @@ def calculate(expression: str) -> dict:
         # WARNING: eval() is unsafe for untrusted input!
         # Use a proper expression parser in production (e.g., sympy, numexpr)
         result = eval(expression, {"__builtins__": {}}, {})
-        return {"result": result, "expression": expression}
+        if isinstance(result, (int, float)):
+            safe_result: float | int = result
+        else:
+            safe_result = str(result)
+        return {"result": safe_result, "expression": expression}
     except Exception as e:
         return {"error": str(e), "expression": expression}
 
@@ -71,15 +89,15 @@ def main():
     print()
 
     # Context for POML template
-    context = {
+    context: dict[str, object] = {
         "user_question": user_question,
         "tool_request": None,
-        "tool_response": None
+        "tool_response": None,
     }
 
     # Load POML template and generate request
     print("📝 Generating request from POML template...")
-    params = poml.poml("chat_with_tools.poml", context=context, format="openai_chat")
+    params = POML_RENDER("chat_with_tools.poml", context=context, format="openai_chat")
     print(f"✓ Tools defined: {len(params.get('tools', []))}")
     print()
 
@@ -125,12 +143,12 @@ def main():
             context["tool_response"] = {
                 "id": tool_call["id"],
                 "name": func_name,
-                "result": result
+                "result": result,
             }
 
         # Generate new request with tool results
         print("📝 Generating follow-up request with tool results...")
-        params = poml.poml("chat_with_tools.poml", context=context, format="openai_chat")
+        params = POML_RENDER("chat_with_tools.poml", context=context, format="openai_chat")
 
         # Send follow-up request
         print("🚀 Sending follow-up request...")

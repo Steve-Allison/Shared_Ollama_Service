@@ -31,10 +31,12 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar
 
 from pydantic import TypeAdapter
+
 from shared_ollama.telemetry.metrics import MetricsCollector
 
 if TYPE_CHECKING:
     from collections.abc import Generator
+
     from shared_ollama.telemetry.metrics import RequestMetrics
 else:  # pragma: no cover - used only for runtime type hint evaluation
     Generator = Any  # type: ignore[assignment]
@@ -207,6 +209,53 @@ class AnalyticsCollector:
         return {id(metric): index for index, metric in enumerate(all_metrics_list)}
 
     @classmethod
+    def _filter_by_window(
+        cls, metrics: list[RequestMetrics], window_minutes: int | None
+    ) -> list[RequestMetrics]:
+        if not window_minutes:
+            return metrics
+        cutoff = datetime.now(UTC) - timedelta(minutes=window_minutes)
+        return [metric for metric in metrics if metric.timestamp >= cutoff]
+
+    @classmethod
+    def _filter_by_project(
+        cls, metrics: list[RequestMetrics], project: str | None
+    ) -> list[RequestMetrics]:
+        if not project:
+            return metrics
+        metric_to_index = cls._build_metric_index_map()
+        return [
+            metric
+            for metric in metrics
+            if cls._project_metadata.get(metric_to_index.get(id(metric), -1)) == project
+        ]
+
+    @classmethod
+    def _aggregate_project_metrics(
+        cls, metrics: list[RequestMetrics]
+    ) -> dict[str, ProjectMetrics]:
+        metric_to_index = cls._build_metric_index_map()
+        project_metrics_dict: dict[str, ProjectMetrics] = {}
+        for metric in metrics:
+            metric_index = metric_to_index.get(id(metric), -1)
+            proj = cls._project_metadata.get(metric_index, "unknown")
+            pm = project_metrics_dict.setdefault(proj, ProjectMetrics(project_name=proj))
+            pm.total_requests += 1
+            pm.successful_requests += int(metric.success)
+            pm.failed_requests += int(not metric.success)
+            pm.requests_by_model[metric.model] += 1
+            pm.requests_by_operation[metric.operation] += 1
+            pm.total_latency_ms += metric.latency_ms
+            if not pm.first_request_time or metric.timestamp < pm.first_request_time:
+                pm.first_request_time = metric.timestamp
+            if not pm.last_request_time or metric.timestamp > pm.last_request_time:
+                pm.last_request_time = metric.timestamp
+        for pm in project_metrics_dict.values():
+            if pm.total_requests > 0:
+                pm.average_latency_ms = pm.total_latency_ms / pm.total_requests
+        return project_metrics_dict
+
+    @classmethod
     def record_request_with_project(
         cls,
         model: str,
@@ -281,53 +330,13 @@ class AnalyticsCollector:
         if not all_metrics:
             return AnalyticsReport()
 
-        if window_minutes:
-            cutoff = datetime.now(UTC) - timedelta(minutes=window_minutes)
-            metrics = [metric for metric in all_metrics if metric.timestamp >= cutoff]
-        else:
-            metrics = all_metrics
-
-        if project:
-            metric_to_index = cls._build_metric_index_map()
-            metrics = [
-                metric
-                for metric in metrics
-                if cls._project_metadata.get(metric_to_index.get(id(metric), -1)) == project
-            ]
+        metrics = cls._filter_by_window(all_metrics, window_minutes)
+        metrics = cls._filter_by_project(metrics, project)
 
         if not metrics:
             return AnalyticsReport()
 
-        project_metrics_dict: dict[str, ProjectMetrics] = {}
-        metric_to_index = cls._build_metric_index_map()
-
-        for metric in metrics:
-            metric_index = metric_to_index.get(id(metric), -1)
-            proj = cls._project_metadata.get(metric_index, "unknown")
-
-            if proj not in project_metrics_dict:
-                project_metrics_dict[proj] = ProjectMetrics(project_name=proj)
-
-            pm = project_metrics_dict[proj]
-            pm.total_requests += 1
-            if metric.success:
-                pm.successful_requests += 1
-            else:
-                pm.failed_requests += 1
-
-            pm.requests_by_model[metric.model] += 1
-            pm.requests_by_operation[metric.operation] += 1
-            pm.total_latency_ms += metric.latency_ms
-
-            if not pm.first_request_time or metric.timestamp < pm.first_request_time:
-                pm.first_request_time = metric.timestamp
-            if not pm.last_request_time or metric.timestamp > pm.last_request_time:
-                pm.last_request_time = metric.timestamp
-
-        for pm in project_metrics_dict.values():
-            if pm.total_requests > 0:
-                pm.average_latency_ms = pm.total_latency_ms / pm.total_requests
-
+        project_metrics_dict = cls._aggregate_project_metrics(metrics)
         hourly_metrics = cls._calculate_hourly_metrics(metrics)
 
         requests_by_project = {

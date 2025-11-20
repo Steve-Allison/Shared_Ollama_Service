@@ -31,6 +31,7 @@ from typing import TYPE_CHECKING, Any, ClassVar
 
 if TYPE_CHECKING:  # pragma: no cover
     from collections.abc import Generator
+
     from shared_ollama.client.sync import GenerateResponse
 else:  # pragma: no cover - runtime fallback for postponed evaluation
     Generator = Any  # type: ignore[assignment]
@@ -164,7 +165,7 @@ class PerformanceCollector:
     _max_metrics: ClassVar[int] = 10_000
 
     @classmethod
-    def record_performance(  # noqa: PLR0917
+    def record_performance(
         cls,
         model: str,
         operation: str,

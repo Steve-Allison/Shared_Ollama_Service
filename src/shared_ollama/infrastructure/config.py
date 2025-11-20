@@ -58,7 +58,7 @@ class OllamaConfig(BaseModel):
 class APIConfig(BaseModel):
     """FastAPI server configuration."""
 
-    host: str = Field(default="0.0.0.0", description="API server host")  # noqa: S104
+    host: str = Field(default="0.0.0.0", description="API server host")
     port: int = Field(default=8000, ge=1, le=65535, description="API server port")
     reload: bool = Field(default=False, description="Enable auto-reload (development)")
     log_level: Literal["debug", "info", "warning", "error", "critical"] = Field(

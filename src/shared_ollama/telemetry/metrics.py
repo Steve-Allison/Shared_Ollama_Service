@@ -161,7 +161,7 @@ class MetricsCollector:
         logger.debug("Recorded metric: %s on %s - %.2fms", operation, model, latency_ms)
 
     @classmethod
-    def get_metrics(  # noqa: PLR0914
+    def get_metrics(
         cls, window_minutes: int | None = None
     ) -> ServiceMetrics:
         """Get aggregated metrics for a time window.

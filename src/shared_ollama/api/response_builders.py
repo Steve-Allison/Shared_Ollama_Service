@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import time
 import uuid
+from datetime import datetime
 from typing import Any
 
 from fastapi.responses import JSONResponse
@@ -149,6 +150,24 @@ def json_response(model: ChatResponse | GenerateResponse | VLMResponse) -> JSONR
     return JSONResponse(content=model.model_dump(mode="json"))
 
 
+def _coerce_created_timestamp(value: Any) -> int:
+    """Normalize created_at values to a Unix timestamp."""
+
+    if isinstance(value, (int, float)):
+        return int(value)
+    if isinstance(value, str):
+        try:
+            return int(float(value))
+        except ValueError:
+            try:
+                # Support ISO8601 strings with optional trailing Z
+                sanitized = value.replace("Z", "+00:00") if value.endswith("Z") else value
+                return int(datetime.fromisoformat(sanitized).timestamp())
+            except ValueError:
+                pass
+    return int(time.time())
+
+
 def build_openai_chat_response(
     result_dict: dict[str, Any],
     ctx: RequestContext,
@@ -158,7 +177,7 @@ def build_openai_chat_response(
     model_used = result_dict.get("model", "unknown")
     prompt_eval_count = result_dict.get("prompt_eval_count", 0)
     eval_count = result_dict.get("eval_count", 0)
-    created_ts = int(result_dict.get("created_at") or time.time())
+    created_ts = _coerce_created_timestamp(result_dict.get("created_at"))
     finish_reason = result_dict.get("finish_reason", "stop")
 
     message_payload: dict[str, Any] = {

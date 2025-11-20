@@ -78,11 +78,11 @@ class ImageProcessor:
             ValueError: If data URL is invalid
         """
         if not data_url.startswith("data:image/"):
-            raise ValueError("Image URL must start with 'data:image/'")  # noqa: TRY003
+            raise ValueError("Image URL must start with 'data:image/'")
         if ";base64," not in data_url:
             raise ValueError(
                 "Image URL must contain ';base64,' separator"
-            )  # noqa: TRY003
+            )
 
         # Extract format and data
         header, base64_data = data_url.split(";base64,", 1)
@@ -91,13 +91,13 @@ class ImageProcessor:
         try:
             image_bytes = base64.b64decode(base64_data)
         except Exception as exc:
-            raise ValueError(f"Invalid base64 encoding: {exc}") from exc  # noqa: TRY003
+            raise ValueError(f"Invalid base64 encoding: {exc}") from exc
 
         if len(image_bytes) > self.max_size_bytes:
             raise ValueError(
                 f"Image too large: {len(image_bytes)} bytes "
                 f"(max: {self.max_size_bytes})"
-            )  # noqa: TRY003
+            )
 
         return img_format, image_bytes
 
@@ -126,7 +126,7 @@ class ImageProcessor:
             img = Image.open(io.BytesIO(image_bytes))
             img.load()
         except Exception as exc:
-            raise ValueError(f"Invalid image data: {exc}") from exc  # noqa: TRY003
+            raise ValueError(f"Invalid image data: {exc}") from exc
 
         # Convert RGBA to RGB for JPEG using match/case (Python 3.13+)
         match (target_format, img.mode):
@@ -186,7 +186,7 @@ class ImageProcessor:
             case _:
                 raise ValueError(
                     f"Unsupported target format: {target_format}"
-                )  # noqa: TRY003
+                )
 
         compressed_bytes = output.getvalue()
         compressed_size = len(compressed_bytes)

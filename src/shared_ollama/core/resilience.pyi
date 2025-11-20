@@ -17,7 +17,7 @@ class CircuitBreakerConfig:
     recovery_timeout: float
     expected_exception: type[Exception] | tuple[type[Exception], ...]
 
-    def exponential_backoff_retry(  # noqa: UP047
+    def exponential_backoff_retry(
     func: Callable[[], _T],
     config: RetryConfig | None = ...,
     exceptions: tuple[type[Exception], ...] | None = ...,

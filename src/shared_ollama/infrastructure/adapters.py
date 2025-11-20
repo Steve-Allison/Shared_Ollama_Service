@@ -58,14 +58,14 @@ class AsyncOllamaClientAdapter:
         """
         return await self._client.list_models()
 
-    async def generate(  # noqa: PLR0917
+    async def generate(
         self,
         prompt: str,
         model: str | None = None,
         system: str | None = None,
         options: dict[str, Any] | None = None,
         stream: bool = False,
-        format: str | dict[str, Any] | None = None,  # noqa: A002
+        format: str | dict[str, Any] | None = None,
         tools: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any] | AsyncIterator[dict[str, Any]]:
         """Generate text from a prompt with tool calling support.
@@ -130,14 +130,14 @@ class AsyncOllamaClientAdapter:
             "load_duration": result.load_duration,
         }
 
-    async def chat(  # noqa: PLR0917
+    async def chat(
         self,
         messages: list[dict[str, Any]],
         model: str | None = None,
         options: dict[str, Any] | None = None,
         stream: bool = False,
         images: list[str] | None = None,
-        format: str | dict[str, Any] | None = None,  # noqa: A002
+        format: str | dict[str, Any] | None = None,
         tools: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any] | AsyncIterator[dict[str, Any]]:
         """Chat completion with multimodal and tool calling support.
@@ -400,7 +400,7 @@ class AnalyticsCollectorAdapter:
     """
 
     @staticmethod
-    def record_request_with_project(  # noqa: PLR0917
+    def record_request_with_project(
         model: str,
         operation: str,
         latency_ms: float,
@@ -441,7 +441,7 @@ class PerformanceCollectorAdapter:
     """
 
     @staticmethod
-    def record_performance(  # noqa: PLR0917
+    def record_performance(
         model: str,
         operation: str,
         total_latency_ms: float,

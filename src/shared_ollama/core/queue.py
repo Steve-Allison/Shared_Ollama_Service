@@ -166,7 +166,7 @@ class RequestQueue:
                     self._stats.rejected += 1
                 raise RuntimeError(
                     f"Queue is full ({self.max_queue_size} requests already queued)"
-                )  # noqa: TRY003, TRY301
+                )
 
             await self._queue.put((request_id, enqueue_time))
             async with self._stats_lock:

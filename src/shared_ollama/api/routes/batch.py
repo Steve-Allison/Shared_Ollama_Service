@@ -7,9 +7,9 @@ in parallel.
 from __future__ import annotations
 
 import logging
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from typing import Annotated
 
 from shared_ollama.api.dependencies import (
     get_batch_chat_use_case,

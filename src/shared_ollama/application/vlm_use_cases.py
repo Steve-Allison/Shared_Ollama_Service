@@ -56,6 +56,90 @@ class VLMUseCase:
         self._analytics = analytics
         self._performance = performance
 
+    def _serialize_messages(self, request: VLMRequest) -> list[dict[str, Any]]:
+        messages: list[dict[str, Any]] = []
+        for msg in request.messages:
+            message_dict: dict[str, Any] = {"role": msg.role}
+            if msg.content is not None:
+                message_dict["content"] = msg.content
+            if msg.tool_calls:
+                message_dict["tool_calls"] = [
+                    {
+                        "id": tc.id,
+                        "type": tc.type,
+                        "function": {
+                            "name": tc.function.name,
+                            "arguments": tc.function.arguments,
+                        },
+                    }
+                    for tc in msg.tool_calls
+                ]
+            if msg.tool_call_id:
+                message_dict["tool_call_id"] = msg.tool_call_id
+            messages.append(message_dict)
+        return messages
+
+    def _process_images(
+        self,
+        request: VLMRequest,
+        target_format: Literal["jpeg", "png", "webp"],
+    ) -> tuple[list[str], int]:
+        all_images: list[str] = []
+        total_compression_savings = 0
+        for image_url in request.images:
+            if request.image_compression:
+                cached = self._image_cache.get(image_url, target_format)
+                if cached:
+                    base64_string, metadata = cached
+                else:
+                    base64_string, metadata = self._image_processor.process_image(
+                        image_url,
+                        target_format=target_format,
+                    )
+                    self._image_cache.put(
+                        image_url,
+                        target_format,
+                        base64_string,
+                        metadata,
+                    )
+                    total_compression_savings += metadata.original_size - metadata.compressed_size
+            else:
+                _, image_bytes = self._image_processor.validate_data_url(image_url)
+                base64_string = image_bytes.decode("utf-8") if isinstance(image_bytes, bytes) else image_bytes
+            all_images.append(base64_string)
+        return all_images, total_compression_savings
+
+    @staticmethod
+    def _build_options_dict(request: VLMRequest) -> dict[str, Any] | None:
+        if not request.options:
+            return None
+        options_dict = {
+            "temperature": request.options.temperature,
+            "top_p": request.options.top_p,
+            "top_k": request.options.top_k,
+            "repeat_penalty": request.options.repeat_penalty,
+            "num_predict": request.options.max_tokens,
+            "seed": request.options.seed,
+            "stop": request.options.stop,
+        }
+        return {k: v for k, v in options_dict.items() if v is not None}
+
+    @staticmethod
+    def _build_tools_payload(request: VLMRequest) -> list[dict[str, Any]] | None:
+        if not request.tools:
+            return None
+        return [
+            {
+                "type": tool.type,
+                "function": {
+                    "name": tool.function.name,
+                    "description": tool.function.description,
+                    "parameters": tool.function.parameters,
+                },
+            }
+            for tool in request.tools
+        ]
+
     async def execute(
         self,
         request: VLMRequest,
@@ -93,102 +177,12 @@ class VLMUseCase:
         start_time = time.perf_counter()
 
         try:
-            # Convert messages to dict format with tool calling support
-            messages: list[dict[str, Any]] = []
-            for msg in request.messages:
-                # Build message dict with tool calling support
-                message_dict: dict[str, Any] = {"role": msg.role}
-
-                # Add content if present
-                if msg.content is not None:
-                    message_dict["content"] = msg.content
-
-                # Add tool_calls if present
-                if msg.tool_calls:
-                    message_dict["tool_calls"] = [
-                        {
-                            "id": tc.id,
-                            "type": tc.type,
-                            "function": {
-                                "name": tc.function.name,
-                                "arguments": tc.function.arguments,
-                            },
-                        }
-                        for tc in msg.tool_calls
-                    ]
-
-                # Add tool_call_id if present (for tool response messages)
-                if msg.tool_call_id:
-                    message_dict["tool_call_id"] = msg.tool_call_id
-
-                messages.append(message_dict)
-
-            # Process and compress images from separate images parameter (native Ollama)
-            all_images: list[str] = []
-            total_compression_savings = 0
-
-            for image_url in request.images:
-                if request.image_compression:
-                    # Try cache first
-                    cached = self._image_cache.get(image_url, target_format)
-                    if cached:
-                        base64_string, metadata = cached
-                    else:
-                        # Process and cache
-                        base64_string, metadata = self._image_processor.process_image(
-                            image_url,
-                            target_format=target_format,
-                        )
-                        self._image_cache.put(
-                            image_url,
-                            target_format,
-                            base64_string,
-                            metadata,
-                        )
-                        total_compression_savings += (
-                            metadata.original_size - metadata.compressed_size
-                        )
-                else:
-                    # No compression - extract base64 directly
-                    _, image_bytes = self._image_processor.validate_data_url(
-                        image_url
-                    )
-                    base64_string = image_bytes.decode("utf-8") if isinstance(image_bytes, bytes) else image_bytes
-
-                all_images.append(base64_string)
-
+            messages = self._serialize_messages(request)
+            all_images, total_compression_savings = self._process_images(request, target_format)
             model_str = request.model.value if request.model else None
+            options_dict = self._build_options_dict(request)
+            tools_list = self._build_tools_payload(request)
 
-            # Convert options to dict format
-            options_dict: dict[str, Any] | None = None
-            if request.options:
-                options_dict = {
-                    "temperature": request.options.temperature,
-                    "top_p": request.options.top_p,
-                    "top_k": request.options.top_k,
-                    "repeat_penalty": request.options.repeat_penalty,
-                    "num_predict": request.options.max_tokens,
-                    "seed": request.options.seed,
-                    "stop": request.options.stop,
-                }
-                options_dict = {k: v for k, v in options_dict.items() if v is not None}
-
-            # Convert tools to dict format (POML compatible)
-            tools_list: list[dict[str, Any]] | None = None
-            if request.tools:
-                tools_list = [
-                    {
-                        "type": tool.type,
-                        "function": {
-                            "name": tool.function.name,
-                            "description": tool.function.description,
-                            "parameters": tool.function.parameters,
-                        },
-                    }
-                    for tool in request.tools
-                ]
-
-            # Call client (Ollama's native format with images, format, and tools)
             result = await self._client.chat(
                 messages=messages,
                 model=model_str,

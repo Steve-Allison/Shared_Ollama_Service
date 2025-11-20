@@ -107,21 +107,38 @@ async def run_load_test(args: argparse.Namespace) -> dict[str, Any]:
 
         async def worker(worker_id: int) -> None:
             nonlocal success_count, failure_count
-            while not stop_event.is_set():
-                if end_time and time.perf_counter() >= end_time:
-                    stop_event.set()
-                    break
 
-                request_id: int | None = None
+            def time_exceeded() -> bool:
+                if not end_time:
+                    return False
+                if time.perf_counter() < end_time:
+                    return False
+                stop_event.set()
+                return True
+
+            def next_request_id() -> int | None:
                 if queue_mode:
                     assert queue is not None
                     try:
-                        request_id = queue.get_nowait()
+                        return queue.get_nowait()
                     except asyncio.QueueEmpty:
                         stop_event.set()
-                        break
-                else:
-                    request_id = next(request_counter)
+                        return None
+                return next(request_counter)
+
+            def record_sample(entry: dict[str, Any], error_present: bool) -> None:
+                if len(sample_requests) < args.sample_count:
+                    sample_requests.append(entry)
+                if error_present and len(sample_errors) < args.sample_count:
+                    sample_errors.append(entry)
+
+            while not stop_event.is_set():
+                if time_exceeded():
+                    break
+
+                request_id = next_request_id()
+                if request_id is None:
+                    break
 
                 t0 = time.perf_counter()
                 error_message: str | None = None
@@ -135,10 +152,8 @@ async def run_load_test(args: argparse.Namespace) -> dict[str, Any]:
                 duration = time.perf_counter() - t0
 
                 durations.append(duration)
-                if success:
-                    success_count += 1
-                else:
-                    failure_count += 1
+                success_count += int(success)
+                failure_count += int(not success)
 
                 entry = {
                     "request_id": request_id,
@@ -149,16 +164,12 @@ async def run_load_test(args: argparse.Namespace) -> dict[str, Any]:
                 if error_message:
                     entry["error"] = error_message
 
-                if len(sample_requests) < args.sample_count:
-                    sample_requests.append(entry)
-                if error_message and len(sample_errors) < args.sample_count:
-                    sample_errors.append(entry)
+                record_sample(entry, bool(error_message))
 
                 if queue_mode and queue is not None:
                     queue.task_done()
 
-                if end_time and time.perf_counter() >= end_time:
-                    stop_event.set()
+                if time_exceeded():
                     break
 
                 if args.delay > 0:

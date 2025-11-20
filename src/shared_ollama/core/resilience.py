@@ -88,7 +88,7 @@ class CircuitBreakerConfig:
     expected_exception: type[Exception] | tuple[type[Exception], ...] = ConnectionError
 
 
-def exponential_backoff_retry(  # noqa: UP047
+def exponential_backoff_retry(
     func: Callable[[], _T],
     config: RetryConfig | None = None,
     exceptions: tuple[type[Exception], ...] | None = None,
@@ -235,7 +235,7 @@ class ResilientOllamaClient:
             raise
         except requests.exceptions.RequestException as exc:
             # Network-level errors - convert to ConnectionError for consistency
-            raise ConnectionError(f"Request failed: {exc!s}") from exc  # noqa: TRY003
+            raise ConnectionError(f"Request failed: {exc!s}") from exc
 
     def generate(
         self, prompt: str, model: str | None = None, **kwargs: Any

@@ -10,7 +10,7 @@ import json
 import logging
 import time
 from collections.abc import AsyncIterator
-from typing import Any
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import Response, StreamingResponse
@@ -84,8 +84,8 @@ async def _stream_chat_sse(
 @limiter.limit("30/minute")
 async def vlm_chat(
     request: Request,
-    vlm_use_case_dep: VLMUseCase = Depends(get_vlm_use_case),
-    queue: RequestQueue = Depends(get_vlm_queue),
+    vlm_use_case_dep: Annotated[VLMUseCase, Depends(get_vlm_use_case)],
+    queue: Annotated[RequestQueue, Depends(get_vlm_queue)],
 ) -> Response:
     """Vision-Language Model (VLM) chat completion endpoint.
 
@@ -216,8 +216,8 @@ async def vlm_chat(
 @limiter.limit("30/minute")
 async def vlm_chat_openai(
     request: Request,
-    vlm_use_case_dep: VLMUseCase = Depends(get_vlm_use_case),
-    queue: RequestQueue = Depends(get_vlm_queue),
+    vlm_use_case_dep: Annotated[VLMUseCase, Depends(get_vlm_use_case)],
+    queue: Annotated[RequestQueue, Depends(get_vlm_queue)],
 ) -> Response:
     """OpenAI-compatible Vision-Language Model (VLM) chat completion endpoint.
 

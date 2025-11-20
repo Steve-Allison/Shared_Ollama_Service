@@ -7,7 +7,6 @@ invariants.
 All entities are immutable dataclasses with slots=True for performance.
 """
 
-# ruff: noqa: TRY003
 
 from __future__ import annotations
 

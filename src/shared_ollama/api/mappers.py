@@ -14,8 +14,10 @@ from typing import Any
 from shared_ollama.api.models import (
     ChatRequest as APIChatRequest,
     GenerateRequest as APIGenerateRequest,
+    ImageContentPart,
     ModelInfo as APIModelInfo,
     ResponseFormat,
+    TextContentPart,
     Tool as APITool,
     ToolCall as APIToolCall,
     ToolCallFunction as APIToolCallFunction,
@@ -30,6 +32,7 @@ from shared_ollama.domain.entities import (
     ToolCall,
     ToolCallFunction,
     ToolFunction,
+    VLMMessage,
 )
 from shared_ollama.domain.value_objects import ModelName, Prompt, SystemMessage
 
@@ -340,56 +343,39 @@ def api_to_domain_vlm_request(api_req: Any) -> Any:  # VLMRequest from models
     )
 
 
-def api_to_domain_vlm_request_openai(api_req: Any) -> Any:
-    """Convert OpenAI-compatible API VLMRequest to native Ollama domain VLMRequest.
-
-    Takes OpenAI-compatible format (multimodal messages with embedded images)
-    and converts to native Ollama format (text-only messages + separate images).
-
-    Args:
-        api_req: API VLMRequestOpenAI with multimodal messages.
-
-    Returns:
-        Domain VLMRequest in native Ollama format (text-only messages + separate images).
-    """
-    from shared_ollama.api.models import (
-        ImageContentPart,
-        TextContentPart,
-    )
-    from shared_ollama.domain.entities import (
-        GenerationOptions,
-        ModelName,
-        VLMMessage,
-        VLMRequest,
-    )
-
-    # Extract images and build text-only messages
+def _extract_vlm_messages_and_images(api_req: Any) -> tuple[list[VLMMessage], list[str]]:
     messages: list[VLMMessage] = []
     images: list[str] = []
 
     for msg in api_req.messages:
-        # Build text content from message
         text_parts: list[str] = []
-
-        if isinstance(msg.content, str):
-            # Simple string content
-            text_parts.append(msg.content)
-        elif isinstance(msg.content, list):
-            # Multimodal content - extract text and images
-            for part in msg.content:
+        content = msg.content
+        if isinstance(content, str):
+            text_parts.append(content)
+        else:
+            for part in content or []:
                 if isinstance(part, TextContentPart):
                     text_parts.append(part.text)
                 elif isinstance(part, ImageContentPart):
-                    # Extract image URL and add to images list
                     images.append(part.image_url.url)
 
-        # Create text-only message (combine all text parts)
         if text_parts:
-            combined_text = " ".join(text_parts)
-            messages.append(VLMMessage(role=msg.role, content=combined_text))
-        elif not text_parts and images:
-            # Message has only images, add a default prompt
+            messages.append(VLMMessage(role=msg.role, content=" ".join(text_parts)))
+        elif images:
             messages.append(VLMMessage(role=msg.role, content="What's in this image?"))
+
+    return messages, images
+
+
+def api_to_domain_vlm_request_openai(api_req: Any) -> Any:
+    """Convert OpenAI-compatible API VLMRequest to native Ollama domain VLMRequest."""
+    from shared_ollama.domain.entities import (
+        GenerationOptions,
+        ModelName,
+        VLMRequest,
+    )
+
+    messages, images = _extract_vlm_messages_and_images(api_req)
 
     # Convert model name
     model = ModelName(api_req.model) if api_req.model else None

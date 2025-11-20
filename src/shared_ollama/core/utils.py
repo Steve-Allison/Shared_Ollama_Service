@@ -24,6 +24,7 @@ if TYPE_CHECKING:
 from shared_ollama.infrastructure.config import OllamaConfig
 from shared_ollama.infrastructure.health_checker import check_ollama_health
 
+
 @functools.cache
 def get_project_root() -> Path:
     """Return the project root directory.

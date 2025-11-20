@@ -10,6 +10,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+PROMPT_MAX_LENGTH = 1_000_000
+
 
 @dataclass(slots=True, frozen=True)
 class ModelName:
@@ -53,7 +55,7 @@ class Prompt:
         """
         if not self.value or not self.value.strip():
             raise ValueError("Prompt cannot be empty")
-        if len(self.value) > 1_000_000:  # 1M characters
+        if len(self.value) > PROMPT_MAX_LENGTH:
             raise ValueError("Prompt is too long. Maximum length is 1,000,000 characters")
 
 

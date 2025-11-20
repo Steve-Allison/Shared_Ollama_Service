@@ -71,7 +71,7 @@ base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
 response = requests.post(
     f"{base_url}/api/generate",
     json={
-        "model": "qwen3-vl:32b",
+        "model": "qwen3-vl:8b-instruct-q4_K_M",
         "prompt": "Hello, world!",
         "stream": False
     }
@@ -92,7 +92,7 @@ async function generate(prompt: string) {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      model: "qwen3-vl:32b",
+      model: "qwen3-vl:8b-instruct-q4_K_M",
       prompt,
       stream: false,
     }),
@@ -120,7 +120,7 @@ from pydantic_settings import BaseSettings
 
 class OllamaConfig(BaseSettings):
     base_url: str = "http://localhost:11434"
-    default_model: str = "qwen3-vl:32b"
+    default_model: str = "qwen3-vl:8b-instruct-q4_K_M"
 
     class Config:
         env_prefix = "OLLAMA_"
@@ -147,7 +147,7 @@ client = SharedOllamaClient(
 generation:
   ollama:
     base_url: "http://localhost:11434"
-    model: "qwen3-vl:32b"  # or "granite4:small-h" for RAG/function calling
+    model: "qwen3-vl:8b-instruct-q4_K_M"  # or switch to "qwen3:30b" on high-memory hosts
     timeout: 120
 ```
 
@@ -185,7 +185,7 @@ from shared_ollama import OllamaConfig, SharedOllamaClient
 
 class StoryConfig(BaseModel):
     ollama_base_url: str = Field(default="http://localhost:11434")
-    ollama_model: str = Field(default="qwen3-vl:32b")
+    ollama_model: str = Field(default="qwen3-vl:8b-instruct-q4_K_M")
 
     def get_ollama_client(self):
         return SharedOllamaClient(

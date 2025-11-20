@@ -12,6 +12,10 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/lib/model_config.sh"
+load_model_config
+
 echo -e "${BLUE}🚀 Native Ollama Installation for Apple Silicon${NC}"
 echo "======================================"
 echo ""
@@ -79,12 +83,7 @@ echo "This may take a while depending on your internet connection."
 echo ""
 
 # Define models to pull
-MODELS=(
-    "qwen3-vl:32b"
-    "qwen3-vl:32b"
-    "qwen3:30b"
-    "granite4:small-h"
-)
+MODELS=("${REQUIRED_MODELS[@]}")
 
 # Pull models
 for model in "${MODELS[@]}"; do
@@ -106,7 +105,9 @@ echo -e "  • The REST API will automatically start and manage Ollama"
 echo ""
 
 # Verify models are available
-MODELS_LIST=$(ollama list 2>/dev/null | grep -E "qwen3-vl:32b|qwen3-vl:32b|qwen3:30b" || echo "")
+MODEL_PATTERN=$(printf '%s|' "${REQUIRED_MODELS[@]}")
+MODEL_PATTERN="${MODEL_PATTERN%|}"
+MODELS_LIST=$(ollama list 2>/dev/null | grep -E "$MODEL_PATTERN" || echo "")
 if [ -n "$MODELS_LIST" ]; then
     echo -e "${GREEN}✓ Models verified:${NC}"
     echo "$MODELS_LIST" | while read -r line; do

@@ -12,6 +12,10 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m'
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/lib/model_config.sh"
+load_model_config
+
 OLLAMA_URL="${OLLAMA_URL:-http://localhost:11434}"
 API_ENDPOINT="${OLLAMA_URL}/api"
 
@@ -105,18 +109,19 @@ echo ""
 
 # Quick health test
 echo -e "${BLUE}Health Check:${NC}"
-if echo "$MODELS_LIST" | grep -q "qwen3-vl:32b"; then
+PRIMARY_VLM_MODEL="$DEFAULT_VLM_MODEL"
+if echo "$MODELS_LIST" | grep -q "$PRIMARY_VLM_MODEL"; then
     echo "  Testing model generation..."
     TEST_RESPONSE=$(curl -s -X POST "${API_ENDPOINT}/generate" \
         -H "Content-Type: application/json" \
-        -d '{"model": "qwen3-vl:32b", "prompt": "Say OK", "stream": false}' \
+        -d "{\"model\": \"${PRIMARY_VLM_MODEL}\", \"prompt\": \"Say OK\", \"stream\": false}" \
         2>/dev/null)
 
     # Check for error field first (model not found, etc.)
     if echo "$TEST_RESPONSE" | jq -e '.error' > /dev/null 2>&1; then
         ERROR_MSG=$(echo "$TEST_RESPONSE" | jq -r '.error' 2>/dev/null || echo "unknown error")
         echo -e "${RED}  ✗ Generation test failed: ${ERROR_MSG}${NC}"
-        echo "    Model is listed but not usable. Try: ollama pull qwen3-vl:32b"
+        echo "    Model is listed but not usable. Try: ollama pull ${PRIMARY_VLM_MODEL}"
     # Check for successful response
     elif echo "$TEST_RESPONSE" | jq -e '.response' > /dev/null 2>&1; then
         echo -e "${GREEN}  ✓ Generation test passed${NC}"
@@ -125,7 +130,7 @@ if echo "$MODELS_LIST" | grep -q "qwen3-vl:32b"; then
         echo "    Response: $(echo "$TEST_RESPONSE" | head -c 100)"
     fi
 else
-    echo -e "${YELLOW}  ⚠ Cannot test - qwen3-vl:32b not available${NC}"
+    echo -e "${YELLOW}  ⚠ Cannot test - ${PRIMARY_VLM_MODEL} not available${NC}"
 fi
 
 echo ""

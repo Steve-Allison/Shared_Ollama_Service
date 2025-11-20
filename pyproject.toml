@@ -32,6 +32,7 @@ dev = [
     "pyright>=1.1.407",
     "pytest>=9.0.0",
     "pytest-cov>=7.0.0",
+    "pytest-asyncio>=0.24.0",
 ]
 production = [
     "supervisor>=4.2.0",  # Alternative process manager (optional)

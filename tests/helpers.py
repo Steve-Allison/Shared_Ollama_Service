@@ -121,7 +121,7 @@ def assert_error_response(
 
 def create_mock_generate_response(
     text: str = "Hello, world!",
-    model: str = "qwen3-vl:32b",
+    model: str = "qwen3-vl:8b-instruct-q4_K_M",
     total_duration: int = 500_000_000,
     load_duration: int = 200_000_000,
     prompt_eval_count: int = 5,
@@ -152,7 +152,7 @@ def create_mock_generate_response(
 
 def create_mock_chat_response(
     content: str = "Hello! How can I help you today?",
-    model: str = "qwen3-vl:32b",
+    model: str = "qwen3-vl:8b-instruct-q4_K_M",
     total_duration: int = 500_000_000,
     load_duration: int = 200_000_000,
     prompt_eval_count: int = 5,
@@ -189,13 +189,13 @@ def create_mock_models_response() -> list[dict[str, Any]]:
     """
     return [
         {
-            "name": "qwen3-vl:32b",
+            "name": "qwen3-vl:8b-instruct-q4_K_M",
             "size": 5969245856,
             "modified_at": "2025-11-03T17:24:58Z",
         },
         {
-            "name": "qwen3-vl:32b",
-            "size": 4730000000,
+            "name": "qwen3:14b-q4_K_M",
+            "size": 8988124069,
             "modified_at": "2025-11-03T15:00:00Z",
         },
     ]

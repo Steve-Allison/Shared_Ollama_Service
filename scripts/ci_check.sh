@@ -13,6 +13,10 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m'
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/lib/model_config.sh"
+load_model_config
+
 OLLAMA_URL="${OLLAMA_URL:-http://localhost:11434}"
 API_ENDPOINT="${OLLAMA_URL}/api"
 MAX_WAIT=${MAX_WAIT:-30}  # Maximum seconds to wait for service
@@ -65,7 +69,6 @@ fi
 # Verify required models are available
 echo "Checking required models..."
 
-REQUIRED_MODELS=("qwen3-vl:32b" "qwen3-vl:32b" "qwen3:30b" "granite4:small-h")
 MODELS_JSON=$(curl -s "${API_ENDPOINT}/tags" 2>/dev/null || echo "")
 MODELS_LIST=$(echo "$MODELS_JSON" | jq -r '.models[].name' 2>/dev/null || echo "")
 

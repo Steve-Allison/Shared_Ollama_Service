@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import os
 import sys
 import time
 from collections import Counter
@@ -25,6 +26,8 @@ if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
 from shared_ollama.client import AsyncOllamaConfig, AsyncSharedOllamaClient  # noqa: E402
+
+DEFAULT_VLM_MODEL = os.getenv("OLLAMA_DEFAULT_VLM_MODEL", "qwen3-vl:8b-instruct-q4_K_M")
 
 
 def percentile(values: list[float], pct: float) -> float:
@@ -217,7 +220,7 @@ async def run_load_test(args: argparse.Namespace) -> dict[str, Any]:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Async load tester for the Shared Ollama Service.")
     parser.add_argument("--base-url", default="http://localhost:11434", help="Ollama service base URL.")
-    parser.add_argument("--model", default="qwen3-vl:32b", help="Model to exercise during the test.")
+    parser.add_argument("--model", default=DEFAULT_VLM_MODEL, help="Model to exercise during the test.")
     parser.add_argument(
         "--prompt",
         default="Summarize the concept of vector databases in one short paragraph.",

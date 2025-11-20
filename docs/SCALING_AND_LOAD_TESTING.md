@@ -38,7 +38,7 @@ For automated sweeps or CI usage, run the included script:
 python scripts/async_load_test.py \
   --requests 500 \
   --workers 40 \
-  --model qwen3-vl:32b \
+  --model qwen3-vl:8b-instruct-q4_K_M \
   --prompt "Summarize the latest performance optimizations in two sentences."
 ```
 

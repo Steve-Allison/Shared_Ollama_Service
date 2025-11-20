@@ -12,16 +12,16 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/lib/model_config.sh"
+load_model_config
+
 echo -e "${BLUE}📥 Pre-downloading Ollama models${NC}"
 echo "======================================"
 echo ""
 
 # Required models
-MODELS=(
-    "qwen3-vl:32b"
-    "qwen3:30b"
-    "granite4:small-h"
-)
+MODELS=("${REQUIRED_MODELS[@]}")
 
 # Check if Ollama is installed
 if ! command -v ollama &> /dev/null; then

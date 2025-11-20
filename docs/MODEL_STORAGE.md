@@ -65,12 +65,14 @@ rm -rf ~/.ollama/models/*
 
 ### Model Size Reference
 
-- **qwen3-vl:32b**: ~6 GB
-- **qwen3-vl:32b**: ~4.5 GB
-- **qwen3:30b**: ~9 GB
-- **granite4:small-h**: ~4.2 GB
+- **qwen3-vl:8b-instruct-q4_K_M**: ~6 GB (laptop profile VLM)
+- **qwen3:14b-q4_K_M**: ~8 GB (laptop profile text)
+- **qwen3-vl:32b**: ~21 GB (workstation profile VLM)
+- **qwen3:30b**: ~19 GB (workstation profile text)
 
-**Total if all loaded**: ~23.7 GB in `~/.ollama/models/`
+**Totals**:
+- Laptop profile: ~14 GB in `~/.ollama/models/`
+- Workstation profile: ~40 GB in `~/.ollama/models/`
 
 ### Finding Models on Your System
 
@@ -92,7 +94,7 @@ du -sh ~/.ollama/
 ollama list
 
 # Show model details
-ollama show qwen3-vl:32b
+ollama show qwen3-vl:8b-instruct-q4_K_M
 ```
 
 ### Disk Space Management

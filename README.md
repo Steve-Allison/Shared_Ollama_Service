@@ -28,33 +28,21 @@ This service provides a REST API (port 8000) that manages Ollama internally and 
 
 **Note**: Models are loaded on-demand. Up to 3 models can be loaded simultaneously based on available RAM.
 
-- **Primary**: `qwen3-vl:32b` (32B parameters, vision-language model) ⭐ **VLM SUPPORTED**
-  - **Qwen 3 Series**: Latest generation with enhanced reasoning and multilingual support
-  - **Full multimodal capabilities**: Process images + text in the same request
-  - **Dual format support**: Native Ollama format (primary) + OpenAI-compatible format (for Docling)
-  - **256K context window**: Native support, expandable to 1M tokens
-  - **Advanced capabilities**: Enhanced OCR (32 languages), spatial reasoning, video understanding, visual agent control
-  - **Image analysis**: Describe, analyze, and answer questions about images with state-of-the-art accuracy
-  - **Visual understanding**: Extract text, context, and information from images
-  - Top-tier performance for vision and multimodal tasks
-  - Loaded into memory when requested (~21 GB RAM)
-  - **See VLM Support section below for detailed usage and format examples**
-- **Secondary**: `qwen3:30b` (30B total parameters, MoE text model)
-  - **Qwen 3 Series**: Latest generation with enhanced reasoning and multilingual support
-  - **Mixture-of-Experts architecture**: Efficient 30B total, 3B active per token
-  - **256K context window**: 6.4x longer than previous generation
-  - **Multilingual**: Supports 119 languages and dialects
-  - **Advanced reasoning**: Enhanced mathematical, logical, and code generation capabilities
-  - **Trained on 36 trillion tokens**: Massive upgrade from previous generation
-  - Excellent for complex text-only tasks, long-context understanding
-  - Loaded into memory when requested (~19 GB RAM)
-- **Granite 4.0 Small**: `granite4:small-h` (32B total, 9B active, hybrid MoE)
-  - IBM Granite 4.0 Small - Hybrid Mamba/Transformer architecture
-  - Optimized for RAG, function calling, and agentic workflows
-  - ~70% less RAM for long contexts compared to conventional transformers
-  - **1M context length** (validated to 128K+, trained to 512K+)
-  - Excellent instruction following and tool-calling capabilities
-  - Loaded into memory when requested (~19 GB RAM)
+- **Primary**: `qwen3-vl:8b-instruct-q4_K_M` (8B parameters, quantized vision-language model) ⭐ **VLM SUPPORTED**
+  - **Optimized for laptops**: Quantized Q4_K_M build keeps RAM usage around ~6 GB while retaining Qwen 3 multimodal features
+  - **Full multimodal capabilities**: Images + text, OCR, chart/table understanding, spatial reasoning
+  - **Dual format support**: Native Ollama format + OpenAI-compatible requests (Docling ready)
+  - **128K context window**: Plenty of headroom for long document/image conversations
+  - **Fast load + low power**: Smaller footprint = faster cold starts on 32 GB MacBook Pros
+- **Secondary**: `qwen3:14b-q4_K_M` (14B parameters, quantized dense text model)
+  - **Hybrid reasoning**: Qwen 3 “thinking vs. fast” modes for better latency control
+  - **128K context window**: Handles long chat histories and RAG prompts
+  - **High-quality responses**: 14B dense backbone with 36T-token training run
+  - **Fits comfortably**: ~8 GB RAM when loaded—ideal default text model for this hardware
+- **High-memory profile (≥ 64 GB)**: `qwen3-vl:32b` (VLM) + `qwen3:30b` (text)
+  - Automatically selected when `generate_optimal_config.sh` detects ≥ 64 GB RAM
+  - Full-precision multimodal reasoning with 128K+ context and hybrid thinking
+  - Ideal for workstation/desktop servers running agentic or heavy RAG workloads
 
 Models remain in memory for 5 minutes after last use (OLLAMA_KEEP_ALIVE), then are automatically unloaded to free memory. Switching between models requires a brief load time (~2-3 seconds).
 
@@ -65,7 +53,7 @@ The service **fully supports** vision-language models with **both native Ollama 
 - **Native Ollama Format** (`/api/v1/vlm`): Simple, efficient, direct integration with Ollama
 - **OpenAI-Compatible Format** (`/api/v1/vlm/openai`): For Docling and other OpenAI-compatible clients
 
-Both endpoints are optimized for `qwen3-vl:32b` and share the same image processing pipeline.
+Both endpoints are optimized for `qwen3-vl:8b-instruct-q4_K_M` and share the same image processing pipeline.
 
 ### VLM Capabilities
 
@@ -93,7 +81,7 @@ Both endpoints are optimized for `qwen3-vl:32b` and share the same image process
 
 ```json
 {
-  "model": "qwen3-vl:32b",
+  "model": "qwen3-vl:8b-instruct-q4_K_M",
   "messages": [
     {"role": "user", "content": "What's in this image?"}
   ],
@@ -111,13 +99,13 @@ Both endpoints are optimized for `qwen3-vl:32b` and share the same image process
 
 ### Model Requirements
 
-- **VLM Model**: Use `qwen3-vl:32b` for vision tasks (images + text)
-  - 32B parameters, 256K context, top-tier multimodal performance
-  - Enhanced OCR (32 languages), spatial reasoning, video understanding
-- **Text-Only**: Use `/api/v1/chat` with `qwen3:30b` or `granite4:small-h`
-  - `qwen3:30b`: 30B MoE, 256K context, excellent for general text tasks
-  - `granite4:small-h`: 32B hybrid MoE, 1M context, optimized for RAG/function calling
-- **Image Support**: Only `qwen3-vl:32b` supports images
+- **VLM Model**: Use `qwen3-vl:8b-instruct-q4_K_M` for vision tasks (images + text)
+  - 8B parameters (quantized), 128K context, optimized for laptops
+  - Enhanced OCR (32 languages), spatial reasoning, video/document understanding
+- **Text-Only**: Use `/api/v1/chat` with `qwen3:14b-q4_K_M` (laptop tier) or `qwen3:30b` (workstation tier)
+  - `qwen3:14b-q4_K_M`: 14B dense, 128K context, excellent for general text tasks
+  - `qwen3:30b`: 30B MoE with hybrid thinking for deep RAG/function-calling workflows
+- **Image Support**: Only `qwen3-vl:8b-instruct-q4_K_M` supports images
 
 ### Image Format
 
@@ -137,7 +125,7 @@ import requests
 response = requests.post(
     "http://localhost:8000/api/v1/chat",
     json={
-        "model": "qwen3:30b",  # Text-only model
+        "model": "qwen3:14b-q4_K_M",  # Text-only model
         "messages": [
             {"role": "user", "content": "Hello!"}
         ]
@@ -200,7 +188,7 @@ with open("photo.jpg", "rb") as f:
 response = requests.post(
     "http://localhost:8000/api/v1/vlm",
     json={
-        "model": "qwen3-vl:32b",
+        "model": "qwen3-vl:8b-instruct-q4_K_M",
         "messages": [
             {"role": "user", "content": "What's in this image?"}
         ],
@@ -229,7 +217,7 @@ def encode_image(path):
 response = requests.post(
     "http://localhost:8000/api/v1/vlm",
     json={
-        "model": "qwen3-vl:32b",
+        "model": "qwen3-vl:8b-instruct-q4_K_M",
         "messages": [
             {"role": "user", "content": "Compare these images"}
         ],
@@ -249,7 +237,7 @@ For **Docling** and other **OpenAI-compatible clients**, use `/api/v1/vlm/openai
 
 ```json
 {
-  "model": "qwen3-vl:32b",
+  "model": "qwen3-vl:8b-instruct-q4_K_M",
   "messages": [
     {
       "role": "user",
@@ -291,7 +279,7 @@ with open("photo.jpg", "rb") as f:
 response = requests.post(
     "http://localhost:8000/api/v1/vlm/openai",
     json={
-        "model": "qwen3-vl:32b",
+        "model": "qwen3-vl:8b-instruct-q4_K_M",
         "messages": [
             {
                 "role": "user",
@@ -333,7 +321,7 @@ def encode_image(path):
 response = requests.post(
     "http://localhost:8000/api/v1/vlm/openai",
     json={
-        "model": "qwen3-vl:32b",
+        "model": "qwen3-vl:8b-instruct-q4_K_M",
         "messages": [
             {
                 "role": "user",
@@ -368,7 +356,7 @@ for idx, image in enumerate(doc_images):
     response = requests.post(
         "http://localhost:8000/api/v1/vlm/openai",
         json={
-            "model": "qwen3-vl:32b",
+            "model": "qwen3-vl:8b-instruct-q4_K_M",
             "messages": [
                 {
                     "role": "user",
@@ -414,7 +402,7 @@ response = requests.post(
             {
                 "messages": [{"role": "user", "content": "Describe this"}],
                 "images": [img],
-                "model": "qwen3-vl:32b"
+                "model": "qwen3-vl:8b-instruct-q4_K_M"
             }
             for img in images
         ],
@@ -443,7 +431,7 @@ const response = await fetch('http://localhost:8000/api/v1/vlm', {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify({
-    model: 'qwen3-vl:32b',
+    model: 'qwen3-vl:8b-instruct-q4_K_M',
     messages: [
       { role: 'user', content: 'What do you see?' }
     ],
@@ -467,7 +455,7 @@ response = requests.post(
         "requests": [
             {
                 "messages": [{"role": "user", "content": f"Question {i}?"}],
-                "model": "qwen3:30b"
+                "model": "qwen3:14b-q4_K_M"
             }
             for i in range(10)
         ]
@@ -494,7 +482,7 @@ with open("image.jpg", "rb") as f:
 response = requests.post(
     "http://localhost:8000/api/v1/chat",
     json={
-        "model": "qwen3-vl:32b",
+        "model": "qwen3-vl:8b-instruct-q4_K_M",
         "stream": True,
         "messages": [
             {
@@ -519,7 +507,7 @@ for line in response.iter_lines():
 
 ### Best Practices
 
-1. **Use Appropriate Models**: Always use `qwen3-vl:32b` for vision tasks
+1. **Use Appropriate Models**: Always use `qwen3-vl:8b-instruct-q4_K_M` for vision tasks
 2. **Optimize Images**: Resize large images before encoding to reduce payload size
 3. **Error Handling**: Check for 422 (validation) errors for invalid image formats
 4. **Streaming**: Use streaming for long responses to improve UX
@@ -619,7 +607,7 @@ Define functions the model can call using POML's `<tool-definition>` syntax:
     <object data="{{ tool_response.result }}"/>
   </tool-response>
 
-  <runtime model="qwen3:30b" temperature="0.7"/>
+  <runtime model="qwen3:14b-q4_K_M" temperature="0.7"/>
 </poml>
 ```
 
@@ -689,7 +677,7 @@ Use POML's `<output-schema>` to ensure structured responses:
   }
   </output-schema>
 
-  <runtime model="qwen3:30b"/>
+  <runtime model="qwen3:14b-q4_K_M"/>
 </poml>
 ```
 
@@ -744,7 +732,7 @@ Combine vision capabilities with structured prompts:
   }
   </output-schema>
 
-  <runtime model="qwen3-vl:32b" max-tokens="500"/>
+  <runtime model="qwen3-vl:8b-instruct-q4_K_M" max-tokens="500"/>
 </poml>
 ```
 
@@ -791,7 +779,7 @@ Set model parameters directly in POML:
 
   <!-- Runtime parameters are automatically converted -->
   <runtime
-    model="qwen3:30b"
+    model="qwen3:14b-q4_K_M"
     temperature="0.9"
     max-tokens="1000"
     top-p="0.95"
@@ -838,7 +826,7 @@ When POML generates requests with tools, the format is:
       }
     }
   ],
-  "model": "qwen3:30b",
+  "model": "qwen3:14b-q4_K_M",
   "temperature": 0.7
 }
 ```
@@ -863,7 +851,7 @@ When the model calls a tool, the response includes:
       }
     ]
   },
-  "model": "qwen3:30b",
+  "model": "qwen3:14b-q4_K_M",
   "request_id": "req-xyz",
   "latency_ms": 450.2
 }
@@ -993,14 +981,12 @@ All modules are shipped as a package (installable via `pip install -e .`) with t
 #### Option 1: Manual Pull
 
 ```bash
-# Pull primary VLM model (qwen3-vl:32b)
-ollama pull qwen3-vl:32b
+# Pull primary VLM model (qwen3-vl:8b-instruct-q4_K_M)
+ollama pull qwen3-vl:8b-instruct-q4_K_M
 
-# Pull secondary text model (qwen3:30b)
-ollama pull qwen3:30b
+# Pull secondary text model (qwen3:14b-q4_K_M)
+ollama pull qwen3:14b-q4_K_M
 
-# Pull Granite 4.0 Small model (granite4:small-h)
-ollama pull granite4:small-h
 ```
 
 #### Option 2: Automated Pre-download (Recommended)
@@ -1210,7 +1196,7 @@ response = requests.post(
     "http://localhost:8000/api/v1/generate",
     json={
         "prompt": "Hello, world!",
-        "model": "qwen3:30b"
+        "model": "qwen3:14b-q4_K_M"
     }
 )
 print(response.json()["text"])
@@ -1224,7 +1210,7 @@ const res = await fetch("http://localhost:8000/api/v1/generate", {
   headers: { "Content-Type": "application/json" },
   body: JSON.stringify({
     prompt: "Hello, world!",
-    model: "qwen3:30b"
+    model: "qwen3:14b-q4_K_M"
   })
 });
 const data = await res.json();
@@ -1295,7 +1281,7 @@ import requests
 # Streaming generate endpoint
 response = requests.post(
     "http://localhost:8000/api/v1/generate",
-    json={"prompt": "Write a story", "model": "qwen3:30b", "stream": True},
+    json={"prompt": "Write a story", "model": "qwen3:14b-q4_K_M", "stream": True},
     stream=True
 )
 
@@ -1318,7 +1304,7 @@ const response = await fetch("http://localhost:8000/api/v1/generate", {
   headers: { "Content-Type": "application/json" },
   body: JSON.stringify({
     prompt: "Write a story",
-    model: "qwen3:30b",
+    model: "qwen3:14b-q4_K_M",
     stream: true
   })
 });
@@ -1458,7 +1444,7 @@ from shared_ollama import OllamaConfig, SharedOllamaClient
 # Or configure via environment
 import os
 ollama_base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-default_model = "qwen3:30b"  # or "qwen3-vl:32b" for VLM tasks
+default_model = "qwen3:14b-q4_K_M"  # or "qwen3-vl:8b-instruct-q4_K_M" for VLM tasks
 
 client = SharedOllamaClient(OllamaConfig(
     base_url=ollama_base_url,
@@ -1474,7 +1460,7 @@ Update `Course_Intelligence_Compiler/config/rag_config.yaml`:
 generation:
   ollama:
     base_url: "http://localhost:11434"  # Or use OLLAMA_BASE_URL env var
-    model: "qwen3:30b"  # or "qwen3-vl:32b" for VLM tasks
+    model: "qwen3:14b-q4_K_M"  # or "qwen3-vl:8b-instruct-q4_K_M" for VLM tasks
 ```
 
 #### Story Machine
@@ -1489,7 +1475,7 @@ from shared_ollama.core.utils import get_ollama_base_url
 
 # Auto-discover from environment
 base_url = get_ollama_base_url()
-model = "qwen3:30b"  # or "qwen3-vl:32b" for VLM tasks
+model = "qwen3:14b-q4_K_M"  # or "qwen3-vl:8b-instruct-q4_K_M" for VLM tasks
 
 client = SharedOllamaClient()
 ```
@@ -1630,7 +1616,7 @@ curl http://localhost:8000/api/v1/models
 
 # Test generation (REST API)
 curl http://localhost:8000/api/v1/generate -d '{
-  "model": "qwen3:30b",
+  "model": "qwen3:14b-q4_K_M",
   "prompt": "Why is the sky blue?"
 }'
 ```
@@ -1653,9 +1639,8 @@ ollama rm model_name
 
 ```bash
 # Pull latest version
-ollama pull qwen3-vl:32b
-ollama pull qwen3:30b
-ollama pull granite4:small-h
+ollama pull qwen3-vl:8b-instruct-q4_K_M
+ollama pull qwen3:14b-q4_K_M
 ```
 
 ## Service Management
@@ -1761,9 +1746,8 @@ tail -f logs/api.log
 
 ```bash
 # Pull models
-ollama pull qwen3-vl:32b
-ollama pull qwen3:30b
-ollama pull granite4:small-h
+ollama pull qwen3-vl:8b-instruct-q4_K_M
+ollama pull qwen3:14b-q4_K_M
 
 # Verify
 ollama list
@@ -1858,7 +1842,7 @@ tail -f logs/performance.jsonl
 python scripts/performance_report.py
 
 # Filter by model
-python scripts/performance_report.py --model qwen3:30b
+python scripts/performance_report.py --model qwen3:14b-q4_K_M
 
 # Last hour
 python scripts/performance_report.py --window 60
@@ -1990,12 +1974,13 @@ The service collects comprehensive performance data:
 
 **Memory Usage:**
 
-- `qwen3-vl:32b`: ~21 GB RAM when loaded
-- `qwen3:30b`: ~19 GB RAM when loaded
-- `granite4:small-h`: ~19 GB RAM when loaded (but ~70% less RAM for long contexts compared to conventional transformers)
-- **Total storage**: ~59 GB for all three models
-- **Up to 3 models can run simultaneously** if you have sufficient RAM (OLLAMA_NUM_PARALLEL=3)
-- **Maximum concurrent RAM**: ~59 GB if all 3 models loaded simultaneously
+- `qwen3-vl:8b-instruct-q4_K_M`: ~6 GB RAM when loaded (laptop profile)
+- `qwen3:14b-q4_K_M`: ~8 GB RAM when loaded (laptop profile)
+- `qwen3-vl:32b`: ~21 GB RAM when loaded (workstation profile)
+- `qwen3:30b`: ~19 GB RAM when loaded (workstation profile)
+- **Laptop total**: ~14 GB when both models loaded
+- **Workstation total**: ~40 GB when both models loaded
+- **Up to 3 models can run simultaneously** on machines that meet the RAM requirement (configurable via `OLLAMA_NUM_PARALLEL`)
 
 **Behavior**: Models are automatically loaded when requested and unloaded after 5 minutes of inactivity. Both models can be active at the same time if needed, reducing switching delays.
 
@@ -2081,7 +2066,7 @@ KEEP_ALIVE=60m ./scripts/warmup_models.sh
 ```bash
 # Warm up a specific model via REST API
 curl http://localhost:8000/api/v1/generate -d '{
-  "model": "qwen3:30b",
+  "model": "qwen3:14b-q4_K_M",
   "prompt": "Hi",
   "options": {"num_predict": 1},
   "keep_alive": "30m"
@@ -2166,7 +2151,7 @@ curl http://localhost:8000/api/v1/queue/stats
 from shared_ollama import MetricsCollector, track_request
 
 # Track a request
-with track_request("qwen3-vl:32b", "generate"):
+with track_request("qwen3-vl:8b-instruct-q4_K_M", "generate"):
     response = client.generate("Hello!")
 
 # Get metrics
@@ -2248,7 +2233,7 @@ import requests
 response = requests.post(
     "http://localhost:8000/api/v1/chat",
     headers={"X-Project-Name": "Docling_Machine"},
-    json={"model": "qwen3:30b", "messages": [...]}
+    json={"model": "qwen3:14b-q4_K_M", "messages": [...]}
 )
 ```
 

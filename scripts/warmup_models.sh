@@ -12,14 +12,15 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/lib/model_config.sh"
+load_model_config
+
 OLLAMA_URL="${OLLAMA_URL:-http://localhost:11434}"
 API_ENDPOINT="${OLLAMA_URL}/api"
 
 # Models to warm up (primary models, in priority order)
-MODELS=(
-    "qwen3-vl:32b"
-    "qwen3:30b"
-)
+MODELS=("${WARMUP_MODELS[@]}")
 
 # Optional: keep-alive duration for warm-up (default: 30 minutes)
 KEEP_ALIVE="${KEEP_ALIVE:-30m}"

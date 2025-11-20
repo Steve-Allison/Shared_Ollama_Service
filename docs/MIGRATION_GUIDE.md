@@ -50,7 +50,7 @@ class OllamaConfig(BaseSettings):
 **After:**
 ```python
 class OllamaConfig(BaseSettings):
-    default_model: str = "qwen3-vl:32b"
+    default_model: str = "qwen3-vl:8b-instruct-q4_K_M"
     base_url: str = "http://localhost:11434"  # Add this
 ```
 
@@ -83,7 +83,7 @@ generation:
 generation:
   ollama:
     base_url: "http://localhost:11434"  # Already correct
-    model: "qwen3-vl:32b"  # or "qwen3-vl:32b" or "qwen3:30b" or "granite4:small-h" for alternative models
+    model: "qwen3-vl:8b-instruct-q4_K_M"  # switch to "qwen3:30b" on high-memory hosts
 ```
 
 **Optional**: Update client code to use shared client:
@@ -117,7 +117,7 @@ class OllamaConfig(BaseModel):
         default="http://localhost:11434"  # Already correct!
     )
     model: str = Field(
-        default="qwen3-vl:32b"  # Or use qwen3-vl:32b or qwen3:30b or granite4:small-h if needed
+        default="qwen3-vl:8b-instruct-q4_K_M"  # Or use qwen3:30b when the workstation profile is active
     )
 ```
 
@@ -243,10 +243,11 @@ docker-compose up -d ollama
 **Solution:**
 ```bash
 cd Shared_Ollama_Service
-docker-compose exec ollama ollama pull qwen3-vl:32b
+docker-compose exec ollama ollama pull qwen3-vl:8b-instruct-q4_K_M
+docker-compose exec ollama ollama pull qwen3:14b-q4_K_M
+# Workstation profile (if applicable)
 docker-compose exec ollama ollama pull qwen3-vl:32b
 docker-compose exec ollama ollama pull qwen3:30b
-docker-compose exec ollama ollama pull granite4:small-h
 ```
 
 ### Issue: Port 11434 already in use
@@ -281,7 +282,7 @@ docker-compose restart ollama
 
 ### Issue: Different model versions
 
-Some projects might expect specific model versions (e.g., `qwen3-vl:32b` vs `qwen3-vl:32b` vs `qwen3:30b`).
+Some projects might expect specific model versions (e.g., laptop profile vs workstation profile). Keep `config/model_profiles.yaml` in sync across environments.
 
 **Solution:**
 1. Pull both versions
@@ -289,7 +290,7 @@ Some projects might expect specific model versions (e.g., `qwen3-vl:32b` vs `qwe
 3. Or create aliases in Ollama:
 
 ```bash
-docker-compose exec ollama ollama create qwen3-vl:32b -f Modelfile
+docker-compose exec ollama ollama create qwen3-vl:8b-instruct-q4_K_M -f Modelfile
 ```
 
 ## Verification Checklist

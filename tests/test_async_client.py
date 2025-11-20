@@ -10,7 +10,7 @@ import asyncio
 import httpx
 import pytest
 
-from shared_ollama import MetricsCollector
+from shared_ollama import GenerateResponse, MetricsCollector
 from shared_ollama.client import AsyncOllamaConfig, AsyncSharedOllamaClient
 
 
@@ -29,12 +29,12 @@ class TestAsyncClientInitialization:
         """Test that client initializes with custom config."""
         config = AsyncOllamaConfig(
             base_url=ollama_server.base_url,
-            default_model="qwen3-vl:32b",
+            default_model="qwen3-vl:8b-instruct-q4_K_M",
             timeout=120,
             max_concurrent_requests=5,
         )
         async with AsyncSharedOllamaClient(config=config, verify_on_init=False) as client:
-            assert client.config.default_model == "qwen3-vl:32b"
+            assert client.config.default_model == "qwen3-vl:8b-instruct-q4_K_M"
             assert client.config.timeout == 120
             assert client.config.max_concurrent_requests == 5
 
@@ -80,7 +80,7 @@ class TestAsyncClientListModels:
         config = AsyncOllamaConfig(base_url=ollama_server.base_url)
         async with AsyncSharedOllamaClient(config=config, verify_on_init=False) as client:
             models = await client.list_models()
-            assert any(model["name"] == "qwen3-vl:32b" for model in models)
+            assert any(model["name"] == "qwen3-vl:8b-instruct-q4_K_M" for model in models)
 
     async def test_list_models_handles_empty_response(self, ollama_server):
         """Test that list_models() handles empty models list."""
@@ -119,7 +119,7 @@ class TestAsyncClientGenerate:
         async with AsyncSharedOllamaClient(config=config, verify_on_init=False) as client:
             response = await client.generate("Hello, world!")
             assert response.text.startswith("ECHO: Hello, world!")
-            assert response.model == "qwen3-vl:32b"
+            assert response.model == "qwen3-vl:8b-instruct-q4_K_M"
 
     async def test_generate_extracts_all_metrics(self, ollama_server):
         """Test that generate() extracts all performance metrics."""
@@ -368,9 +368,9 @@ class TestAsyncClientGetModelInfo:
         """Test that get_model_info() returns model dict when found."""
         config = AsyncOllamaConfig(base_url=ollama_server.base_url)
         async with AsyncSharedOllamaClient(config=config, verify_on_init=False) as client:
-            model_info = await client.get_model_info("qwen3-vl:32b")
+            model_info = await client.get_model_info("qwen3-vl:8b-instruct-q4_K_M")
             assert model_info is not None
-            assert model_info["name"] == "qwen3-vl:32b"
+            assert model_info["name"] == "qwen3-vl:8b-instruct-q4_K_M"
 
     async def test_get_model_info_returns_none_when_not_found(self, ollama_server):
         """Test that get_model_info() returns None when model not found."""
@@ -384,10 +384,10 @@ class TestAsyncClientGetModelInfo:
         config = AsyncOllamaConfig(base_url=ollama_server.base_url)
         async with AsyncSharedOllamaClient(config=config, verify_on_init=False) as client:
             # First call should call list_models
-            model_info1 = await client.get_model_info("qwen3-vl:32b")
+            model_info1 = await client.get_model_info("qwen3-vl:8b-instruct-q4_K_M")
 
             # Second call should use cache
-            model_info2 = await client.get_model_info("qwen3-vl:32b")
+            model_info2 = await client.get_model_info("qwen3-vl:8b-instruct-q4_K_M")
 
             assert model_info1 == model_info2
             assert model_info1 is not None

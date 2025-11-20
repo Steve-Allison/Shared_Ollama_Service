@@ -26,6 +26,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import time
 import types
 import uuid
@@ -56,7 +57,7 @@ class AsyncOllamaConfig:
 
     Attributes:
         base_url: Base URL for Ollama service (default: "http://localhost:11434").
-        default_model: Default model to use if not specified (default: Model.QWEN3_VL_32B).
+        default_model: Default model to use if not specified (default: OLLAMA_DEFAULT_VLM_MODEL env var or Model.QWEN3_VL_8B_Q4).
         timeout: Request timeout for long operations like generation (default: 300).
         health_check_timeout: Timeout for quick health checks (default: 5).
         verbose: Whether to enable verbose logging (default: False).
@@ -70,7 +71,10 @@ class AsyncOllamaConfig:
     """
 
     base_url: str = "http://localhost:11434"
-    default_model: str = Model.QWEN3_VL_32B
+    default_model: str = os.getenv(
+        "OLLAMA_DEFAULT_VLM_MODEL",
+        Model.QWEN3_VL_8B_Q4.value,
+    )
     timeout: int = 300
     health_check_timeout: int = 5
     verbose: bool = False

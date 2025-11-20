@@ -17,9 +17,6 @@ NC='\033[0m' # No Color
 OLLAMA_URL="${OLLAMA_URL:-http://localhost:11434}"
 API_ENDPOINT="${OLLAMA_URL}/api"
 
-# Required models
-REQUIRED_MODELS=("qwen3-vl:32b" "qwen3-vl:32b" "qwen3:30b" "granite4:small-h")
-
 # Status tracking
 STEPS_PASSED=0
 STEPS_FAILED=0
@@ -35,6 +32,8 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 ENV_FILE="$PROJECT_ROOT/.env"
 DETECT_SCRIPT="$SCRIPT_DIR/detect_system.sh"
 MEMORY_SCRIPT="$SCRIPT_DIR/calculate_memory_limit.sh"
+source "$SCRIPT_DIR/lib/model_config.sh"
+load_model_config
 
 # Function to print status
 print_status() {
@@ -361,7 +360,7 @@ if [ $STEPS_FAILED -eq 0 ] && [ "$ALL_MODELS_USABLE" = true ]; then
     echo -e "${GREEN}✓✓✓ All checks passed! Ollama service is ready to use.${NC}"
     echo ""
     echo "Next steps:"
-    echo "  - Start using models: curl http://localhost:11434/api/generate -d '{\"model\":\"qwen3-vl:32b\",\"prompt\":\"Hello\"}'"
+    echo "  - Start using models: curl http://localhost:11434/api/generate -d '{\"model\":\"qwen3-vl:8b-instruct-q4_K_M\",\"prompt\":\"Hello\"}'"
     echo "  - Warm up models: ./scripts/warmup_models.sh"
     echo "  - View logs: tail -f ./logs/ollama.log"
     exit 0

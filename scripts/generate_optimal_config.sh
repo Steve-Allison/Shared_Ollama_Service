@@ -18,6 +18,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 ENV_FILE="$PROJECT_ROOT/.env"
 ENV_EXAMPLE="$PROJECT_ROOT/env.example"
+MODEL_PROFILE_FILE="$PROJECT_ROOT/config/model_profiles.yaml"
 
 echo -e "${BLUE}🔍 Auto-Detecting System Hardware and Generating Optimal Configuration${NC}"
 echo "========================================================================"
@@ -35,6 +36,11 @@ fi
 
 if [ ! -f "$MEMORY_SCRIPT" ]; then
     echo -e "${RED}✗ Memory calculation script not found: $MEMORY_SCRIPT${NC}"
+    exit 1
+fi
+
+if [ ! -f "$MODEL_PROFILE_FILE" ]; then
+    echo -e "${RED}✗ Model profile configuration not found: $MODEL_PROFILE_FILE${NC}"
     exit 1
 fi
 
@@ -56,15 +62,59 @@ echo -e "${GREEN}✓${NC} GPU Cores: $GPU_CORES"
 echo -e "${GREEN}✓${NC} Total RAM: ${TOTAL_RAM_GB} GB"
 echo ""
 
+# Load model profile defaults
+PROFILE_DEFAULTS=$(PROJECT_ROOT="$PROJECT_ROOT" ARCH="$ARCH" TOTAL_RAM_GB="$TOTAL_RAM_GB" python3 - <<'PY'
+import json, math, os, yaml
+project_root = os.environ["PROJECT_ROOT"]
+profile_path = os.path.join(project_root, "config", "model_profiles.yaml")
+with open(profile_path, "r", encoding="utf-8") as fh:
+    data = yaml.safe_load(fh) or {}
+profiles = data.get("profiles") or {}
+ram = int(os.environ.get("TOTAL_RAM_GB", 0) or 0)
+arch = os.environ.get("ARCH")
+selected = profiles.get("default", {}) if isinstance(profiles, dict) else {}
+for profile in profiles.values():
+    if not isinstance(profile, dict):
+        continue
+    match = profile.get("match") or {}
+    min_ram = match.get("min_ram_gb", 0)
+    max_ram = match.get("max_ram_gb", math.inf)
+    match_arch = match.get("arch")
+    if ram >= min_ram and ram <= max_ram and (match_arch is None or match_arch == arch):
+        selected = profile
+        break
+defaults = selected.get("defaults") or {}
+print(json.dumps(defaults))
+PY
+)
+
+DEFAULT_VLM_MODEL=$(echo "$PROFILE_DEFAULTS" | jq -r '.vlm_model // "qwen3-vl:8b-instruct-q4_K_M"')
+DEFAULT_TEXT_MODEL=$(echo "$PROFILE_DEFAULTS" | jq -r '.text_model // "qwen3:14b-q4_K_M"')
+REQUIRED_MODELS=$(echo "$PROFILE_DEFAULTS" | jq -r '(.required_models // []) | join(",")')
+WARMUP_MODELS=$(echo "$PROFILE_DEFAULTS" | jq -r '(.warmup_models // []) | join(",")')
+MODEL_MEMORY_HINTS=$(echo "$PROFILE_DEFAULTS" | jq -r '(.memory_hints // {}) | to_entries | map("\(.key):\(.value)") | join(",")')
+PROFILE_LARGEST_MODEL_GB=$(echo "$PROFILE_DEFAULTS" | jq -r '.largest_model_gb // 19')
+PROFILE_INFERENCE_BUFFER_GB=$(echo "$PROFILE_DEFAULTS" | jq -r '.inference_buffer_gb // 4')
+PROFILE_SERVICE_OVERHEAD_GB=$(echo "$PROFILE_DEFAULTS" | jq -r '.service_overhead_gb // 2')
+
+export OLLAMA_DEFAULT_VLM_MODEL="$DEFAULT_VLM_MODEL"
+export OLLAMA_DEFAULT_TEXT_MODEL="$DEFAULT_TEXT_MODEL"
+export OLLAMA_REQUIRED_MODELS="${REQUIRED_MODELS:-$DEFAULT_VLM_MODEL,$DEFAULT_TEXT_MODEL}"
+export OLLAMA_WARMUP_MODELS="${WARMUP_MODELS:-$DEFAULT_VLM_MODEL,$DEFAULT_TEXT_MODEL}"
+export OLLAMA_MODEL_MEMORY_HINTS="$MODEL_MEMORY_HINTS"
+export OLLAMA_LARGEST_MODEL_GB="$PROFILE_LARGEST_MODEL_GB"
+export OLLAMA_INFERENCE_BUFFER_GB="$PROFILE_INFERENCE_BUFFER_GB"
+export OLLAMA_SERVICE_OVERHEAD_GB="$PROFILE_SERVICE_OVERHEAD_GB"
+
 # Calculate optimal parallel models first (needed for memory calculation)
 echo -e "${CYAN}[2/6]${NC} Calculating optimal parallel model configuration..."
 # Estimate based on total RAM, accounting for RAG systems and other services
 # Reserve: 8GB system + 8GB RAG + 4GB safety = 20GB
 AVAILABLE_FOR_OLLAMA=$((TOTAL_RAM_GB - 20))
-# Largest model is ~10GB, so calculate how many can fit
+# Largest model based on selected profile
 # Use conservative estimate: need space for models + inference buffer
-LARGEST_MODEL_GB=10
-INFERENCE_BUFFER_GB=4
+LARGEST_MODEL_GB=${PROFILE_LARGEST_MODEL_GB:-10}
+INFERENCE_BUFFER_GB=${PROFILE_INFERENCE_BUFFER_GB:-4}
 MODELS_PER_GB=$((LARGEST_MODEL_GB + INFERENCE_BUFFER_GB))
 OLLAMA_NUM_PARALLEL=$((AVAILABLE_FOR_OLLAMA / MODELS_PER_GB))
 # Cap at reasonable limits
@@ -232,6 +282,16 @@ sed -i.bak "/^API_HOST=/d" "$ENV_FILE" 2>/dev/null || true
 echo "# REST API host (0.0.0.0 = network accessible, localhost = local only)" >> "$ENV_FILE"
 echo "API_HOST=$API_HOST" >> "$ENV_FILE"
 echo "" >> "$ENV_FILE"
+
+# Update model defaults
+update_config "OLLAMA_DEFAULT_VLM_MODEL" "$OLLAMA_DEFAULT_VLM_MODEL" "Default vision-language model (auto-selected profile)"
+update_config "OLLAMA_DEFAULT_TEXT_MODEL" "$OLLAMA_DEFAULT_TEXT_MODEL" "Default text model (auto-selected profile)"
+update_config "OLLAMA_REQUIRED_MODELS" "$OLLAMA_REQUIRED_MODELS" "Comma-separated required models for setup/health checks"
+update_config "OLLAMA_WARMUP_MODELS" "$OLLAMA_WARMUP_MODELS" "Comma-separated models to warm up on start"
+update_config "OLLAMA_MODEL_MEMORY_HINTS" "$OLLAMA_MODEL_MEMORY_HINTS" "Model memory hints (model:GB)"
+update_config "OLLAMA_LARGEST_MODEL_GB" "$OLLAMA_LARGEST_MODEL_GB" "Largest model size (GB)"
+update_config "OLLAMA_INFERENCE_BUFFER_GB" "$OLLAMA_INFERENCE_BUFFER_GB" "Inference buffer size (GB)"
+update_config "OLLAMA_SERVICE_OVERHEAD_GB" "$OLLAMA_SERVICE_OVERHEAD_GB" "Service overhead (GB)"
 
 # Clean up backup files
 rm -f "${ENV_FILE}.bak" 2>/dev/null || true

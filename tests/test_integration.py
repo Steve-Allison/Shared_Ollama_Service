@@ -14,6 +14,7 @@ from shared_ollama import (
     AsyncOllamaConfig,
     AsyncSharedOllamaClient,
     GenerateOptions,
+    GenerateResponse,
     MetricsCollector,
     SharedOllamaClient,
 )
@@ -30,7 +31,7 @@ class TestEndToEndGeneration:
             response = await client.generate("Hello, world!")
 
             assert response.text.startswith("ECHO: Hello, world!")
-            assert response.model == "qwen3-vl:32b"
+            assert response.model == "qwen3-vl:8b-instruct-q4_K_M"
             assert response.total_duration > 0
             assert response.eval_count > 0
 
@@ -49,14 +50,14 @@ class TestEndToEndGeneration:
 
             response = await client.generate(
                 "Generate a story",
-                model="qwen3-vl:32b",
+                model="qwen3-vl:8b-instruct-q4_K_M",
                 system="You are a creative writer",
                 options=options,
                 format="json",
             )
 
             assert isinstance(response, GenerateResponse)
-            assert response.model == "qwen3-vl:32b"
+            assert response.model == "qwen3-vl:8b-instruct-q4_K_M"
 
     async def test_generation_workflow_with_metrics(self, ollama_server):
         """Test that generation workflow records metrics correctly."""
@@ -130,13 +131,13 @@ class TestEndToEndModelManagement:
         config = AsyncOllamaConfig(base_url=ollama_server.base_url)
         async with AsyncSharedOllamaClient(config=config, verify_on_init=False) as client:
             # First call - should fetch models
-            model_info1 = await client.get_model_info("qwen3-vl:32b")
+            model_info1 = await client.get_model_info("qwen3-vl:8b-instruct-q4_K_M")
 
             assert model_info1 is not None
-            assert model_info1["name"] == "qwen3-vl:32b"
+            assert model_info1["name"] == "qwen3-vl:8b-instruct-q4_K_M"
 
             # Second call - should use cache
-            model_info2 = await client.get_model_info("qwen3-vl:32b")
+            model_info2 = await client.get_model_info("qwen3-vl:8b-instruct-q4_K_M")
 
             assert model_info1 == model_info2
 

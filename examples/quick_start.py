@@ -46,9 +46,9 @@ def example_custom_config():
     print("\nExample 2: Custom Configuration")
     print("-" * 40)
 
-    # Create custom config with qwen3:30b
+    # Create custom config with qwen3:14b-q4_K_M
     config = OllamaConfig(
-        base_url=get_ollama_base_url(), default_model=Model.QWEN3_30B, timeout=120
+        base_url=get_ollama_base_url(), default_model=Model.QWEN3_14B_Q4, timeout=120
     )
 
     client = SharedOllamaClient(config)
@@ -57,34 +57,17 @@ def example_custom_config():
 
 
 def example_using_qwen7b():
-    """Example using qwen3-vl:32b model."""
-    print("\nExample 2b: Using qwen3-vl:32b Model")
+    """Example using qwen3-vl:8b-instruct-q4_K_M model."""
+    print("\nExample 2b: Using qwen3-vl:8b-instruct-q4_K_M Model")
     print("-" * 40)
 
-    # Use qwen3-vl:32b for efficient text generation
+    # Use qwen3-vl:8b-instruct-q4_K_M for efficient text generation
     config = OllamaConfig(
-        base_url=get_ollama_base_url(), default_model=Model.QWEN25_7B, timeout=120
+        base_url=get_ollama_base_url(), default_model=Model.QWEN3_VL_8B_Q4, timeout=120
     )
 
     client = SharedOllamaClient(config)
     response = client.generate("Explain Python in one sentence.")
-    print(f"Response: {response.text}")
-
-
-def example_using_granite():
-    """Example using Granite 4.0 H Tiny model."""
-    print("\nExample 2c: Using Granite 4.0 H Tiny Model")
-    print("-" * 40)
-
-    # Use Granite 4.0 for RAG and function calling
-    config = OllamaConfig(
-        base_url=get_ollama_base_url(),
-        default_model=Model.GRANITE_4_H_TINY,
-        timeout=120,
-    )
-
-    client = SharedOllamaClient(config)
-    response = client.generate("Explain RAG in one sentence.")
     print(f"Response: {response.text}")
 
 
@@ -143,7 +126,6 @@ if __name__ == "__main__":
         example_basic_usage()
         example_custom_config()
         example_using_qwen7b()
-        example_using_granite()
         example_chat_format()
         example_with_options()
         example_error_handling()

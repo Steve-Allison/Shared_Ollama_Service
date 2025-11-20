@@ -65,7 +65,7 @@ List all available models in the Ollama service.
 {
   "models": [
     {
-      "name": "qwen3-vl:32b",
+      "name": "qwen3-vl:8b-instruct-q4_K_M",
       "size": 5969245856,
       "modified_at": "2025-11-11T11:33:20.071224043Z"
     }
@@ -90,7 +90,7 @@ Generate text from a prompt.
 ```json
 {
   "prompt": "Hello, world!",
-  "model": "qwen3-vl:32b",
+  "model": "qwen3-vl:8b-instruct-q4_K_M",
   "system": "You are a helpful assistant.",
   "stream": false,
   "temperature": 0.2,
@@ -118,7 +118,7 @@ Generate text from a prompt.
 ```json
 {
   "text": "Hello! How can I help you today?",
-  "model": "qwen3-vl:32b",
+  "model": "qwen3-vl:8b-instruct-q4_K_M",
   "request_id": "550e8400-e29b-41d4-a716-446655440000",
   "latency_ms": 1234.56,
   "model_load_ms": 200.0,
@@ -136,7 +136,7 @@ curl -X POST http://localhost:8000/api/v1/generate \
   -H "X-Project-Name: MyProject" \
   -d '{
     "prompt": "Explain quantum computing",
-    "model": "qwen3-vl:32b"
+    "model": "qwen3-vl:8b-instruct-q4_K_M"
   }'
 ```
 
@@ -148,7 +148,7 @@ response = requests.post(
     "http://localhost:8000/api/v1/generate",
     json={
         "prompt": "Explain quantum computing",
-        "model": "qwen3-vl:32b",
+        "model": "qwen3-vl:8b-instruct-q4_K_M",
         "temperature": 0.7
     },
     headers={"X-Project-Name": "MyProject"}
@@ -167,7 +167,7 @@ const response = await fetch("http://localhost:8000/api/v1/generate", {
   },
   body: JSON.stringify({
     prompt: "Explain quantum computing",
-    model: "qwen3-vl:32b",
+    model: "qwen3-vl:8b-instruct-q4_K_M",
     temperature: 0.7
   })
 });
@@ -196,7 +196,7 @@ Process a conversation with multiple messages.
       "content": "What is the capital of France?"
     }
   ],
-  "model": "qwen3-vl:32b",
+  "model": "qwen3-vl:8b-instruct-q4_K_M",
   "stream": false,
   "temperature": 0.2,
   "top_p": 0.9,
@@ -223,7 +223,7 @@ Process a conversation with multiple messages.
     "role": "assistant",
     "content": "The capital of France is Paris."
   },
-  "model": "qwen3-vl:32b",
+  "model": "qwen3-vl:8b-instruct-q4_K_M",
   "request_id": "550e8400-e29b-41d4-a716-446655440000",
   "latency_ms": 1234.56,
   "model_load_ms": 0.0,
@@ -243,7 +243,7 @@ curl -X POST http://localhost:8000/api/v1/chat \
     "messages": [
       {"role": "user", "content": "Hello!"}
     ],
-    "model": "qwen3-vl:32b"
+    "model": "qwen3-vl:8b-instruct-q4_K_M"
   }'
 ```
 
@@ -258,7 +258,7 @@ response = requests.post(
             {"role": "system", "content": "You are a helpful assistant."},
             {"role": "user", "content": "What is 2+2?"}
         ],
-        "model": "qwen3-vl:32b"
+        "model": "qwen3-vl:8b-instruct-q4_K_M"
     },
     headers={"X-Project-Name": "MyProject"}
 )
@@ -330,7 +330,7 @@ All API requests are automatically logged to `logs/requests.jsonl` with:
   "client_type": "rest_api",
   "operation": "generate",
   "status": "success",
-  "model": "qwen3-vl:32b",
+  "model": "qwen3-vl:8b-instruct-q4_K_M",
   "request_id": "550e8400-e29b-41d4-a716-446655440000",
   "client_ip": "127.0.0.1",
   "project_name": "MyProject",
@@ -373,7 +373,7 @@ If you're currently calling Ollama directly at `http://localhost:11434`, migrate
 ```python
 response = requests.post(
     "http://localhost:11434/api/generate",
-    json={"model": "qwen3-vl:32b", "prompt": "Hello"}
+    json={"model": "qwen3-vl:8b-instruct-q4_K_M", "prompt": "Hello"}
 )
 ```
 
@@ -381,7 +381,7 @@ response = requests.post(
 ```python
 response = requests.post(
     "http://localhost:8000/api/v1/generate",
-    json={"model": "qwen3-vl:32b", "prompt": "Hello"},
+    json={"model": "qwen3-vl:8b-instruct-q4_K_M", "prompt": "Hello"},
     headers={"X-Project-Name": "MyProject"}
 )
 ```

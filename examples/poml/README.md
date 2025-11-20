@@ -140,7 +140,7 @@ print(analysis)
 ### 4. Runtime Parameters
 
 ```xml
-<runtime model="qwen3:30b" temperature="0.7" max-tokens="500"/>
+<runtime model="qwen3:14b-q4_K_M" temperature="0.7" max-tokens="500"/>
 ```
 
 ### 5. Template Variables

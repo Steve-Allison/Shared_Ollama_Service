@@ -304,7 +304,7 @@ def track_request(model: str, operation: str) -> Generator[None]:
         - Logs error information if exception occurs
 
     Example:
-        >>> with track_request("qwen3-vl:32b", "generate"):
+        >>> with track_request("qwen3-vl:8b-instruct-q4_K_M", "generate"):
         ...     result = await client.generate("Hello")
     """
     start = time.perf_counter()

@@ -7,12 +7,13 @@ Analyzes performance logs and generates detailed performance reports.
 
 Usage:
     python scripts/performance_report.py
-    python scripts/performance_report.py --model qwen3-vl:32b
+    python scripts/performance_report.py --model qwen3-vl:8b-instruct-q4_K_M
     python scripts/performance_report.py --window 60
 """
 
 import argparse
 import json
+import os
 import sys
 from collections import defaultdict
 from datetime import datetime, timedelta
@@ -21,6 +22,8 @@ from pathlib import Path
 # Add project root to path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
+
+DEFAULT_MODEL = os.getenv("OLLAMA_DEFAULT_TEXT_MODEL", os.getenv("OLLAMA_DEFAULT_VLM_MODEL", "qwen3-vl:8b-instruct-q4_K_M"))
 
 
 def parse_performance_log(log_file: Path) -> list[dict]:
@@ -139,6 +142,7 @@ def main():
     parser.add_argument(
         "--model",
         type=str,
+        default=DEFAULT_MODEL,
         help="Filter by model name",
     )
     parser.add_argument(

@@ -33,15 +33,33 @@ fi
 echo -e "${GREEN}✓ Total System RAM: ${TOTAL_RAM_GB} GB${NC}"
 echo ""
 
-# Model memory requirements (in GB)
-# Based on actual model sizes when loaded
-MODEL_QWEN25VL_7B=6      # qwen3-vl:32b
-MODEL_QWEN25_7B=5       # qwen3-vl:32b (4.5GB + buffer)
-MODEL_QWEN25_14B=10     # qwen3:30b (9GB + buffer)
-MODEL_GRANITE4_TINY=9   # granite4:small-h (8GB + buffer)
+# Load environment configuration if available
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ENV_FILE="$PROJECT_ROOT/.env"
 
-# Find largest model (worst case scenario)
-LARGEST_MODEL=$MODEL_QWEN25_14B
+if [ -f "$ENV_FILE" ]; then
+    set -a
+    source "$ENV_FILE"
+    set +a
+fi
+
+DEFAULT_VLM_MODEL="${OLLAMA_DEFAULT_VLM_MODEL:-qwen3-vl:8b-instruct-q4_K_M}"
+DEFAULT_TEXT_MODEL="${OLLAMA_DEFAULT_TEXT_MODEL:-qwen3:14b-q4_K_M}"
+REQUIRED_MODELS_CSV="${OLLAMA_REQUIRED_MODELS:-$DEFAULT_VLM_MODEL,$DEFAULT_TEXT_MODEL}"
+MODEL_MEMORY_HINTS="${OLLAMA_MODEL_MEMORY_HINTS:-$DEFAULT_VLM_MODEL:6,$DEFAULT_TEXT_MODEL:8}"
+
+IFS=',' read -r -a REQUIRED_MODELS <<< "$REQUIRED_MODELS_CSV"
+declare -A MODEL_MEMORY_MAP
+IFS=',' read -r -a HINT_PAIRS <<< "$MODEL_MEMORY_HINTS"
+for pair in "${HINT_PAIRS[@]}"; do
+    model_name="${pair%%:*}"
+    mem_hint="${pair##*:}"
+    if [ -n "$model_name" ] && [ -n "$mem_hint" ]; then
+        MODEL_MEMORY_MAP["$model_name"]="$mem_hint"
+    fi
+done
+
+LARGEST_MODEL=${OLLAMA_LARGEST_MODEL_GB:-19}
 
 # Get parallel model count (default to 2 if not set, max 3)
 PARALLEL_MODELS=${OLLAMA_NUM_PARALLEL:-2}
@@ -50,16 +68,23 @@ if [ "$PARALLEL_MODELS" -gt 3 ]; then
 fi
 
 echo -e "${CYAN}Model Memory Requirements:${NC}"
-echo "  - qwen3-vl:32b: ${MODEL_QWEN25VL_7B} GB"
-echo "  - qwen3-vl:32b: ${MODEL_QWEN25_7B} GB"
-echo "  - qwen3:30b: ${MODEL_QWEN25_14B} GB (largest)"
-echo "  - granite4:small-h: ${MODEL_GRANITE4_TINY} GB"
+for model in "${REQUIRED_MODELS[@]}"; do
+    hint="${MODEL_MEMORY_MAP[$model]}"
+    if [ -z "$hint" ]; then
+        hint=8
+    fi
+    if [ "$model" == "${REQUIRED_MODELS[-1]}" ] && [ "$hint" -eq "$LARGEST_MODEL" ]; then
+        echo "  - $model: ${hint} GB (largest)"
+    else
+        echo "  - $model: ${hint} GB"
+    fi
+done
 echo ""
 
 # Calculate Ollama memory needs based on actual requirements
 # Formula: (largest_model × parallel_count) + inference_buffer + overhead
-INFERENCE_BUFFER=4  # Buffer for context, token generation, etc.
-OVERHEAD=2          # Ollama service overhead
+INFERENCE_BUFFER=${OLLAMA_INFERENCE_BUFFER_GB:-4}
+OVERHEAD=${OLLAMA_SERVICE_OVERHEAD_GB:-2}
 
 OLLAMA_REQUIRED_GB=$((LARGEST_MODEL * PARALLEL_MODELS + INFERENCE_BUFFER + OVERHEAD))
 

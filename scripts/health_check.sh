@@ -15,8 +15,10 @@ NC='\033[0m' # No Color
 OLLAMA_URL="${OLLAMA_URL:-http://localhost:11434}"
 API_ENDPOINT="${OLLAMA_URL}/api"
 
-# Required models
-REQUIRED_MODELS=("qwen3-vl:32b" "qwen3-vl:32b" "qwen3:30b" "granite4:small-h")
+# Load model configuration
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/lib/model_config.sh"
+load_model_config
 
 # Status tracking
 CHECK_PASSED=0

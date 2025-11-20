@@ -13,21 +13,17 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any, Literal
 
+from shared_ollama.core.config import settings
 from shared_ollama.domain.value_objects import ModelName, Prompt, SystemMessage
 
 
 class Model(StrEnum):
-    """Available Ollama models.
+    """Supported Qwen 3 model identifiers."""
 
-    Predefined model identifiers for common Ollama models. Values are
-    the model names as recognized by the Ollama service.
-    """
-
-    QWEN3_VL_32B = "qwen3-vl:32b"  # Primary: 32B params, vision-language model, 256K context
-    QWEN3_30B = "qwen3:30b"  # Secondary: 30B total (MoE), 256K context
-    GRANITE_4_SMALL = (
-        "granite4:small-h"  # Granite 4.0 Small: 32B total, 9B active, hybrid MoE, 1M context
-    )
+    QWEN3_VL_8B_Q4 = "qwen3-vl:8b-instruct-q4_K_M"
+    QWEN3_14B_Q4 = "qwen3:14b-q4_K_M"
+    QWEN3_VL_32B = "qwen3-vl:32b"
+    QWEN3_30B = "qwen3:30b"
 
 
 @dataclass(slots=True, frozen=True)
@@ -360,7 +356,7 @@ class VLMRequest:
     Attributes:
         messages: Text-only chat messages (native Ollama format).
         images: List of base64-encoded image data URLs.
-        model: Model name (should be VLM-capable like qwen3-vl:32b).
+        model: Model name (should be VLM-capable like qwen3-vl:8b-instruct-q4_K_M).
         options: Generation options.
         image_compression: Whether to compress images (default: True).
         max_dimension: Maximum image dimension for resizing (default: 1024).
@@ -504,7 +500,7 @@ class VLMRequestOpenAI:
 
     Attributes:
         messages: OpenAI-compatible chat messages with multimodal content.
-        model: Model name (should be VLM-capable like qwen3-vl:32b).
+        model: Model name (should be VLM-capable like qwen3-vl:8b-instruct-q4_K_M).
         options: Generation options.
         image_compression: Whether to compress images (default: True).
         max_dimension: Maximum image dimension for resizing (default: 1024).

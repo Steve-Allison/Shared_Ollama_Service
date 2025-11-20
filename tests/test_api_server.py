@@ -9,21 +9,42 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock, patch
 
+from typing import Any
+
 import pytest
 from fastapi.testclient import TestClient
 
-from shared_ollama.api.dependencies import (
-    set_dependencies,
-)
+from shared_ollama.api.dependencies import set_dependencies
 from shared_ollama.api.server import app
 from shared_ollama.application.use_cases import ChatUseCase, GenerateUseCase, ListModelsUseCase
 from shared_ollama.client import AsyncOllamaConfig, AsyncSharedOllamaClient, GenerateResponse
+from shared_ollama.core.config import settings
 from shared_ollama.core.queue import RequestQueue
 from shared_ollama.infrastructure.adapters import (
     AsyncOllamaClientAdapter,
+    ImageCacheAdapter,
+    ImageProcessorAdapter,
     MetricsCollectorAdapter,
     RequestLoggerAdapter,
 )
+class _DummyImageProcessor:
+    def validate_data_url(self, data_url: str) -> tuple[str, bytes]:
+        return "image/jpeg", b""
+
+    def process_image(self, data_url: str, target_format: str = "jpeg") -> tuple[str, Any]:
+        return data_url, {"format": target_format}
+
+
+class _DummyImageCache:
+    def get(self, data_url: str, target_format: str) -> None:
+        return None
+
+    def put(self, data_url: str, target_format: str, base64_string: str, metadata: Any) -> None:
+        return None
+
+    def get_stats(self) -> dict[str, int]:
+        return {}
+
 from tests.helpers import (
     assert_error_response,
     assert_response_structure,
@@ -135,18 +156,18 @@ class TestHealthEndpoint:
 
     def test_health_check_success(self, sync_api_client, mock_async_client):
         """Test successful health check returns healthy status."""
-        with patch("shared_ollama.core.utils.check_service_health", return_value=(True, None)):
+        with patch("shared_ollama.api.routes.system.check_service_health", return_value=(True, None)):
             response = sync_api_client.get("/api/v1/health")
             data = assert_response_structure(response, 200)
             assert data["status"] == "healthy"
             assert data["ollama_service"] == "healthy"
-            assert data["version"] == "1.0.0"
+            assert data["version"] == settings.api.version
 
     def test_health_check_unhealthy(self, sync_api_client, mock_async_client):
         """Test health check returns unhealthy when service is down."""
         # Need to patch at the module level where it's imported
         with patch(
-            "shared_ollama.api.server.check_service_health",
+            "shared_ollama.api.routes.system.check_service_health",
             return_value=(False, "Connection refused"),
         ):
             response = sync_api_client.get("/api/v1/health")
@@ -162,8 +183,8 @@ class TestListModelsEndpoint:
     def test_list_models_success(self, api_client, mock_async_client):
         """Test successful model listing returns models list."""
         mock_models = [
-            {"name": "qwen3-vl:32b", "size": 5969245856, "modified_at": "2025-11-03T17:24:58Z"},
-            {"name": "qwen3-vl:32b", "size": 4730000000, "modified_at": "2025-11-03T15:00:00Z"},
+            {"name": "qwen3-vl:8b-instruct-q4_K_M", "size": 5969245856, "modified_at": "2025-11-03T17:24:58Z"},
+            {"name": "qwen3:14b-q4_K_M", "size": 8988124069, "modified_at": "2025-11-03T15:00:00Z"},
         ]
         mock_async_client.list_models = AsyncMock(return_value=mock_models)
 
@@ -171,8 +192,8 @@ class TestListModelsEndpoint:
         data = assert_response_structure(response, 200)
         assert "models" in data
         assert len(data["models"]) == 2
-        assert data["models"][0]["name"] == "qwen3-vl:32b"
-        assert data["models"][1]["name"] == "qwen3-vl:32b"
+        assert data["models"][0]["name"] == "qwen3-vl:8b-instruct-q4_K_M"
+        assert data["models"][1]["name"] == "qwen3:14b-q4_K_M"
 
     def test_list_models_empty(self, api_client, mock_async_client):
         """Test listing models when none are available returns empty list."""
@@ -226,7 +247,7 @@ class TestGenerateEndpoint:
         """Test successful generation returns GenerateResponse."""
         mock_response = GenerateResponse(
             text="Hello, world!",
-            model="qwen3-vl:32b",
+            model="qwen3-vl:8b-instruct-q4_K_M",
             context=None,
             total_duration=500_000_000,
             load_duration=200_000_000,
@@ -239,11 +260,11 @@ class TestGenerateEndpoint:
 
         response = api_client.post(
             "/api/v1/generate",
-            json={"prompt": "Hello", "model": "qwen3-vl:32b"},
+            json={"prompt": "Hello", "model": "qwen3-vl:8b-instruct-q4_K_M"},
         )
         data = assert_response_structure(response, 200)
         assert data["text"] == "Hello, world!"
-        assert data["model"] == "qwen3-vl:32b"
+        assert data["model"] == "qwen3-vl:8b-instruct-q4_K_M"
         assert "request_id" in data
         assert "latency_ms" in data
         assert data["model_warm_start"] is False  # load_duration > 0
@@ -252,7 +273,7 @@ class TestGenerateEndpoint:
         """Test generation with all optional parameters."""
         mock_response = GenerateResponse(
             text="Response",
-            model="qwen3-vl:32b",
+            model="qwen3-vl:8b-instruct-q4_K_M",
             context=None,
             total_duration=300_000_000,
             load_duration=0,  # Warm start
@@ -267,7 +288,7 @@ class TestGenerateEndpoint:
             "/api/v1/generate",
             json={
                 "prompt": "Test",
-                "model": "qwen3-vl:32b",
+                "model": "qwen3-vl:8b-instruct-q4_K_M",
                 "system": "You are helpful",
                 "temperature": 0.7,
                 "top_p": 0.9,
@@ -286,7 +307,7 @@ class TestGenerateEndpoint:
         """Ensure response_format=json_object becomes format='json' for backend."""
         mock_response = GenerateResponse(
             text="{}",
-            model="qwen3-vl:32b",
+            model="qwen3-vl:8b-instruct-q4_K_M",
             context=None,
             total_duration=100_000_000,
             load_duration=0,
@@ -318,7 +339,7 @@ class TestGenerateEndpoint:
         }
         mock_response = GenerateResponse(
             text='{"answer": "42"}',
-            model="qwen3-vl:32b",
+            model="qwen3-vl:8b-instruct-q4_K_M",
             context=None,
             total_duration=100_000_000,
             load_duration=0,
@@ -388,7 +409,7 @@ class TestGenerateEndpoint:
         """Test that generate endpoint uses queue for concurrency control."""
         mock_response = GenerateResponse(
             text="Response",
-            model="qwen3-vl:32b",
+            model="qwen3-vl:8b-instruct-q4_K_M",
             context=None,
             total_duration=300_000_000,
             load_duration=0,
@@ -470,7 +491,7 @@ class TestChatEndpoint:
         """Test successful chat returns ChatResponse."""
         mock_response = {
             "message": {"role": "assistant", "content": "Hello! How can I help?"},
-            "model": "qwen3-vl:32b",
+            "model": "qwen3-vl:8b-instruct-q4_K_M",
             "prompt_eval_count": 10,
             "eval_count": 15,
             "total_duration": 400_000_000,
@@ -482,13 +503,13 @@ class TestChatEndpoint:
             "/api/v1/chat",
             json={
                 "messages": [{"role": "user", "content": "Hello"}],
-                "model": "qwen3-vl:32b",
+                "model": "qwen3-vl:8b-instruct-q4_K_M",
             },
         )
         data = assert_response_structure(response, 200)
         assert data["message"]["role"] == "assistant"
         assert data["message"]["content"] == "Hello! How can I help?"
-        assert data["model"] == "qwen3-vl:32b"
+        assert data["model"] == "qwen3-vl:8b-instruct-q4_K_M"
         assert "request_id" in data
 
     def test_chat_validates_empty_messages(self, api_client, mock_async_client):
@@ -530,7 +551,7 @@ class TestChatEndpoint:
         """Test chat with conversation history."""
         mock_response = {
             "message": {"role": "assistant", "content": "Response"},
-            "model": "qwen3-vl:32b",
+            "model": "qwen3-vl:8b-instruct-q4_K_M",
             "prompt_eval_count": 20,
             "eval_count": 10,
             "total_duration": 500_000_000,
@@ -545,7 +566,7 @@ class TestChatEndpoint:
                     {"role": "system", "content": "You are helpful"},
                     {"role": "user", "content": "What is 2+2?"},
                 ],
-                "model": "qwen3-vl:32b",
+                "model": "qwen3-vl:8b-instruct-q4_K_M",
             },
         )
         data = assert_response_structure(response, 200)
@@ -555,7 +576,7 @@ class TestChatEndpoint:
         """Ensure chat response_format=json_object maps to format='json'."""
         mock_response = {
             "message": {"role": "assistant", "content": '{"name": "test"}'},
-            "model": "qwen3-vl:32b",
+            "model": "qwen3-vl:8b-instruct-q4_K_M",
             "prompt_eval_count": 1,
             "eval_count": 1,
             "total_duration": 100_000_000,
@@ -584,7 +605,7 @@ class TestChatEndpoint:
         }
         mock_response = {
             "message": {"role": "assistant", "content": '{"summary": "done"}'},
-            "model": "qwen3-vl:32b",
+            "model": "qwen3-vl:8b-instruct-q4_K_M",
             "prompt_eval_count": 1,
             "eval_count": 1,
             "total_duration": 100_000_000,
@@ -652,7 +673,7 @@ class TestRequestContext:
         """Test that X-Project-Name header is captured in context."""
         mock_response = GenerateResponse(
             text="Response",
-            model="qwen3-vl:32b",
+            model="qwen3-vl:8b-instruct-q4_K_M",
             context=None,
             total_duration=300_000_000,
             load_duration=0,
@@ -675,7 +696,7 @@ class TestRequestContext:
         """Test that each request gets unique request ID."""
         mock_response = GenerateResponse(
             text="Response",
-            model="qwen3-vl:32b",
+            model="qwen3-vl:8b-instruct-q4_K_M",
             context=None,
             total_duration=300_000_000,
             load_duration=0,
@@ -702,7 +723,7 @@ class TestRootEndpoint:
         response = sync_api_client.get("/")
         data = assert_response_structure(response, 200)
         assert data["service"] == "Shared Ollama Service API"
-        assert data["version"] == "1.0.0"
+        assert data["version"] == settings.api.version
         assert "/api/docs" in data["docs"]
         assert "/api/v1/health" in data["health"]
 
@@ -714,7 +735,7 @@ class TestErrorHandling:
         """Test that uninitialized client returns 503."""
         # Clear dependencies to simulate uninitialized state
         cleanup_dependency_overrides(app)
-        set_dependencies(None, None, None, None)  # type: ignore[arg-type]
+        set_dependencies(None, None, None, None, None, None, None)  # type: ignore[arg-type]
 
         try:
             response = api_client.get("/api/v1/models")
@@ -725,7 +746,18 @@ class TestErrorHandling:
             logger_adapter = RequestLoggerAdapter()
             metrics_adapter = MetricsCollectorAdapter()
             queue = RequestQueue()
-            set_dependencies(client_adapter, logger_adapter, metrics_adapter, queue)
+            vlm_queue = RequestQueue()
+            image_processor_adapter = ImageProcessorAdapter(_DummyImageProcessor())
+            image_cache_adapter = ImageCacheAdapter(_DummyImageCache())
+            set_dependencies(
+                client_adapter,
+                logger_adapter,
+                metrics_adapter,
+                queue,
+                vlm_queue,
+                image_processor_adapter,
+                image_cache_adapter,
+            )
 
     def test_validation_error_returns_422(self, api_client, mock_async_client):
         """Test that validation errors return 422 with details."""
@@ -756,7 +788,7 @@ class TestAsyncFunctionality:
         """Test that endpoints handle async operations correctly."""
         mock_response = GenerateResponse(
             text="Async response",
-            model="qwen3-vl:32b",
+            model="qwen3-vl:8b-instruct-q4_K_M",
             context=None,
             total_duration=300_000_000,
             load_duration=0,

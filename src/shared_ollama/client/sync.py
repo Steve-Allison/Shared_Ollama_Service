@@ -22,6 +22,7 @@ from __future__ import annotations
 import functools
 import json
 import logging
+import os
 import time
 import uuid
 from dataclasses import dataclass
@@ -38,18 +39,45 @@ from shared_ollama.telemetry.structured_logging import log_request_event
 logger = logging.getLogger(__name__)
 
 
+def _serialize_options(options: GenerateOptions | dict[str, Any] | None) -> dict[str, Any] | None:
+    """Normalize generation options into a plain dict."""
+    if options is None:
+        return None
+    if isinstance(options, dict):
+        return {k: v for k, v in options.items() if v is not None}
+
+    options_dict: dict[str, Any] = {
+        "temperature": options.temperature,
+        "top_p": options.top_p,
+        "top_k": options.top_k,
+        "repeat_penalty": options.repeat_penalty,
+    }
+    optional_opts = {
+        k: v
+        for k, v in {
+            "num_predict": options.max_tokens,
+            "seed": options.seed,
+            "stop": options.stop,
+        }.items()
+        if v is not None
+    }
+    options_dict.update(optional_opts)
+    return options_dict
+
+
 class Model(StrEnum):
-    """Available Ollama models.
+    """Supported Qwen 3 model identifiers for the client SDK."""
 
-    Predefined model identifiers for common Ollama models. Values are
-    the model names as recognized by the Ollama service.
-    """
+    QWEN3_VL_8B_Q4 = "qwen3-vl:8b-instruct-q4_K_M"
+    QWEN3_14B_Q4 = "qwen3:14b-q4_K_M"
+    QWEN3_VL_32B = "qwen3-vl:32b"
+    QWEN3_30B = "qwen3:30b"
 
-    QWEN3_VL_32B = "qwen3-vl:32b"  # Primary: 32B params, vision-language model, 256K context
-    QWEN3_30B = "qwen3:30b"  # Secondary: 30B total (MoE), 256K context
-    GRANITE_4_SMALL = (
-        "granite4:small-h"  # Granite 4.0 Small: 32B total, 9B active, hybrid MoE, 1M context
-    )
+
+_DEFAULT_CLIENT_MODEL = os.getenv(
+    "OLLAMA_DEFAULT_VLM_MODEL",
+    Model.QWEN3_VL_8B_Q4.value,
+)
 
 
 @dataclass(slots=True, frozen=True)
@@ -61,7 +89,7 @@ class OllamaConfig:
     Attributes:
         base_url: Base URL for Ollama service (default: "http://localhost:11434").
         default_model: Default model to use if not specified in requests
-            (default: Model.QWEN3_VL_32B).
+            (default: OLLAMA_DEFAULT_VLM_MODEL env var or Model.QWEN3_VL_8B_Q4).
         timeout: Request timeout in seconds for long operations like generation
             (default: 300).
         health_check_timeout: Timeout for quick health checks in seconds
@@ -70,7 +98,7 @@ class OllamaConfig:
     """
 
     base_url: str = "http://localhost:11434"
-    default_model: str = Model.QWEN3_VL_32B
+    default_model: str = _DEFAULT_CLIENT_MODEL
     timeout: int = 300
     health_check_timeout: int = 5
     verbose: bool = False
@@ -319,24 +347,8 @@ class SharedOllamaClient:
         if format:
             payload["format"] = format
 
-        options_dict: dict[str, Any] | None = None
-        if options:
-            options_dict = {
-                "temperature": options.temperature,
-                "top_p": options.top_p,
-                "top_k": options.top_k,
-                "repeat_penalty": options.repeat_penalty,
-            }
-            optional_opts = {
-                k: v
-                for k, v in {
-                    "num_predict": options.max_tokens,
-                    "seed": options.seed,
-                    "stop": options.stop,
-                }.items()
-                if v is not None
-            }
-            options_dict.update(optional_opts)
+        options_dict = _serialize_options(options)
+        if options_dict:
             payload["options"] = options_dict
 
         request_id = str(uuid.uuid4())
@@ -490,6 +502,7 @@ class SharedOllamaClient:
         messages: list[dict[str, Any]],
         model: str | None = None,
         stream: bool = False,
+        options: GenerateOptions | dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Chat completion with multiple messages.
 
@@ -507,6 +520,7 @@ class SharedOllamaClient:
             model: Model name. If None, uses config.default_model.
             stream: Whether to stream the response. Note: streaming is not
                 implemented in the sync client.
+            options: Optional generation options controlling temperature, etc.
 
         Returns:
             Dictionary with chat response. Contains 'message' dict with 'role'
@@ -525,7 +539,10 @@ class SharedOllamaClient:
         """
         model_str = str(model or self.config.default_model)
 
-        payload = {"model": model_str, "messages": messages, "stream": stream}
+        payload: dict[str, Any] = {"model": model_str, "messages": messages, "stream": stream}
+        options_dict = _serialize_options(options)
+        if options_dict:
+            payload["options"] = options_dict
         request_id = str(uuid.uuid4())
         start_time = time.perf_counter()
 
@@ -656,7 +673,7 @@ class SharedOllamaClient:
         This is a long-running operation that may take several minutes.
 
         Args:
-            model: Model name to pull (e.g., "qwen3-vl:32b").
+            model: Model name to pull (e.g., "qwen3-vl:8b-instruct-q4_K_M").
 
         Returns:
             Dictionary with pull response and status information.

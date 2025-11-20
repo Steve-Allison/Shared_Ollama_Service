@@ -10,6 +10,7 @@ not concrete implementations.
 
 from __future__ import annotations
 
+import inspect
 from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING, Any
 
@@ -105,7 +106,7 @@ class AsyncOllamaClientAdapter:
             )
 
         if stream:
-            return self._client.generate_stream(  # type: ignore[attr-defined]
+            stream_result = self._client.generate_stream(  # type: ignore[attr-defined]
                 prompt=prompt,
                 model=model,
                 system=system,
@@ -113,6 +114,7 @@ class AsyncOllamaClientAdapter:
                 format=format,  # type: ignore[arg-type]
                 tools=tools,
             )
+            return await self._resolve_stream_result(stream_result)
         # Type ignore needed because pyright doesn't see full method signature
         result = await self._client.generate(  # type: ignore[call-arg, misc]
             prompt=prompt,
@@ -184,7 +186,7 @@ class AsyncOllamaClientAdapter:
             )
 
         if stream:
-            return self._client.chat_stream(  # type: ignore[attr-defined]
+            stream_result = self._client.chat_stream(  # type: ignore[attr-defined]
                 messages=messages,
                 model=model,
                 options=generate_options,
@@ -192,6 +194,7 @@ class AsyncOllamaClientAdapter:
                 format=format,
                 tools=tools,
             )
+            return await self._resolve_stream_result(stream_result)
         # Type ignore needed because pyright doesn't see full method signature
         return await self._client.chat(  # type: ignore[call-arg, misc]
             messages=messages,
@@ -202,6 +205,12 @@ class AsyncOllamaClientAdapter:
             format=format,  # type: ignore[arg-type]
             tools=tools,  # type: ignore[arg-type]
         )
+
+    async def _resolve_stream_result(self, stream_result: Any) -> Any:
+        """Return stream result, awaiting if upstream returned awaitable."""
+        if inspect.isawaitable(stream_result):
+            return await stream_result
+        return stream_result
 
     async def health_check(self) -> bool:
         """Check if Ollama service is healthy.
@@ -270,7 +279,6 @@ class MetricsCollectorAdapter:
             success=success,
             error=error,
         )
-
 
 class ImageProcessorAdapter:
     """Adapter that wraps ImageProcessor to implement ImageProcessorInterface.

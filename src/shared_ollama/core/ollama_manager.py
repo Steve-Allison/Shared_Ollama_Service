@@ -19,7 +19,6 @@ Key behaviors:
 from __future__ import annotations
 
 import asyncio
-import functools
 import logging
 import os
 import platform
@@ -29,6 +28,8 @@ from pathlib import Path
 from typing import Any, TypeAlias
 
 import psutil
+
+from shared_ollama.core.utils import get_project_root
 
 logger = logging.getLogger(__name__)
 
@@ -83,7 +84,11 @@ class OllamaManager:
         """
         self.base_url = base_url.rstrip("/")
         self.process: asyncio.subprocess.Process | None = None
-        self.log_dir = log_dir or self._get_default_log_dir()
+        if log_dir is None:
+            self.log_dir = self._get_default_log_dir()
+        else:
+            self.log_dir = Path(log_dir)
+            self.log_dir.mkdir(parents=True, exist_ok=True)
         self.auto_detect_optimizations = auto_detect_optimizations
         self.force_manage = force_manage
 
@@ -95,28 +100,39 @@ class OllamaManager:
         Returns:
             Path to logs directory.
         """
-        from shared_ollama.core.utils import get_project_root
-
         log_dir = get_project_root() / "logs"
         log_dir.mkdir(exist_ok=True)
         return log_dir
 
-    @functools.cached_property
+    @property
     def ollama_executable(self) -> str | None:
         """Find and cache the Ollama executable path.
-
-        Uses functools.cached_property for automatic caching (Python 3.8+).
-        Result is cached since the executable location doesn't change at runtime.
 
         Returns:
             Absolute path to ollama executable, or None if not found in PATH.
         """
+        if "_ollama_executable_cache" in self.__dict__:
+            return self._ollama_executable_cache
+
         ollama_path = shutil.which("ollama")
         if ollama_path:
+            self._ollama_executable_cache = ollama_path
             return ollama_path
 
         logger.warning("Ollama executable not found in PATH")
+        self._ollama_executable_cache = None
         return None
+
+    @ollama_executable.setter
+    def ollama_executable(self, value: str | None) -> None:
+        """Allow tests to override cached executable path."""
+        self._ollama_executable_cache = value
+
+    @ollama_executable.deleter
+    def ollama_executable(self) -> None:
+        """Reset cached executable path."""
+        if "_ollama_executable_cache" in self.__dict__:
+            del self._ollama_executable_cache
 
     async def _detect_system_optimizations(self) -> OptimizationConfig:
         """Detect system-specific optimizations for Ollama.
@@ -162,8 +178,6 @@ class OllamaManager:
 
         # Auto-calculate memory limit if script exists (async subprocess)
         try:
-            from shared_ollama.core.utils import get_project_root
-
             calc_script = get_project_root() / "scripts" / "calculate_memory_limit.sh"
             if calc_script.exists():
                 process = await asyncio.create_subprocess_exec(
@@ -326,6 +340,11 @@ class OllamaManager:
         Raises:
             No exceptions raised, but logs errors and returns False on failure.
         """
+        ollama_path = self.ollama_executable
+        if not ollama_path:
+            logger.error("Ollama executable not found. Please install Ollama.")
+            return False
+
         # Check if Ollama is already running
         if self._check_ollama_running():
             if self.force_manage:
@@ -336,11 +355,6 @@ class OllamaManager:
             else:
                 logger.info("Ollama service is already running at %s", self.base_url)
                 return True
-
-        ollama_path = self.ollama_executable
-        if not ollama_path:
-            logger.error("Ollama executable not found. Please install Ollama.")
-            return False
 
         # Prepare environment with optimizations
         env: ProcessEnv = os.environ.copy()
@@ -408,7 +422,12 @@ class OllamaManager:
         check_interval = 1.0
 
         while (elapsed := time.monotonic() - start_time) < max_wait_time:
-            if self._check_ollama_running(timeout=1):
+            try:
+                running = self._check_ollama_running(timeout=1)
+            except TypeError:
+                running = self._check_ollama_running()
+
+            if running:
                 logger.info("Ollama service is ready (took %.1fs)", elapsed)
                 return True
             await asyncio.sleep(check_interval)
@@ -461,22 +480,13 @@ class OllamaManager:
                         logger.warning(
                             "Ollama process did not stop gracefully, forcing termination..."
                         )
-                        process.kill()
-                        await process.wait()
+                        await self._force_kill_process(process)
                         logger.info("Ollama process force-stopped")
-                        self.process = None
                         return True
 
                 except Exception as exc:
                     logger.exception("Error stopping Ollama process: %s", exc)
-                    if self.process:
-                        try:
-                            self.process.kill()
-                            await self.process.wait()
-                        except Exception:
-                            pass
-                        finally:
-                            self.process = None
+                    await self._force_kill_process(self.process)
                     return False
 
     def is_running(self) -> bool:
@@ -532,19 +542,23 @@ class OllamaManager:
                 - pid: int (optional) - Process ID if managed
                 - returncode: int | None (optional) - Process return code if managed
         """
+        managed_process = self.process
+        running = self.is_running()
+
         status: dict[str, Any] = {
-            "running": self.is_running(),
+            "running": running,
             "base_url": self.base_url,
             "managed": self.process is not None,
         }
 
-        if self.process:
-            status["pid"] = self.process.pid
-            status["returncode"] = self.process.returncode
+        proc_for_details = self.process or managed_process
+        if proc_for_details:
+            status["pid"] = proc_for_details.pid
+            status["returncode"] = proc_for_details.returncode
             # Add process info using psutil if available
             try:
-                if psutil.pid_exists(self.process.pid):
-                    proc = psutil.Process(self.process.pid)
+                if psutil.pid_exists(proc_for_details.pid):
+                    proc = psutil.Process(proc_for_details.pid)
                     status["cpu_percent"] = proc.cpu_percent(interval=0.1)
                     status["memory_mb"] = proc.memory_info().rss / 1024 / 1024
                     status["status"] = proc.status()
@@ -552,6 +566,19 @@ class OllamaManager:
                 pass
 
         return status
+
+    async def _force_kill_process(self, process: asyncio.subprocess.Process | None) -> None:
+        """Force-terminate the managed process, ignoring kill errors."""
+        if process is None:
+            return
+        try:
+            process.kill()
+            await process.wait()
+        except Exception as exc:  # pragma: no cover - best effort cleanup
+            logger.debug("Force kill failed: %s", exc)
+        finally:
+            if process is self.process:
+                self.process = None
 
 
 # Global instance (will be initialized by server)

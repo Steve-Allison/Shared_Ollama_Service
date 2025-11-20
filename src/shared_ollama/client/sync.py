@@ -269,6 +269,8 @@ class SharedOllamaClient:
             - Logs request event
             - Records metrics
         """
+        start_time = time.perf_counter()
+
         try:
             response = self.session.get(
                 f"{self.config.base_url}/api/tags",
@@ -279,19 +281,44 @@ class SharedOllamaClient:
             data = response.json()
             match isinstance(data, dict):
                 case True:
-                    return data.get("models", [])
+                    models = data.get("models", [])
                 case False:
                     msg = f"Expected dict response, got {type(data).__name__}"
                     raise ValueError(msg)
 
+            latency_ms = (time.perf_counter() - start_time) * 1000
+            MetricsCollector.record_request(
+                model="system",
+                operation="list_models",
+                latency_ms=latency_ms,
+                success=True,
+            )
+            log_request_event(
+                {
+                    "event": "ollama_request",
+                    "client_type": "sync",
+                    "operation": "list_models",
+                    "status": "success",
+                    "request_id": str(uuid.uuid4()),
+                    "latency_ms": round(latency_ms, 3),
+                    "models_returned": len(models),
+                }
+            )
+
+            return models
+
         except json.JSONDecodeError:
+            self._record_list_models_error(start_time, "JSONDecodeError")
             logger.exception("Failed to decode JSON response from /api/tags")
             raise
         except requests.exceptions.HTTPError as exc:
             status_code = exc.response.status_code if exc.response else None
-            logger.exception(
-                "HTTP error listing models: %s", status_code or "unknown"
-            )
+            self._record_list_models_error(start_time, f"HTTPError:{status_code}")
+            logger.exception("HTTP error listing models: %s", status_code or "unknown")
+            raise
+        except requests.exceptions.RequestException as exc:
+            self._record_list_models_error(start_time, exc.__class__.__name__)
+            logger.exception("Request error listing models: %s", exc)
             raise
 
     def generate(
@@ -441,6 +468,28 @@ class SharedOllamaClient:
             )
             logger.exception("Request error generating with %s: %s", model_str, exc)
             raise
+
+    def _record_list_models_error(self, start_time: float, error_type: str) -> None:
+        """Record list_models failure metrics/logging."""
+        latency_ms = (time.perf_counter() - start_time) * 1000
+        MetricsCollector.record_request(
+            model="system",
+            operation="list_models",
+            latency_ms=latency_ms,
+            success=False,
+            error=error_type,
+        )
+        log_request_event(
+            {
+                "event": "ollama_request",
+                "client_type": "sync",
+                "operation": "list_models",
+                "status": "error",
+                "request_id": str(uuid.uuid4()),
+                "latency_ms": round(latency_ms, 3),
+                "error_type": error_type,
+            }
+        )
 
     def _log_generate_error(
         self,

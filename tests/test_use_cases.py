@@ -15,6 +15,7 @@ from shared_ollama.application.use_cases import (
     GenerateUseCase,
     ListModelsUseCase,
 )
+from shared_ollama.client.sync import GenerateOptions as ClientGenerateOptions
 from shared_ollama.domain.entities import (
     ChatMessage,
     ChatRequest,
@@ -44,20 +45,20 @@ class MockGenerateResponse:
         self.eval_duration = 400_000_000
 
 
-class MockChatResponse:
-    """Mock ChatResponse for testing."""
-    def __init__(self):
-        self.message = {"role": "assistant", "content": "Chat response"}
-        self.model = "qwen3-vl:8b-instruct-q4_K_M"
-        self.done = True
-
-
 @pytest.fixture
 def mock_async_client():
     """Create a mock async client for testing (external service)."""
     client = AsyncMock()
     client.generate = AsyncMock(return_value=MockGenerateResponse())
-    client.chat = AsyncMock(return_value=MockChatResponse())
+    client.generate_stream = AsyncMock()
+    client.chat = AsyncMock(
+        return_value={
+            "model": "qwen3-vl:8b-instruct-q4_K_M",
+            "message": {"role": "assistant", "content": "Chat response"},
+            "done": True,
+        }
+    )
+    client.chat_stream = AsyncMock()
     client.list_models = AsyncMock(
         return_value=[
             {"name": "qwen3-vl:8b-instruct-q4_K_M", "size": 5969245856},
@@ -182,9 +183,10 @@ class TestGenerateUseCase:
         call_kwargs = mock_async_client.generate.call_args.kwargs
         assert "options" in call_kwargs
         options = call_kwargs["options"]
-        assert options["temperature"] == 0.7
-        assert options["top_p"] == 0.95
-        assert options["num_predict"] == 100
+        assert isinstance(options, ClientGenerateOptions)
+        assert options.temperature == 0.7
+        assert options.top_p == 0.95
+        assert options.max_tokens == 100
 
     async def test_execute_filters_none_options(self, use_case_dependencies, mock_async_client):
         """Test that execute() filters out None option values."""
@@ -204,8 +206,11 @@ class TestGenerateUseCase:
 
         call_kwargs = mock_async_client.generate.call_args.kwargs
         options = call_kwargs["options"]
-        assert "num_predict" not in options or options.get("num_predict") is not None
-        assert "seed" not in options or options.get("seed") is not None
+        assert isinstance(options, ClientGenerateOptions)
+        assert options.max_tokens is None
+        assert options.seed is None
+        assert options.stop is None
+        assert options.seed is None
 
     async def test_execute_includes_format(self, use_case_dependencies, mock_async_client):
         """Test that execute() includes format when provided."""
@@ -293,7 +298,7 @@ class TestGenerateUseCase:
             yield {"chunk": " world", "done": False}
             yield {"chunk": "!", "done": True}
 
-        mock_async_client.generate.return_value = stream_generator()
+        mock_async_client.generate_stream.return_value = stream_generator()
         use_case = GenerateUseCase(**use_case_dependencies)
 
         request = GenerationRequest(
@@ -478,33 +483,19 @@ class TestUseCaseEdgeCases:
 
     async def test_generate_handles_empty_prompt(self, use_case_dependencies):
         """Test that GenerateUseCase handles empty prompt."""
-        use_case = GenerateUseCase(**use_case_dependencies)
-
-        request = GenerationRequest(
-            prompt=Prompt(value=""),
-            model=ModelName(value="qwen3-vl:8b-instruct-q4_K_M"),
-        )
-
-        # Should still execute (validation happens in domain)
-        result = await use_case.execute(request, request_id="test-1")
-        assert isinstance(result, dict)
+        with pytest.raises(ValueError):
+            GenerationRequest(
+                prompt=Prompt(value=""),
+                model=ModelName(value="qwen3-vl:8b-instruct-q4_K_M"),
+            )
 
     async def test_chat_handles_empty_messages(self, use_case_dependencies):
         """Test that ChatUseCase handles empty messages."""
-        use_case = ChatUseCase(**use_case_dependencies)
-
-        request = ChatRequest(
-            messages=(),
-            model=ModelName(value="qwen3-vl:8b-instruct-q4_K_M"),
-        )
-
-        # Should still execute (validation happens in domain or client)
-        try:
-            result = await use_case.execute(request, request_id="test-1")
-            assert isinstance(result, dict)
-        except Exception:
-            # Client may reject empty messages, which is valid
-            pass
+        with pytest.raises(ValueError):
+            ChatRequest(
+                messages=(),
+                model=ModelName(value="qwen3-vl:8b-instruct-q4_K_M"),
+            )
 
     async def test_generate_handles_all_none_options(self, use_case_dependencies, mock_async_client):
         """Test that GenerateUseCase handles all None options."""
@@ -523,10 +514,9 @@ class TestUseCaseEdgeCases:
         await use_case.execute(request, request_id="test-1")
 
         call_kwargs = mock_async_client.generate.call_args.kwargs
-        # Options dict should not include None values
-        if "options" in call_kwargs:
-            options = call_kwargs["options"]
-            assert "num_predict" not in options or options.get("num_predict") is not None
+        options = call_kwargs["options"]
+        assert isinstance(options, ClientGenerateOptions)
+        assert options.max_tokens is None
 
     async def test_concurrent_execute_calls(self, use_case_dependencies):
         """Test that use cases handle concurrent execute calls."""

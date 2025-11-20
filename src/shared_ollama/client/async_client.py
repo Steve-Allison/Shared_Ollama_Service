@@ -314,6 +314,8 @@ class AsyncSharedOllamaClient:
         if self.client is None:
             raise RuntimeError("Client not initialized")
 
+        start_time = time.perf_counter()
+
         try:
             async with self._acquire_slot():
                 response = await self.client.get(
@@ -326,17 +328,67 @@ class AsyncSharedOllamaClient:
 
             match isinstance(data, dict):
                 case True:
-                    return data.get("models", [])
+                    models = data.get("models", [])
                 case False:
                     msg = f"Expected dict response, got {type(data).__name__}"
                     raise ValueError(msg)
 
-        except json.JSONDecodeError:
+            latency_ms = (time.perf_counter() - start_time) * 1000
+            MetricsCollector.record_request(
+                model="system",
+                operation="list_models",
+                latency_ms=latency_ms,
+                success=True,
+            )
+            log_request_event(
+                {
+                    "event": "ollama_request",
+                    "client_type": "async",
+                    "operation": "list_models",
+                    "status": "success",
+                    "request_id": str(uuid.uuid4()),
+                    "latency_ms": round(latency_ms, 3),
+                    "models_returned": len(models),
+                }
+            )
+
+            return models
+
+        except json.JSONDecodeError as exc:
+            self._record_list_models_error(start_time, "JSONDecodeError")
             logger.exception("Failed to decode JSON response from /api/tags")
             raise
         except httpx.HTTPStatusError as exc:
-            logger.exception("HTTP error listing models: %s", exc.response.status_code)
+            status_code = exc.response.status_code if exc.response else None
+            self._record_list_models_error(start_time, f"HTTPError:{status_code}")
+            logger.exception("HTTP error listing models: %s", status_code)
             raise
+        except httpx.RequestError as exc:
+            self._record_list_models_error(start_time, exc.__class__.__name__)
+            logger.exception("Request error listing models: %s", exc)
+            raise
+
+    def _record_list_models_error(self, start_time: float, error_type: str) -> None:
+        """Record metrics/logs for list_models errors."""
+        latency_ms = (time.perf_counter() - start_time) * 1000
+        MetricsCollector.record_request(
+            model="system",
+            operation="list_models",
+            latency_ms=latency_ms,
+            success=False,
+            error=error_type,
+        )
+        log_request_event(
+            {
+                "event": "ollama_request",
+                "client_type": "async",
+                "operation": "list_models",
+                "status": "error",
+                "request_id": str(uuid.uuid4()),
+                "latency_ms": round(latency_ms, 3),
+                "error_type": error_type,
+            }
+        )
 
     def _build_options_dict(self, options: GenerateOptions | None) -> dict[str, Any] | None:
         """Build options dictionary from GenerateOptions.

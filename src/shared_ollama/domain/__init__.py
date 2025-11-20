@@ -22,19 +22,16 @@ from shared_ollama.domain.exceptions import (
 from shared_ollama.domain.value_objects import ModelName, Prompt, SystemMessage
 
 __all__ = [
-    # Entities
-    "Model",
-    "ModelInfo",
-    "GenerationRequest",
-    "ChatRequest",
     "ChatMessage",
-    # Value Objects
-    "ModelName",
-    "Prompt",
-    "SystemMessage",
-    # Exceptions
+    "ChatRequest",
     "DomainError",
+    "GenerationRequest",
     "InvalidModelError",
     "InvalidPromptError",
     "InvalidRequestError",
+    "Model",
+    "ModelInfo",
+    "ModelName",
+    "Prompt",
+    "SystemMessage",
 ]

@@ -14,12 +14,15 @@ from __future__ import annotations
 
 import functools
 import importlib
+from itertools import takewhile
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
 if TYPE_CHECKING:
     from shared_ollama.client.sync import SharedOllamaClient
 
+from shared_ollama.infrastructure.config import OllamaConfig
+from shared_ollama.infrastructure.health_checker import check_ollama_health
 
 @functools.cache
 def get_project_root() -> Path:
@@ -43,13 +46,9 @@ def get_project_root() -> Path:
         case True:
             return package_root
         case False:
-            # Fallback: walk up until we find repository marker
-            # Use itertools for efficient iteration (performance optimization)
-            from itertools import takewhile
-
             for parent in takewhile(
                 lambda p: p != Path("/"),
-                Path(__file__).resolve().parents
+                Path(__file__).resolve().parents,
             ):
                 if (parent / "pyproject.toml").exists() or (parent / ".git").exists():
                     return parent
@@ -66,8 +65,6 @@ def get_ollama_base_url() -> str:
         Base URL string (e.g., "http://localhost:11434"). Always includes
         protocol and port, with trailing slashes removed.
     """
-    from shared_ollama.infrastructure.config import OllamaConfig
-
     # Use pydantic-settings for environment variable loading
     config = OllamaConfig()
     return config.url
@@ -97,8 +94,6 @@ def check_service_health(
     Side effects:
         Makes an HTTP GET request to the Ollama service (via infrastructure layer).
     """
-    from shared_ollama.infrastructure.health_checker import check_ollama_health
-
     if base_url is None:
         base_url = get_ollama_base_url()
 

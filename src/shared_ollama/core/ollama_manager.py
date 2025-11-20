@@ -30,6 +30,7 @@ from typing import Any, TypeAlias
 import psutil
 
 from shared_ollama.core.utils import get_project_root
+from shared_ollama.infrastructure.health_checker import check_ollama_health_simple
 
 logger = logging.getLogger(__name__)
 
@@ -92,7 +93,8 @@ class OllamaManager:
         self.auto_detect_optimizations = auto_detect_optimizations
         self.force_manage = force_manage
 
-    def _get_default_log_dir(self) -> Path:
+    @staticmethod
+    def _get_default_log_dir() -> Path:
         """Get default log directory path.
 
         Creates the logs directory if it doesn't exist.
@@ -134,7 +136,8 @@ class OllamaManager:
         if "_ollama_executable_cache" in self.__dict__:
             del self._ollama_executable_cache
 
-    async def _detect_system_optimizations(self) -> OptimizationConfig:
+    @staticmethod
+    async def _detect_system_optimizations() -> OptimizationConfig:
         """Detect system-specific optimizations for Ollama.
 
         Analyzes the system architecture and platform to determine optimal
@@ -307,8 +310,6 @@ class OllamaManager:
         Side effects:
             Makes an HTTP GET request to /api/tags endpoint (via infrastructure layer).
         """
-        from shared_ollama.infrastructure.health_checker import check_ollama_health_simple
-
         return check_ollama_health_simple(base_url=self.base_url, timeout=timeout)
 
     async def start(
@@ -368,40 +369,34 @@ class OllamaManager:
 
         try:
             logger.info("Starting Ollama service process...")
-            # Open log files for async subprocess (keep open for subprocess lifetime)
-            # Note: Files will be closed when process terminates
             log_f = log_file.open("a")
             err_f = error_log_file.open("a")
 
-            # Use asyncio.create_subprocess_exec for non-blocking async subprocess
-            # Note: File handles are passed to subprocess and will remain open
             self.process = await asyncio.create_subprocess_exec(
                 ollama_path,
                 "serve",
                 stdout=log_f,
                 stderr=err_f,
                 env=env,
-                start_new_session=True,  # Create new process group
+                start_new_session=True,
             )
 
             logger.info("Ollama process started with PID %s", self.process.pid)
 
-            if wait_for_ready:
-                ready = await self._wait_for_ready(max_wait_time)
-                if not ready:
-                    logger.error(
-                        "Ollama service did not become ready within %s seconds",
-                        max_wait_time,
-                    )
-                    await self.stop()
-                    return False
+            if wait_for_ready and not await self._wait_for_ready(max_wait_time):
+                logger.error(
+                    "Ollama service did not become ready within %s seconds",
+                    max_wait_time,
+                )
+                await self.stop()
+                return False
 
-            return True
-
-        except Exception as exc:
-            logger.exception("Failed to start Ollama process: %s", exc)
+        except Exception:
+            logger.exception("Failed to start Ollama process")
             self.process = None
             return False
+        else:
+            return True
 
     async def _wait_for_ready(self, max_wait_time: int = 30) -> bool:
         """Wait for Ollama service to become ready.
@@ -467,15 +462,10 @@ class OllamaManager:
             case process:
                 try:
                     logger.info("Stopping Ollama service process (PID %s)...", process.pid)
-
                     process.terminate()
 
                     try:
-                        # Use asyncio.wait_for for timeout with async wait
                         await asyncio.wait_for(process.wait(), timeout=timeout)
-                        logger.info("Ollama process stopped gracefully")
-                        self.process = None
-                        return True
                     except TimeoutError:
                         logger.warning(
                             "Ollama process did not stop gracefully, forcing termination..."
@@ -483,9 +473,13 @@ class OllamaManager:
                         await self._force_kill_process(process)
                         logger.info("Ollama process force-stopped")
                         return True
+                    else:
+                        logger.info("Ollama process stopped gracefully")
+                        self.process = None
+                        return True
 
-                except Exception as exc:
-                    logger.exception("Error stopping Ollama process: %s", exc)
+                except Exception:
+                    logger.exception("Error stopping Ollama process")
                     await self._force_kill_process(self.process)
                     return False
 
@@ -596,7 +590,7 @@ def get_ollama_manager() -> OllamaManager:
             initialize_ollama_manager().
     """
     if _ollama_manager is None:
-        raise RuntimeError("Ollama manager not initialized")
+        raise RuntimeError("Ollama manager not initialized")  # noqa: TRY003
     return _ollama_manager
 
 
@@ -623,7 +617,7 @@ def initialize_ollama_manager(
     Side effects:
         Sets the global _ollama_manager variable.
     """
-    global _ollama_manager
+    global _ollama_manager  # noqa: PLW0603
     _ollama_manager = OllamaManager(
         base_url=base_url,
         log_dir=log_dir,

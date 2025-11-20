@@ -15,6 +15,7 @@ Usage:
 """
 
 import json
+
 import poml
 import requests
 
@@ -116,7 +117,7 @@ def main():
                 print(f"   Result: {json.dumps(result, indent=2)}")
             else:
                 result = {"error": f"Unknown function: {func_name}"}
-                print(f"   Error: Unknown function")
+                print("   Error: Unknown function")
 
             print()
 

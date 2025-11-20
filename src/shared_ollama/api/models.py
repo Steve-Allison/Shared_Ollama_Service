@@ -791,12 +791,10 @@ class ChatMessageOpenAI(BaseModel):
     @classmethod
     def validate_content(cls, v: str | list[ContentPart]) -> str | list[ContentPart]:
         """Validate content is not empty."""
-        if isinstance(v, str):
-            if not v.strip():
-                raise ValueError("Text content cannot be empty")
-        elif isinstance(v, list):
-            if not v:
-                raise ValueError("Content parts list cannot be empty")
+        if isinstance(v, str) and not v.strip():
+            raise ValueError("Text content cannot be empty")
+        if isinstance(v, list) and not v:
+            raise ValueError("Content parts list cannot be empty")
         return v
 
 

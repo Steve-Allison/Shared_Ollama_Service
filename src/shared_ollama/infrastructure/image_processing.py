@@ -78,9 +78,11 @@ class ImageProcessor:
             ValueError: If data URL is invalid
         """
         if not data_url.startswith("data:image/"):
-            raise ValueError("Image URL must start with 'data:image/'")
+            raise ValueError("Image URL must start with 'data:image/'")  # noqa: TRY003
         if ";base64," not in data_url:
-            raise ValueError("Image URL must contain ';base64,' separator")
+            raise ValueError(
+                "Image URL must contain ';base64,' separator"
+            )  # noqa: TRY003
 
         # Extract format and data
         header, base64_data = data_url.split(";base64,", 1)
@@ -89,13 +91,13 @@ class ImageProcessor:
         try:
             image_bytes = base64.b64decode(base64_data)
         except Exception as exc:
-            raise ValueError(f"Invalid base64 encoding: {exc}") from exc
+            raise ValueError(f"Invalid base64 encoding: {exc}") from exc  # noqa: TRY003
 
         if len(image_bytes) > self.max_size_bytes:
             raise ValueError(
                 f"Image too large: {len(image_bytes)} bytes "
                 f"(max: {self.max_size_bytes})"
-            )
+            )  # noqa: TRY003
 
         return img_format, image_bytes
 
@@ -119,11 +121,12 @@ class ImageProcessor:
         _orig_format, image_bytes = self.validate_data_url(data_url)
         original_size = len(image_bytes)
 
-        # Load image
+        # Load image (force load to catch truncated streams)
         try:
             img = Image.open(io.BytesIO(image_bytes))
+            img.load()
         except Exception as exc:
-            raise ValueError(f"Invalid image data: {exc}") from exc
+            raise ValueError(f"Invalid image data: {exc}") from exc  # noqa: TRY003
 
         # Convert RGBA to RGB for JPEG using match/case (Python 3.13+)
         match (target_format, img.mode):
@@ -132,7 +135,7 @@ class ImageProcessor:
                 background = Image.new("RGB", img.size, (255, 255, 255))
                 background.paste(img, mask=img.split()[3])  # Use alpha as mask
                 img = background
-            case (_, mode) if mode not in ("RGB", "RGBA"):
+            case (_, mode) if mode not in {"RGB", "RGBA"}:
                 img = img.convert("RGB")
             case _:
                 pass  # Already in correct format
@@ -181,7 +184,9 @@ class ImageProcessor:
                     optimize=True,
                 )
             case _:
-                raise ValueError(f"Unsupported target format: {target_format}")
+                raise ValueError(
+                    f"Unsupported target format: {target_format}"
+                )  # noqa: TRY003
 
         compressed_bytes = output.getvalue()
         compressed_size = len(compressed_bytes)

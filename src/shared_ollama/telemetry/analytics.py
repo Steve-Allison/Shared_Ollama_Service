@@ -24,14 +24,21 @@ import json
 import logging
 import time
 from collections import defaultdict
-from collections.abc import Generator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
 
-from shared_ollama.telemetry.metrics import MetricsCollector, RequestMetrics
+from pydantic import TypeAdapter
+from shared_ollama.telemetry.metrics import MetricsCollector
+
+if TYPE_CHECKING:
+    from collections.abc import Generator
+    from shared_ollama.telemetry.metrics import RequestMetrics
+else:  # pragma: no cover - used only for runtime type hint evaluation
+    Generator = Any  # type: ignore[assignment]
+    RequestMetrics = Any  # type: ignore[assignment]
 
 logger = logging.getLogger(__name__)
 
@@ -55,8 +62,6 @@ def _convert_datetime_to_iso(obj: Any) -> Any:
     Side effects:
         None. Pure function.
     """
-    from pydantic import TypeAdapter
-
     match obj:
         case datetime():
             # Use Pydantic's datetime serialization for proper timezone handling

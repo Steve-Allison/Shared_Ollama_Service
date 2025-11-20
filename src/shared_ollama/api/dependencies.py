@@ -219,7 +219,10 @@ def get_image_cache() -> ImageCacheAdapter:
 
 
 def get_request_context(request: Request) -> RequestContext:  # type: ignore[valid-type]
-    """Extract request context from FastAPI request.
+    """Extract (or reuse) request context from FastAPI request.
+
+    Ensures the same context instance is reused throughout the lifetime of a single
+    request so all logging shares the identical request_id.
 
     Args:
         request: FastAPI Request object.
@@ -229,12 +232,16 @@ def get_request_context(request: Request) -> RequestContext:  # type: ignore[val
     """
     from slowapi.util import get_remote_address
 
-    return RequestContext(
-        request_id=str(uuid.uuid4()),
-        client_ip=get_remote_address(request),
-        user_agent=request.headers.get("user-agent"),
-        project_name=request.headers.get("x-project-name"),
-    )
+    ctx: RequestContext | None = getattr(request.state, "request_context", None)
+    if ctx is None:
+        ctx = RequestContext(
+            request_id=str(uuid.uuid4()),
+            client_ip=get_remote_address(request),
+            user_agent=request.headers.get("user-agent"),
+            project_name=request.headers.get("x-project-name"),
+        )
+        request.state.request_context = ctx
+    return ctx
 
 
 # FastAPI dependency annotations

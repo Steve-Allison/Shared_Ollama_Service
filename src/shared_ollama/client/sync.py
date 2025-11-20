@@ -25,6 +25,7 @@ import logging
 import os
 import time
 import uuid
+from collections import OrderedDict
 from dataclasses import dataclass
 from enum import StrEnum
 from http import HTTPStatus
@@ -177,7 +178,7 @@ class SharedOllamaClient:
         ideally use its own client instance for best performance.
     """
 
-    __slots__ = ("config", "session")
+    __slots__ = ("config", "session", "_model_info_cache")
 
     def __init__(
         self, config: OllamaConfig | None = None, verify_on_init: bool = True
@@ -197,6 +198,7 @@ class SharedOllamaClient:
         """
         self.config = config or OllamaConfig()
         self.session = requests.Session()
+        self._model_info_cache: OrderedDict[str, dict[str, Any] | None] = OrderedDict()
         adapter = HTTPAdapter(
             pool_connections=10,
             pool_maxsize=10,
@@ -854,7 +856,6 @@ class SharedOllamaClient:
             logger.debug("Health check failed: %s", exc)
             return False
 
-    @functools.lru_cache(maxsize=128)
     def get_model_info(self, model: str) -> dict[str, Any] | None:
         """Get information about a specific model.
 
@@ -872,8 +873,16 @@ class SharedOllamaClient:
             - Calls list_models() if cache miss
             - Caches result for subsequent calls
         """
+        if model in self._model_info_cache:
+            return self._model_info_cache[model]
+
         models = self.list_models()
-        return next((item for item in models if item.get("name") == model), None)
+        info = next((item for item in models if item.get("name") == model), None)
+        self._model_info_cache[model] = info
+        self._model_info_cache.move_to_end(model)
+        if len(self._model_info_cache) > 128:
+            self._model_info_cache.popitem(last=False)
+        return info
 
 
 __all__ = [

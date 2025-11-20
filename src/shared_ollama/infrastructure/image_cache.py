@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import hashlib
 import logging
-from typing import Literal
+import time
+from typing import TYPE_CHECKING, Literal
 
 from cachetools import TTLCache
 
-from shared_ollama.infrastructure.image_processing import ImageMetadata
+if TYPE_CHECKING:
+    from shared_ollama.infrastructure.image_processing import ImageMetadata
 
 logger = logging.getLogger(__name__)
 
@@ -101,8 +103,6 @@ class ImageCache:
             base64_string: Processed base64 string.
             metadata: Image metadata.
         """
-        import time
-
         key = self._compute_key(data_url, target_format)
 
         self._cache[key] = CacheEntry(

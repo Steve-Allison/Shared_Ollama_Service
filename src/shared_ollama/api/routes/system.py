@@ -11,7 +11,7 @@ Provides endpoints for:
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import Annotated, Any
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -31,6 +31,10 @@ from shared_ollama.core.utils import check_service_health
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+CLIENT_ERROR_MIN = 400
+SERVER_ERROR_MIN = 500
+SERVER_ERROR_MAX = 600
 
 
 def _map_http_status_code(status_code: int | None) -> tuple[int, str]:
@@ -54,12 +58,12 @@ def _map_http_status_code(status_code: int | None) -> tuple[int, str]:
             status.HTTP_503_SERVICE_UNAVAILABLE,
             "Ollama service returned unknown status. Please try again.",
         )
-    if 400 <= status_code < 500:
+    if CLIENT_ERROR_MIN <= status_code < SERVER_ERROR_MIN:
         return (
             status.HTTP_400_BAD_REQUEST,
             f"Ollama service rejected the request (status {status_code}). Please check your request.",
         )
-    if 500 <= status_code < 600:
+    if SERVER_ERROR_MIN <= status_code < SERVER_ERROR_MAX:
         return (
             status.HTTP_502_BAD_GATEWAY,
             f"Ollama service error (status {status_code}). Please try again later.",
@@ -98,7 +102,7 @@ async def health_check() -> HealthResponse:
 
 @router.get("/queue/stats", response_model=QueueStatsResponse, tags=["Queue"])
 async def get_queue_stats(
-    queue: RequestQueue = Depends(get_chat_queue),
+    queue: Annotated[RequestQueue, Depends(get_chat_queue)],
 ) -> QueueStatsResponse:
     """Get chat queue statistics.
 
@@ -235,7 +239,7 @@ async def get_analytics(
 @limiter.limit("30/minute")
 async def list_models(
     request: Request,
-    use_case: ListModelsUseCase = Depends(get_list_models_use_case),
+    use_case: Annotated[ListModelsUseCase, Depends(get_list_models_use_case)],
 ) -> ModelsResponse:
     """List available models.
 

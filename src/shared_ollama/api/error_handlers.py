@@ -7,16 +7,16 @@ across route handlers and ensure consistent error responses.
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, NoReturn
+import time
+from collections.abc import Callable
+from typing import NoReturn
 
 import httpx
 from fastapi import HTTPException, status
 
 from shared_ollama.api.models import RequestContext
 from shared_ollama.domain.exceptions import InvalidRequestError
-
-if TYPE_CHECKING:
-    from collections.abc import Callable
+from shared_ollama.telemetry.structured_logging import log_request_event
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +25,9 @@ def handle_route_errors(
     ctx: RequestContext,
     operation_name: str,
     timeout_message: str | None = None,
+    *,
+    start_time: float | None = None,
+    event_builder: Callable[[], dict[str, object]] | None = None,
 ) -> Callable[[Exception], NoReturn]:
     """Create an error handler function for route handlers.
 
@@ -46,15 +49,42 @@ def handle_route_errors(
         ... except Exception as exc:
         ...     error_handler(exc)
     """
-    default_timeout_msg = "Request timed out. The model may be taking longer than expected to respond."
+    default_timeout_msg = (
+        "Request timed out. The model may be taking longer than expected to respond."
+    )
     timeout_msg = timeout_message or default_timeout_msg
+
+    def _build_event(status: str, **extra: object) -> dict[str, object]:
+        event: dict[str, object] = {
+            "event": "api_request",
+            "operation": operation_name,
+            "status": status,
+            "request_id": ctx.request_id,
+            "client_ip": ctx.client_ip,
+            "project_name": ctx.project_name,
+        }
+        if start_time is not None:
+            event["latency_ms"] = round((time.perf_counter() - start_time) * 1000, 3)
+        if event_builder:
+            try:
+                additional = event_builder() or {}
+            except Exception as builder_exc:  # pragma: no cover - defensive
+                logger.debug(
+                    "event_builder_failed: request_id=%s, error=%s",
+                    ctx.request_id,
+                    builder_exc,
+                )
+            else:
+                event.update({k: v for k, v in additional.items() if v is not None})
+        event.update({k: v for k, v in extra.items() if v is not None})
+        return event
 
     def handle_error(exc: Exception) -> NoReturn:
         """Handle exception and raise appropriate HTTPException."""
         # Re-raise HTTPException as-is (guard clause)
         match exc:
             case HTTPException():
-                raise
+                raise exc
 
         # Use match/case for type-based exception handling (Python 3.13+ pattern)
         match exc:
@@ -63,6 +93,14 @@ def handle_route_errors(
                     f"{operation_name}_validation_error: request_id=%s, error=%s",
                     ctx.request_id,
                     str(exc),
+                )
+                log_request_event(
+                    _build_event(
+                        "error",
+                        error_type=type(exc).__name__,
+                        error_message=str(exc),
+                        http_status=status.HTTP_400_BAD_REQUEST,
+                    )
                 )
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
@@ -75,6 +113,14 @@ def handle_route_errors(
                     ctx.request_id,
                     str(exc),
                 )
+                log_request_event(
+                    _build_event(
+                        "error",
+                        error_type="ConnectionError",
+                        error_message=str(exc),
+                        http_status=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    )
+                )
                 raise HTTPException(
                     status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                     detail="Ollama service is unavailable. Please check if the service is running.",
@@ -85,6 +131,14 @@ def handle_route_errors(
                     f"{operation_name}_timeout_error: request_id=%s, error=%s",
                     ctx.request_id,
                     str(exc),
+                )
+                log_request_event(
+                    _build_event(
+                        "error",
+                        error_type="TimeoutError",
+                        error_message=str(exc),
+                        http_status=status.HTTP_504_GATEWAY_TIMEOUT,
+                    )
                 )
                 raise HTTPException(
                     status_code=status.HTTP_504_GATEWAY_TIMEOUT,
@@ -100,6 +154,15 @@ def handle_route_errors(
                     status_code,
                     str(http_exc),
                 )
+                log_request_event(
+                    _build_event(
+                        "error",
+                        error_type="HTTPStatusError",
+                        error_message=str(http_exc),
+                        upstream_status=status_code,
+                        http_status=http_status,
+                    )
+                )
                 raise HTTPException(status_code=http_status, detail=error_msg) from http_exc
 
             case httpx.RequestError():
@@ -108,9 +171,20 @@ def handle_route_errors(
                     ctx.request_id,
                     str(exc),
                 )
+                log_request_event(
+                    _build_event(
+                        "error",
+                        error_type="RequestError",
+                        error_message=str(exc),
+                        http_status=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    )
+                )
                 raise HTTPException(
                     status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                    detail="Unable to connect to Ollama service. Please check if the service is running.",
+                    detail=(
+                        "Unable to connect to Ollama service. "
+                        "Please check if the service is running."
+                    ),
                 ) from exc
 
             case _:
@@ -120,9 +194,20 @@ def handle_route_errors(
                     ctx.request_id,
                     type(exc).__name__,
                 )
+                log_request_event(
+                    _build_event(
+                        "error",
+                        error_type=type(exc).__name__,
+                        error_message=str(exc),
+                        http_status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    )
+                )
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail=f"An internal error occurred (request_id: {ctx.request_id}). Please try again later or contact support.",
+                    detail=(
+                        f"An internal error occurred (request_id: {ctx.request_id}). "
+                        "Please try again later or contact support."
+                    ),
                 ) from exc
 
     return handle_error
@@ -147,7 +232,10 @@ def _map_http_status_code(status_code: int | None) -> tuple[int, str]:
         case 429:
             return status.HTTP_503_SERVICE_UNAVAILABLE, "Ollama service is rate limiting requests."
         case 500:
-            return status.HTTP_503_SERVICE_UNAVAILABLE, "Ollama service encountered an internal error."
+            return (
+                status.HTTP_503_SERVICE_UNAVAILABLE,
+                "Ollama service encountered an internal error.",
+            )
         case 503:
             return status.HTTP_503_SERVICE_UNAVAILABLE, "Ollama service is temporarily unavailable."
         case _:

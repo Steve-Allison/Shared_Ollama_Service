@@ -7,35 +7,35 @@ name = "shared-ollama-service"
 version = "2.0.0"
 description = "Unified Ollama client library with dedicated text and VLM endpoints"
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.11"
 dependencies = [
-    "requests>=2.31.0",
-    "fastapi>=0.115.0",
-    "uvicorn[standard]>=0.32.0",
-    "gunicorn>=23.0.0",  # Production ASGI server with process management
-    "slowapi>=0.1.9",  # Rate limiting
+    "requests>=2.31.0,<3.0.0",
+    "fastapi>=0.110.0,<1.0.0",
+    "uvicorn[standard]>=0.30.0,<0.40.0",
+    "gunicorn>=22.0.0,<24.0.0",  # Production ASGI server with process management
+    "slowapi>=0.1.9,<0.2.0",  # Rate limiting
     "pydantic>=2.9.0,<3.0.0",  # Keep major version constraint (v3 would be breaking)
     "pydantic-settings>=2.5.0,<3.0.0",  # Keep major version constraint (v3 would be breaking)
-    "Pillow>=10.0.0",  # Image processing for VLM
-    "tenacity>=8.2.0",  # Retry logic with exponential backoff
-    "circuitbreaker>=2.0.0",  # Circuit breaker pattern
-    "cachetools>=5.3.0",  # LRU cache with TTL support
-    "psutil>=5.9.0",  # Cross-platform process management
+    "Pillow>=10.0.0,<12.0.0",  # Image processing for VLM
+    "tenacity>=8.2.0,<9.0.0",  # Retry logic with exponential backoff
+    "circuitbreaker>=2.0.0,<3.0.0",  # Circuit breaker pattern
+    "cachetools>=5.3.0,<6.0.0",  # LRU cache with TTL support
+    "psutil>=5.9.0,<6.0.0",  # Cross-platform process management
 ]
 
 [project.optional-dependencies]
 async = [
-    "httpx>=0.27.0",
+    "httpx>=0.27.0,<0.29.0",
 ]
 dev = [
-    "ruff>=0.14.4",
-    "pyright>=1.1.407",
-    "pytest>=9.0.0",
-    "pytest-cov>=7.0.0",
-    "pytest-asyncio>=0.24.0",
+    "ruff>=0.4.0,<0.5.0",
+    "pyright>=1.1.407,<1.2.0",
+    "pytest>=8.0.0,<9.0.0",
+    "pytest-cov>=5.0.0,<6.0.0",
+    "pytest-asyncio>=0.23.0,<0.24.0",
 ]
 production = [
-    "supervisor>=4.2.0",  # Alternative process manager (optional)
+    "supervisor>=4.2.0,<5.0.0",  # Alternative process manager (optional)
 ]
 
 [tool.setuptools]
@@ -49,10 +49,13 @@ where = ["src"]
 
 # Ruff Configuration - Modern Python Linter & Formatter
 [tool.ruff]
-# Target Python 3.13+
-target-version = "py313"
+# Target Python version
+target-version = "py311"
 line-length = 100
 indent-width = 4
+
+# Enable preview features only if needed
+preview = false
 
 # Exclude common directories
 exclude = [
@@ -85,49 +88,28 @@ exclude = [
     "logs",
     "*.egg-info",
 ]
-
-# Enable preview features for latest Ruff capabilities
-preview = true
+extend-exclude = ["tests"]
 
 [tool.ruff.lint]
 # Enable comprehensive rule sets
 select = [
-    "E",      # pycodestyle errors
-    "W",      # pycodestyle warnings
-    "F",      # Pyflakes
-    "I",      # isort
-    "B",      # flake8-bugbear
-    "C4",     # flake8-comprehensions
-    "UP",     # pyupgrade
-    "SIM",    # flake8-simplify
-    "RUF",    # Ruff-specific rules
-    "PERF",   # Perflint
-    "PIE",    # flake8-pie
-    "PT",     # flake8-pytest-style
-    "RET",    # flake8-return
-    "TCH",    # flake8-type-checking
-    "TID",    # flake8-tidy-imports
-    "ARG",    # flake8-unused-arguments
-    "PTH",    # flake8-use-pathlib
-    "ERA",    # eradicate
-    "PD",     # pandas-vet
-    "PL",     # Pylint
-    "TRY",    # tryceratops
-    "NPY",    # NumPy-specific rules
-    "RSE",    # flake8-raise
-    "A",      # flake8-builtins
-    "S",      # flake8-bandit
+    "E",   # pycodestyle errors
+    "F",   # Pyflakes
+    "I",   # isort
+    "B",   # flake8-bugbear
+    "UP",  # pyupgrade
+    "SIM", # flake8-simplify
+    "PLE", # pylint errors
+    "PLR", # pylint refactor
+    "RUF", # Ruff-specific rules
 ]
 
 # Ignore specific rules
 ignore = [
     "E501",   # Line too long (handled by formatter)
-    "S101",   # Use of assert detected (common in tests)
     "PLR0913", # Too many arguments (allow for flexible APIs)
-    "PLR0912", # Too many branches (allow for complex logic)
     "PLR0915", # Too many statements (allow for comprehensive functions)
 ]
-
 # Allow automatic fixes for all enabled rules
 fixable = ["ALL"]
 unfixable = []
@@ -135,7 +117,7 @@ unfixable = []
 # Per-file ignores
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401"]  # Unused imports allowed in __init__.py
-"tests/**/*.py" = ["S101", "S106", "S108"]  # Allow asserts and hardcoded temp in tests
+"tests/**/*.py" = ["S101", "PLR2004", "B008"]  # Allow asserts, magic numbers, DI patterns in tests
 "examples/**/*.py" = ["E402"]  # Allow imports not at top in examples
 
 [tool.ruff.lint.isort]

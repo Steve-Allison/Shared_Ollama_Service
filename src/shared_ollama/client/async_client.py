@@ -354,7 +354,7 @@ class AsyncSharedOllamaClient:
 
             return models
 
-        except json.JSONDecodeError as exc:
+        except json.JSONDecodeError:
             self._record_list_models_error(start_time, "JSONDecodeError")
             logger.exception("Failed to decode JSON response from /api/tags")
             raise

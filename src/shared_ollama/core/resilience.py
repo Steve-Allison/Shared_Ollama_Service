@@ -20,9 +20,8 @@ Key behaviors:
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, TypeVar
+from typing import TYPE_CHECKING, Any, TypeVar
 
 import requests
 from circuitbreaker import circuit
@@ -34,7 +33,15 @@ from tenacity import (
     wait_exponential,
 )
 
-from shared_ollama.client.sync import GenerateResponse, OllamaConfig, SharedOllamaClient
+from shared_ollama.client.sync import OllamaConfig, SharedOllamaClient
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from shared_ollama.client.sync import GenerateResponse
+else:  # pragma: no cover - for postponed annotations
+    Callable = Any  # type: ignore[assignment]
+    GenerateResponse = Any  # type: ignore[assignment]
 
 logger = logging.getLogger(__name__)
 
@@ -81,7 +88,7 @@ class CircuitBreakerConfig:
     expected_exception: type[Exception] | tuple[type[Exception], ...] = ConnectionError
 
 
-def exponential_backoff_retry(
+def exponential_backoff_retry(  # noqa: UP047
     func: Callable[[], _T],
     config: RetryConfig | None = None,
     exceptions: tuple[type[Exception], ...] | None = None,
@@ -213,23 +220,22 @@ class ResilientOllamaClient:
 
         # Apply retry logic to wrapped operation
         try:
-            result = exponential_backoff_retry(
+            return exponential_backoff_retry(
                 wrapped_operation,
                 config=self.retry_config,
                 exceptions=(
                     ConnectionError,
                     TimeoutError,
-                    requests.exceptions.HTTPError,  # Retry 5xx errors
-                    requests.exceptions.RequestException,  # Retry network errors
+                    requests.exceptions.HTTPError,
+                    requests.exceptions.RequestException,
                 ),
             )
-            return result
         except requests.exceptions.HTTPError:
             # HTTP errors that weren't retried (e.g., 4xx client errors)
             raise
         except requests.exceptions.RequestException as exc:
             # Network-level errors - convert to ConnectionError for consistency
-            raise ConnectionError(f"Request failed: {exc!s}") from exc
+            raise ConnectionError(f"Request failed: {exc!s}") from exc  # noqa: TRY003
 
     def generate(
         self, prompt: str, model: str | None = None, **kwargs: Any

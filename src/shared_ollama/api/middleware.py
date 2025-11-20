@@ -7,6 +7,7 @@ exception handlers for validation errors, rate limits, and unexpected errors.
 from __future__ import annotations
 
 import logging
+import time
 from typing import TYPE_CHECKING
 
 from fastapi import Request, status
@@ -16,9 +17,11 @@ from fastapi.responses import JSONResponse
 from slowapi import Limiter
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from shared_ollama.api.dependencies import get_request_context
 from shared_ollama.api.models import ErrorResponse
+from shared_ollama.telemetry.structured_logging import log_request_event
 
 if TYPE_CHECKING:
     from fastapi import FastAPI
@@ -38,6 +41,51 @@ def _rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded) -> JS
     )
 
 
+class StructuredLoggingMiddleware(BaseHTTPMiddleware):
+    """Middleware that emits structured logs for every HTTP request."""
+
+    async def dispatch(self, request: Request, call_next):
+        start_time = time.perf_counter()
+        status_code: int | None = None
+        error_type: str | None = None
+        error_message: str | None = None
+        try:
+            response = await call_next(request)
+            status_code = response.status_code
+            return response
+        except Exception as exc:
+            status_code = getattr(exc, "status_code", status.HTTP_500_INTERNAL_SERVER_ERROR)
+            error_type = type(exc).__name__
+            error_message = str(exc)
+            raise
+        finally:
+            latency_ms = round((time.perf_counter() - start_time) * 1000, 3)
+            try:
+                ctx = get_request_context(request)
+                event = {
+                    "event": "http_request",
+                    "request_id": ctx.request_id,
+                    "client_ip": ctx.client_ip,
+                    "project_name": ctx.project_name,
+                    "path": request.url.path,
+                    "method": request.method,
+                    "status_code": status_code,
+                    "latency_ms": latency_ms,
+                }
+            except Exception:
+                event = {
+                    "event": "http_request",
+                    "path": request.url.path,
+                    "method": request.method,
+                    "status_code": status_code,
+                    "latency_ms": latency_ms,
+                }
+            if error_type:
+                event["error_type"] = error_type
+                event["error_message"] = error_message
+            log_request_event(event)
+
+
 def setup_middleware(app: FastAPI) -> None:
     """Configure middleware for the FastAPI application.
 
@@ -48,6 +96,9 @@ def setup_middleware(app: FastAPI) -> None:
     Args:
         app: FastAPI application instance.
     """
+    # Structured logging must run first to capture the full lifecycle
+    app.add_middleware(StructuredLoggingMiddleware)
+
     # Add rate limiter to app
     app.state.limiter = limiter
     app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)

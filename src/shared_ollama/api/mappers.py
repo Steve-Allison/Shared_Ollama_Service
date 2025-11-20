@@ -306,14 +306,20 @@ def api_to_domain_vlm_request(api_req: Any) -> Any:  # VLMRequest from models
         api_req.seed is not None,
         api_req.stop is not None,
     )):
-        options = GenerationOptions(
-            temperature=api_req.temperature,
-            top_p=api_req.top_p,
-            top_k=api_req.top_k,
-            max_tokens=api_req.max_tokens,
-            seed=api_req.seed,
-            stop=api_req.stop,
-        )
+        option_kwargs: dict[str, Any] = {}
+        if api_req.temperature is not None:
+            option_kwargs["temperature"] = api_req.temperature
+        if api_req.top_p is not None:
+            option_kwargs["top_p"] = api_req.top_p
+        if api_req.top_k is not None:
+            option_kwargs["top_k"] = api_req.top_k
+        if api_req.max_tokens is not None:
+            option_kwargs["max_tokens"] = api_req.max_tokens
+        if api_req.seed is not None:
+            option_kwargs["seed"] = api_req.seed
+        if api_req.stop is not None:
+            option_kwargs["stop"] = api_req.stop
+        options = GenerationOptions(**option_kwargs)
 
     # Convert tools if present
     tools = None
@@ -399,14 +405,20 @@ def api_to_domain_vlm_request_openai(api_req: Any) -> Any:
         api_req.seed is not None,
         api_req.stop is not None,
     )):
-        options = GenerationOptions(
-            temperature=api_req.temperature,
-            top_p=api_req.top_p,
-            top_k=api_req.top_k,
-            max_tokens=api_req.max_tokens,
-            seed=api_req.seed,
-            stop=api_req.stop,
-        )
+        option_kwargs: dict[str, Any] = {}
+        if api_req.temperature is not None:
+            option_kwargs["temperature"] = api_req.temperature
+        if api_req.top_p is not None:
+            option_kwargs["top_p"] = api_req.top_p
+        if api_req.top_k is not None:
+            option_kwargs["top_k"] = api_req.top_k
+        if api_req.max_tokens is not None:
+            option_kwargs["max_tokens"] = api_req.max_tokens
+        if api_req.seed is not None:
+            option_kwargs["seed"] = api_req.seed
+        if api_req.stop is not None:
+            option_kwargs["stop"] = api_req.stop
+        options = GenerationOptions(**option_kwargs)
 
     # Convert tools if present
     tools = None

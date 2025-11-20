@@ -21,12 +21,18 @@ from __future__ import annotations
 import logging
 import statistics
 import time
-from collections import defaultdict
-from collections.abc import Generator
+from collections import Counter, defaultdict
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
-from typing import Any, ClassVar, Self
+from typing import TYPE_CHECKING, Any, ClassVar, Self
+
+if TYPE_CHECKING:
+    from collections.abc import Generator
+else:  # pragma: no cover - runtime fallback for postponed evaluation
+    Generator = Any  # type: ignore[assignment]
+
+MIN_QUANTILE_SAMPLES = 2
 
 logger = logging.getLogger(__name__)
 
@@ -155,7 +161,9 @@ class MetricsCollector:
         logger.debug("Recorded metric: %s on %s - %.2fms", operation, model, latency_ms)
 
     @classmethod
-    def get_metrics(cls, window_minutes: int | None = None) -> ServiceMetrics:
+    def get_metrics(  # noqa: PLR0914
+        cls, window_minutes: int | None = None
+    ) -> ServiceMetrics:
         """Get aggregated metrics for a time window.
 
         Computes comprehensive statistics from collected metrics, optionally
@@ -202,15 +210,13 @@ class MetricsCollector:
 
         # Performance optimization: use Counter for O(n) aggregation
         # More efficient than defaultdict + loop for counting
-        from collections import Counter
-
         requests_by_model = dict(Counter(m.model for m in metrics))
         requests_by_operation = dict(Counter(m.operation for m in metrics))
         # Filter errors and count in single pass
         errors_by_type = dict(Counter(m.error for m in metrics if m.error))
 
         match len(latencies_sorted):
-            case n if n >= 2:
+            case n if n >= MIN_QUANTILE_SAMPLES:
                 quantiles = statistics.quantiles(latencies_sorted, n=100)
                 p50 = quantiles[49]
                 p95 = quantiles[94]

@@ -23,14 +23,16 @@ sys.path.insert(0, str(src_root))
 
 from shared_ollama import AnalyticsCollector, get_analytics_json  # noqa: E402
 
+MS_IN_SECOND = 1000.0
+
 
 def format_duration(ms: float) -> str:
     """Format duration in milliseconds to human-readable format."""
     if ms < 1:
-        return f"{ms * 1000:.0f}μs"
-    if ms < 1000:
+        return f"{ms * MS_IN_SECOND:.0f}μs"
+    if ms < MS_IN_SECOND:
         return f"{ms:.2f}ms"
-    return f"{ms / 1000:.2f}s"
+    return f"{ms / MS_IN_SECOND:.2f}s"
 
 
 def print_header(title: str):

@@ -27,16 +27,14 @@ from shared_ollama.application.use_cases import (
 )
 
 __all__ = [
-    # Interfaces
-    "OllamaClientInterface",
-    "RequestLoggerInterface",
-    "MetricsCollectorInterface",
-    "ImageProcessorInterface",
-    "ImageCacheInterface",
     "AnalyticsCollectorInterface",
-    "PerformanceCollectorInterface",
-    # Use Cases
-    "GenerateUseCase",
     "ChatUseCase",
+    "GenerateUseCase",
+    "ImageCacheInterface",
+    "ImageProcessorInterface",
     "ListModelsUseCase",
+    "MetricsCollectorInterface",
+    "OllamaClientInterface",
+    "PerformanceCollectorInterface",
+    "RequestLoggerInterface",
 ]

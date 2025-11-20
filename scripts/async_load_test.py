@@ -32,18 +32,18 @@ DEFAULT_VLM_MODEL = os.getenv("OLLAMA_DEFAULT_VLM_MODEL", "qwen3-vl:8b-instruct-
 
 def percentile(values: list[float], pct: float) -> float:
     """Return the percentile (0-1) value for a list of floats.
-    
+
     Uses statistics.quantiles() for consistency with production code.
     """
     import statistics
-    
+
     if not values:
         return 0.0
     if pct <= 0:
         return min(values)
     if pct >= 1:
         return max(values)
-    
+
     # Use statistics.quantiles with method='inclusive' for consistent behavior
     quantiles = statistics.quantiles(values, n=100, method='inclusive')
     index = min(int(pct * 100), len(quantiles) - 1)
@@ -58,7 +58,7 @@ async def warmup(client: AsyncSharedOllamaClient, prompt: str, model: str, count
     for i in range(count):
         try:
             await client.generate(prompt, model=model, stream=False)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             print(f"[warmup {i+1}/{count}] failed: {exc}")
             break
 
@@ -128,7 +128,7 @@ async def run_load_test(args: argparse.Namespace) -> dict[str, Any]:
                 success = True
                 try:
                     await client.generate(args.prompt, model=args.model, stream=False)
-                except Exception as exc:  # noqa: BLE001
+                except Exception as exc:
                     success = False
                     error_message = str(exc)
                     error_counter[exc.__class__.__name__] += 1

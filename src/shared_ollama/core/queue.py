@@ -166,7 +166,7 @@ class RequestQueue:
                     self._stats.rejected += 1
                 raise RuntimeError(
                     f"Queue is full ({self.max_queue_size} requests already queued)"
-                )
+                )  # noqa: TRY003, TRY301
 
             await self._queue.put((request_id, enqueue_time))
             async with self._stats_lock:
@@ -194,7 +194,7 @@ class RequestQueue:
 
             # Use match/case for cleaner error handling (Python 3.13+)
             try:
-                queued_id, queued_time = await asyncio.wait_for(
+                _queued_id, queued_time = await asyncio.wait_for(
                     self._queue.get(), timeout=1.0
                 )
                 wait_time_ms = (time.perf_counter() - queued_time) * 1000
@@ -225,7 +225,7 @@ class RequestQueue:
                 )
 
             except TimeoutError:
-                logger.error("timeout_getting_from_queue: request_id=%s", request_id)
+                logger.exception("timeout_getting_from_queue: request_id=%s", request_id)
                 async with self._stats_lock:
                     self._stats.queued = self._queue.qsize()
                     self._stats.in_progress = len(self._active_requests) + 1
@@ -247,13 +247,13 @@ class RequestQueue:
 
             # Log differently for exception groups vs regular exceptions
             if isinstance(exc, ExceptionGroup):
-                logger.error(
+                logger.exception(
                     "request_failed_exception_group: request_id=%s, exceptions=%s",
                     request_id,
                     [str(e) for e in exc.exceptions],
                 )
             else:
-                logger.error("request_failed: request_id=%s, error=%s", request_id, exc)
+                logger.exception("request_failed: request_id=%s", request_id)
             raise
 
         finally:

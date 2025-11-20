@@ -7,8 +7,9 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 from collections.abc import AsyncIterator
-from typing import Any
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import Response, StreamingResponse
@@ -68,8 +69,8 @@ async def _stream_generate_sse(
 @limiter.limit("60/minute")
 async def generate(
     request: Request,
-    use_case: GenerateUseCase = Depends(get_generate_use_case),
-    queue: RequestQueue = Depends(get_chat_queue),
+    use_case: Annotated[GenerateUseCase, Depends(get_generate_use_case)],
+    queue: Annotated[RequestQueue, Depends(get_chat_queue)],
 ) -> Response:
     """Generate text from a prompt.
 
@@ -103,6 +104,19 @@ async def generate(
         - Records metrics via MetricsCollector
     """
     ctx = get_request_context(request)
+    start_time = time.perf_counter()
+    api_req: GenerateRequest | None = None
+    model_name: str | None = None
+
+    handle_error = handle_route_errors(
+        ctx,
+        "generate",
+        start_time=start_time,
+        event_builder=lambda: {
+            "model": model_name,
+            "stream": api_req.stream if api_req else None,
+        },
+    )
 
     # Parse request body
     try:
@@ -122,6 +136,7 @@ async def generate(
     try:
         # Convert API model to domain entity (validation happens here)
         domain_req = api_to_domain_generation_request(api_req)
+        model_name = domain_req.model.value if getattr(domain_req, "model", None) else None
 
         # Acquire queue slot for request processing
         async with queue.acquire(request_id=ctx.request_id):
@@ -162,5 +177,4 @@ async def generate(
         # Re-raise HTTPException (from parsing or other validation)
         raise
     except Exception as exc:
-        handle_error = handle_route_errors(ctx, "generate")
         handle_error(exc)  # This raises HTTPException

@@ -23,7 +23,6 @@ import json
 import logging
 import time
 from collections import defaultdict
-from collections.abc import Generator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -31,7 +30,10 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar
 
 if TYPE_CHECKING:  # pragma: no cover
+    from collections.abc import Generator
     from shared_ollama.client.sync import GenerateResponse
+else:  # pragma: no cover - runtime fallback for postponed evaluation
+    Generator = Any  # type: ignore[assignment]
 
 performance_logger = logging.getLogger("ollama.performance")
 performance_logger.setLevel(logging.INFO)
@@ -162,7 +164,7 @@ class PerformanceCollector:
     _max_metrics: ClassVar[int] = 10_000
 
     @classmethod
-    def record_performance(
+    def record_performance(  # noqa: PLR0917
         cls,
         model: str,
         operation: str,

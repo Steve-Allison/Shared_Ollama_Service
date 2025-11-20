@@ -7,14 +7,29 @@ invariants.
 All entities are immutable dataclasses with slots=True for performance.
 """
 
+# ruff: noqa: TRY003
+
 from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any, Literal
 
-from shared_ollama.core.config import settings
-from shared_ollama.domain.value_objects import ModelName, Prompt, SystemMessage
+from shared_ollama.domain.value_objects import (
+    ContentPart,
+    ModelName,
+    Prompt,
+    SystemMessage,
+    Tool,
+    ToolCall,
+)
+
+TEMPERATURE_MAX = 2.0
+PROMPT_MAX_LENGTH = 1_000_000
+VALID_ROLES = {"user", "assistant", "system", "tool"}
+MAX_TOTAL_MESSAGE_CHARS = 1_000_000
+MIN_IMAGE_DIMENSION = 256
+MAX_IMAGE_DIMENSION = 2048
 
 
 class Model(StrEnum):
@@ -177,8 +192,10 @@ class GenerationOptions:
         Raises:
             ValueError: If any parameter is outside valid range.
         """
-        if not 0.0 <= self.temperature <= 2.0:
-            raise ValueError(f"Temperature must be between 0.0 and 2.0, got {self.temperature}")
+        if not 0.0 <= self.temperature <= TEMPERATURE_MAX:
+            raise ValueError(
+                f"Temperature must be between 0.0 and {TEMPERATURE_MAX}, got {self.temperature}"
+            )
         if not 0.0 <= self.top_p <= 1.0:
             raise ValueError(f"Top-p must be between 0.0 and 1.0, got {self.top_p}")
         if self.top_k < 1:
@@ -221,8 +238,10 @@ class GenerationRequest:
         """
         if not self.prompt.value.strip():
             raise ValueError("Prompt cannot be empty or whitespace only")
-        if len(self.prompt.value) > 1_000_000:  # 1M characters
-            raise ValueError("Prompt is too long. Maximum length is 1,000,000 characters")
+        if len(self.prompt.value) > PROMPT_MAX_LENGTH:
+            raise ValueError(
+                f"Prompt is too long. Maximum length is {PROMPT_MAX_LENGTH:,} characters"
+            )
 
 
 @dataclass(slots=True, frozen=True)
@@ -250,7 +269,7 @@ class ChatMessage:
         Raises:
             ValueError: If role is invalid or neither content nor tool_calls present.
         """
-        if self.role not in ("user", "assistant", "system", "tool"):
+        if self.role not in VALID_ROLES:
             raise ValueError(f"Invalid role '{self.role}'. Must be 'user', 'assistant', 'system', or 'tool'")
 
         # Validate that either content or tool_calls is present
@@ -301,7 +320,7 @@ class ChatRequest:
         total_length = sum(
             len(msg.content) if msg.content else 0 for msg in self.messages
         )
-        if total_length > 1_000_000:  # 1M characters
+        if total_length > MAX_TOTAL_MESSAGE_CHARS:
             raise ValueError("Total message content is too long. Maximum length is 1,000,000 characters")
 
 
@@ -393,8 +412,10 @@ class VLMRequest:
             )
 
         # Validate max_dimension
-        if self.max_dimension < 256 or self.max_dimension > 2048:
-            raise ValueError("max_dimension must be between 256 and 2048")
+        if not (MIN_IMAGE_DIMENSION <= self.max_dimension <= MAX_IMAGE_DIMENSION):
+            raise ValueError(
+                f"max_dimension must be between {MIN_IMAGE_DIMENSION} and {MAX_IMAGE_DIMENSION}"
+            )
 
 
 # ============================================================================
@@ -546,5 +567,7 @@ class VLMRequestOpenAI:
             )
 
         # Validate max_dimension
-        if self.max_dimension < 256 or self.max_dimension > 2048:
-            raise ValueError("max_dimension must be between 256 and 2048")
+        if not (MIN_IMAGE_DIMENSION <= self.max_dimension <= MAX_IMAGE_DIMENSION):
+            raise ValueError(
+                f"max_dimension must be between {MIN_IMAGE_DIMENSION} and {MAX_IMAGE_DIMENSION}"
+            )

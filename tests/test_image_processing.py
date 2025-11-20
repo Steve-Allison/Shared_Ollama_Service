@@ -263,6 +263,16 @@ class TestProcessImage:
         with pytest.raises(ValueError, match="Invalid image data"):
             image_processor.process_image(invalid_url, target_format="jpeg")
 
+    def test_process_image_rejects_truncated_image_stream(self, image_processor):
+        """Test that process_image rejects truncated yet base64-valid data."""
+        truncated_png = (
+            "data:image/png;base64,"
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAoMBgV0L2nEAAAAASUVORK5CYII="
+        )
+
+        with pytest.raises(ValueError, match="Invalid image data"):
+            image_processor.process_image(truncated_png, target_format="png")
+
     def test_process_image_rejects_unsupported_format(self, image_processor, sample_jpeg_image):
         """Test that process_image rejects unsupported target format."""
         with pytest.raises(ValueError, match="Unsupported target format"):

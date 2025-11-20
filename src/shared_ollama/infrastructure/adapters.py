@@ -15,6 +15,7 @@ from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING, Any
 
 from shared_ollama.application.interfaces import ImageFormat
+from shared_ollama.client.sync import GenerateOptions
 from shared_ollama.telemetry.analytics import AnalyticsCollector
 from shared_ollama.telemetry.metrics import MetricsCollector
 from shared_ollama.telemetry.performance import PerformanceCollector
@@ -24,12 +25,6 @@ if TYPE_CHECKING:
     from shared_ollama.client import AsyncSharedOllamaClient
     from shared_ollama.infrastructure.image_cache import ImageCache
     from shared_ollama.infrastructure.image_processing import ImageProcessor
-else:
-    from shared_ollama.client import AsyncSharedOllamaClient
-    from shared_ollama.infrastructure.image_cache import ImageCache
-    from shared_ollama.infrastructure.image_processing import ImageProcessor
-
-from shared_ollama.client.sync import GenerateOptions
 
 
 class AsyncOllamaClientAdapter:
@@ -63,7 +58,7 @@ class AsyncOllamaClientAdapter:
         """
         return await self._client.list_models()
 
-    async def generate(
+    async def generate(  # noqa: PLR0917
         self,
         prompt: str,
         model: str | None = None,
@@ -135,7 +130,7 @@ class AsyncOllamaClientAdapter:
             "load_duration": result.load_duration,
         }
 
-    async def chat(
+    async def chat(  # noqa: PLR0917
         self,
         messages: list[dict[str, Any]],
         model: str | None = None,
@@ -206,7 +201,8 @@ class AsyncOllamaClientAdapter:
             tools=tools,  # type: ignore[arg-type]
         )
 
-    async def _resolve_stream_result(self, stream_result: Any) -> Any:
+    @staticmethod
+    async def _resolve_stream_result(stream_result: Any) -> Any:
         """Return stream result, awaiting if upstream returned awaitable."""
         if inspect.isawaitable(stream_result):
             return await stream_result
@@ -231,7 +227,8 @@ class RequestLoggerAdapter:
         None. Uses the global log_request_event function.
     """
 
-    def log_request(self, data: dict[str, Any]) -> None:
+    @staticmethod
+    def log_request(data: dict[str, Any]) -> None:
         """Log a request event.
 
         Args:
@@ -255,8 +252,8 @@ class MetricsCollectorAdapter:
         None. Uses the global MetricsCollector class.
     """
 
+    @staticmethod
     def record_request(
-        self,
         model: str,
         operation: str,
         latency_ms: float,
@@ -279,6 +276,8 @@ class MetricsCollectorAdapter:
             success=success,
             error=error,
         )
+
+
 
 class ImageProcessorAdapter:
     """Adapter that wraps ImageProcessor to implement ImageProcessorInterface.
@@ -327,6 +326,8 @@ class ImageProcessorAdapter:
             ValueError: If image is invalid.
         """
         return self._processor.process_image(data_url, target_format=target_format)
+
+
 
 
 class ImageCacheAdapter:
@@ -386,6 +387,8 @@ class ImageCacheAdapter:
         return self._cache.get_stats()
 
 
+
+
 class AnalyticsCollectorAdapter:
     """Adapter that wraps AnalyticsCollector to implement AnalyticsCollectorInterface.
 
@@ -396,8 +399,8 @@ class AnalyticsCollectorAdapter:
         None. Uses the global AnalyticsCollector class.
     """
 
-    def record_request_with_project(
-        self,
+    @staticmethod
+    def record_request_with_project(  # noqa: PLR0917
         model: str,
         operation: str,
         latency_ms: float,
@@ -425,6 +428,8 @@ class AnalyticsCollectorAdapter:
         )
 
 
+
+
 class PerformanceCollectorAdapter:
     """Adapter that wraps PerformanceCollector to implement PerformanceCollectorInterface.
 
@@ -435,8 +440,8 @@ class PerformanceCollectorAdapter:
         None. Uses the global PerformanceCollector class.
     """
 
-    def record_performance(
-        self,
+    @staticmethod
+    def record_performance(  # noqa: PLR0917
         model: str,
         operation: str,
         total_latency_ms: float,

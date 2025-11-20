@@ -162,6 +162,20 @@ async def vlm_chat(
         ) from e
 
     try:
+        # Validate model is allowed for current hardware profile
+        from shared_ollama.core.utils import get_allowed_models, is_model_allowed
+
+        requested_model = api_req.model
+        if requested_model and not is_model_allowed(requested_model):
+            allowed = get_allowed_models()
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    f"Model '{requested_model}' is not supported on this hardware profile. "
+                    f"Allowed models: {', '.join(sorted(allowed))}"
+                ),
+            )
+
         # Convert API model to domain entity (validation happens here)
         domain_req = api_to_domain_vlm_request(api_req)
         event_data["model"] = (

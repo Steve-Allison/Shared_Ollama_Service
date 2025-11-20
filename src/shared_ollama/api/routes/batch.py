@@ -100,6 +100,24 @@ async def batch_chat(
                 detail=f"Too many requests in batch. Maximum allowed: {settings.batch.chat_max_requests}",
             )
 
+        # Validate all models are allowed for current hardware profile
+        from shared_ollama.core.utils import get_allowed_models, is_model_allowed
+
+        allowed = get_allowed_models()
+        invalid_models = []
+        for req in api_req.requests:
+            if req.model and not is_model_allowed(req.model):
+                invalid_models.append(req.model)
+        if invalid_models:
+            unique_invalid = sorted(set(invalid_models))
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    f"Models not supported on this hardware profile: {', '.join(unique_invalid)}. "
+                    f"Allowed models: {', '.join(sorted(allowed))}"
+                ),
+            )
+
         # Convert API requests to domain entities
         domain_requests = [api_to_domain_chat_request(req) for req in api_req.requests]
 
@@ -199,6 +217,24 @@ async def batch_vlm(
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Too many requests in batch. Maximum allowed: {settings.batch.vlm_max_requests}",
+            )
+
+        # Validate all models are allowed for current hardware profile
+        from shared_ollama.core.utils import get_allowed_models, is_model_allowed
+
+        allowed = get_allowed_models()
+        invalid_models = []
+        for req in api_req.requests:
+            if req.model and not is_model_allowed(req.model):
+                invalid_models.append(req.model)
+        if invalid_models:
+            unique_invalid = sorted(set(invalid_models))
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    f"Models not supported on this hardware profile: {', '.join(unique_invalid)}. "
+                    f"Allowed models: {', '.join(sorted(allowed))}"
+                ),
             )
 
         # Convert API requests to domain entities

@@ -318,13 +318,53 @@ def get_default_text_model() -> str:
     return str(defaults.get("text_model", "qwen3:14b-q4_K_M"))
 
 
+@functools.cache
+def get_allowed_models() -> set[str]:
+    """Get the set of allowed models for the current hardware profile.
+
+    Returns all models that are supported on this system based on the
+    hardware profile configuration.
+
+    Returns:
+        Set of allowed model names (e.g., {"qwen3-vl:8b-instruct-q4_K_M", "qwen3:14b-q4_K_M"}).
+    """
+    defaults = _load_model_profile_defaults()
+    required = defaults.get("required_models", [])
+    warmup = defaults.get("warmup_models", [])
+    # Combine required and warmup models, plus defaults
+    allowed = set(required) | set(warmup)
+    # Add default models if not already included
+    if defaults.get("vlm_model"):
+        allowed.add(str(defaults["vlm_model"]))
+    if defaults.get("text_model"):
+        allowed.add(str(defaults["text_model"]))
+    return allowed
+
+
+def is_model_allowed(model_name: str | None) -> bool:
+    """Check if a model is allowed for the current hardware profile.
+
+    Args:
+        model_name: Model name to check. If None, returns True (will use default).
+
+    Returns:
+        True if model is allowed, False otherwise.
+    """
+    if model_name is None:
+        return True  # None means use default, which is always allowed
+    allowed = get_allowed_models()
+    return model_name in allowed
+
+
 __all__ = [
     "check_service_health",
     "ensure_service_running",
+    "get_allowed_models",
     "get_client_path",
     "get_default_text_model",
     "get_default_vlm_model",
     "get_ollama_base_url",
     "get_project_root",
     "import_client",
+    "is_model_allowed",
 ]

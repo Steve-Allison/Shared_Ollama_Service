@@ -10,7 +10,7 @@ import json
 import logging
 import time
 from collections.abc import AsyncIterator
-from typing import Annotated, Any
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import Response, StreamingResponse
@@ -84,8 +84,8 @@ async def _stream_chat_sse(
 @limiter.limit("30/minute")
 async def vlm_chat(
     request: Request,
-    use_case: Annotated[VLMUseCase, Depends(get_vlm_use_case)],
-    queue: Annotated[RequestQueue, Depends(get_vlm_queue)],
+    vlm_use_case_dep: VLMUseCase = Depends(get_vlm_use_case),
+    queue: RequestQueue = Depends(get_vlm_queue),
 ) -> Response:
     """Vision-Language Model (VLM) chat completion endpoint.
 
@@ -96,7 +96,7 @@ async def vlm_chat(
     Args:
         request: FastAPI Request object (injected). Body must contain
             VLMRequest JSON with at least one image.
-        use_case: VLMUseCase instance (injected via DI).
+        vlm_use_case_dep: VLMUseCase instance (injected via DI).
         queue: VLM request queue (injected via DI).
 
     Returns:
@@ -174,7 +174,7 @@ async def vlm_chat(
             if api_req.stream:
                 logger.info("streaming_vlm_requested: request_id=%s", ctx.request_id)
                 # Use case returns AsyncIterator for streaming
-                result = await use_case.execute(
+                result = await vlm_use_case_dep.execute(
                     request=domain_req,
                     request_id=ctx.request_id,
                     client_ip=ctx.client_ip,
@@ -190,7 +190,7 @@ async def vlm_chat(
                 )
 
             # Non-streaming: use case handles all business logic, logging, and metrics
-            result = await use_case.execute(
+            result = await vlm_use_case_dep.execute(
                 request=domain_req,
                 request_id=ctx.request_id,
                 client_ip=ctx.client_ip,
@@ -216,8 +216,8 @@ async def vlm_chat(
 @limiter.limit("30/minute")
 async def vlm_chat_openai(
     request: Request,
-    use_case: Annotated[VLMUseCase, Depends(get_vlm_use_case)],
-    queue: Annotated[RequestQueue, Depends(get_vlm_queue)],
+    vlm_use_case_dep: VLMUseCase = Depends(get_vlm_use_case),
+    queue: RequestQueue = Depends(get_vlm_queue),
 ) -> Response:
     """OpenAI-compatible Vision-Language Model (VLM) chat completion endpoint.
 
@@ -229,7 +229,7 @@ async def vlm_chat_openai(
     Args:
         request: FastAPI Request object (injected). Body must contain
             VLMRequestOpenAI JSON with at least one image in message content.
-        use_case: VLMUseCase instance (injected via DI).
+        vlm_use_case_dep: VLMUseCase instance (injected via DI).
         queue: VLM request queue (injected via DI).
 
     Returns:
@@ -288,7 +288,7 @@ async def vlm_chat_openai(
             if api_req.stream:
                 logger.info("streaming_vlm_openai_requested: request_id=%s", ctx.request_id)
                 # Use case returns AsyncIterator for streaming
-                result_stream = await use_case.execute(
+                result_stream = await vlm_use_case_dep.execute(
                     request=domain_req,
                     request_id=ctx.request_id,
                     client_ip=ctx.client_ip,
@@ -318,7 +318,7 @@ async def vlm_chat_openai(
                     media_type="text/event-stream",
                 )
 
-            result = await use_case.execute(
+            result = await vlm_use_case_dep.execute(
                 request=domain_req,
                 request_id=ctx.request_id,
                 client_ip=ctx.client_ip,

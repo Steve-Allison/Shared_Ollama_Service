@@ -33,6 +33,7 @@ from shared_ollama.api.models import (
 )
 from shared_ollama.api.response_builders import (
     build_openai_chat_response,
+    build_openai_stream_chunk,
     build_vlm_response,
     json_response,
 )
@@ -122,7 +123,7 @@ async def vlm_chat(
     """
     ctx = get_request_context(request)
     start_time = time.perf_counter()
-    api_req: VLMRequestOpenAI | None = None
+    api_req: VLMRequest | None = None
     event_data: dict[str, Any] = {
         "model": None,
         "stream": None,
@@ -130,38 +131,6 @@ async def vlm_chat(
         "compression_format": None,
         "image_compression": None,
         "max_dimension": None,
-    }
-
-    handle_error = handle_route_errors(
-        ctx,
-        "vlm_openai",
-        timeout_message="VLM request timed out. Large images may take longer to process.",
-        start_time=start_time,
-        event_builder=lambda: {k: v for k, v in event_data.items() if v is not None},
-    )
-    start_time = time.perf_counter()
-    api_req: VLMRequestOpenAI | None = None
-    event_data: dict[str, Any] = {
-        "model": None,
-        "stream": None,
-        "images_count": None,
-        "compression_format": None,
-    }
-
-    handle_error = handle_route_errors(
-        ctx,
-        "vlm_openai",
-        timeout_message="VLM request timed out. Large images may take longer to process.",
-        start_time=start_time,
-        event_builder=lambda: {k: v for k, v in event_data.items() if v is not None},
-    )
-    start_time = time.perf_counter()
-    api_req: VLMRequest | None = None
-    event_data: dict[str, Any] = {
-        "model": None,
-        "stream": None,
-        "images_count": None,
-        "compression_format": None,
     }
 
     handle_error = handle_route_errors(
@@ -329,9 +298,19 @@ async def vlm_chat_openai(
                 )
                 assert not isinstance(result_stream, dict)
 
+                created_ts = int(time.time())
+                role_emitted = False
+
                 async def openai_stream():
+                    nonlocal role_emitted
                     async for chunk in result_stream:
-                        openai_chunk = build_openai_chat_response(chunk, ctx)
+                        openai_chunk = build_openai_stream_chunk(
+                            chunk,
+                            ctx,
+                            created_ts=created_ts,
+                            include_role=not role_emitted,
+                        )
+                        role_emitted = True
                         yield f"data: {json.dumps(openai_chunk)}\n\n"
 
                 return StreamingResponse(

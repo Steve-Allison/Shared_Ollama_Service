@@ -161,6 +161,19 @@ def build_openai_chat_response(
     created_ts = int(result_dict.get("created_at") or time.time())
     finish_reason = result_dict.get("finish_reason", "stop")
 
+    message_payload: dict[str, Any] = {
+        "role": message.get("role", "assistant"),
+        "content": message.get("content", ""),
+    }
+    if "tool_calls" in message and message["tool_calls"] is not None:
+        message_payload["tool_calls"] = message["tool_calls"]
+    if "function_call" in message and message["function_call"] is not None:
+        message_payload["function_call"] = message["function_call"]
+    if "refusal" in message:
+        message_payload["refusal"] = message["refusal"]
+    if "annotations" in message:
+        message_payload["annotations"] = message["annotations"]
+
     return {
         "id": ctx.request_id or f"chatcmpl-{uuid.uuid4().hex}",
         "object": "chat.completion",
@@ -169,10 +182,7 @@ def build_openai_chat_response(
         "choices": [
             {
                 "index": 0,
-                "message": {
-                    "role": message.get("role", "assistant"),
-                    "content": message.get("content", ""),
-                },
+                "message": message_payload,
                 "finish_reason": finish_reason,
             },
         ],
@@ -182,3 +192,50 @@ def build_openai_chat_response(
             "total_tokens": prompt_eval_count + eval_count,
         },
     }
+
+
+def build_openai_stream_chunk(
+    chunk_dict: dict[str, Any],
+    ctx: RequestContext,
+    *,
+    created_ts: int,
+    include_role: bool,
+) -> dict[str, Any]:
+    """Convert a native streaming chunk into an OpenAI chat completion chunk."""
+    chunk_text = chunk_dict.get("chunk") or ""
+    model_used = chunk_dict.get("model", "unknown")
+    done = bool(chunk_dict.get("done"))
+    finish_reason = chunk_dict.get("finish_reason", "stop" if done else None)
+
+    delta: dict[str, Any] = {}
+    if include_role and chunk_dict.get("role"):
+        delta["role"] = chunk_dict["role"]
+    if chunk_text:
+        delta["content"] = chunk_text
+
+    choice: dict[str, Any] = {
+        "index": 0,
+        "delta": delta,
+        "finish_reason": finish_reason if done else None,
+    }
+
+    payload: dict[str, Any] = {
+        "id": ctx.request_id or f"chatcmpl-{uuid.uuid4().hex}",
+        "object": "chat.completion.chunk",
+        "created": created_ts,
+        "model": model_used,
+        "choices": [choice],
+    }
+
+    if done:
+        prompt_tokens = chunk_dict.get("prompt_eval_count")
+        completion_tokens = chunk_dict.get("generation_eval_count")
+        if prompt_tokens is not None or completion_tokens is not None:
+            usage = {
+                "prompt_tokens": prompt_tokens or 0,
+                "completion_tokens": completion_tokens or 0,
+                "total_tokens": (prompt_tokens or 0) + (completion_tokens or 0),
+            }
+            payload["usage"] = usage
+
+    return payload

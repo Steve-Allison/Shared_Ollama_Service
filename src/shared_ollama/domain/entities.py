@@ -15,14 +15,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any, Literal
 
-from shared_ollama.domain.value_objects import (
-    ContentPart,
-    ModelName,
-    Prompt,
-    SystemMessage,
-    Tool,
-    ToolCall,
-)
+from shared_ollama.domain.value_objects import ModelName, Prompt, SystemMessage
 
 TEMPERATURE_MAX = 2.0
 PROMPT_MAX_LENGTH = 1_000_000

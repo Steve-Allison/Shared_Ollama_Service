@@ -8,8 +8,9 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 from collections.abc import AsyncIterator
-from typing import Any
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import Response, StreamingResponse
@@ -30,7 +31,11 @@ from shared_ollama.api.models import (
     VLMRequest,
     VLMRequestOpenAI,
 )
-from shared_ollama.api.response_builders import build_vlm_response, json_response
+from shared_ollama.api.response_builders import (
+    build_openai_chat_response,
+    build_vlm_response,
+    json_response,
+)
 from shared_ollama.api.type_guards import is_dict_result
 from shared_ollama.application.vlm_use_cases import VLMUseCase
 from shared_ollama.core.queue import RequestQueue
@@ -78,8 +83,8 @@ async def _stream_chat_sse(
 @limiter.limit("30/minute")
 async def vlm_chat(
     request: Request,
-    use_case: VLMUseCase = Depends(get_vlm_use_case),
-    queue: RequestQueue = Depends(get_vlm_queue),
+    use_case: Annotated[VLMUseCase, Depends(get_vlm_use_case)],
+    queue: Annotated[RequestQueue, Depends(get_vlm_queue)],
 ) -> Response:
     """Vision-Language Model (VLM) chat completion endpoint.
 
@@ -116,11 +121,66 @@ async def vlm_chat(
         - Records metrics and analytics
     """
     ctx = get_request_context(request)
+    start_time = time.perf_counter()
+    api_req: VLMRequestOpenAI | None = None
+    event_data: dict[str, Any] = {
+        "model": None,
+        "stream": None,
+        "images_count": None,
+        "compression_format": None,
+        "image_compression": None,
+        "max_dimension": None,
+    }
+
+    handle_error = handle_route_errors(
+        ctx,
+        "vlm_openai",
+        timeout_message="VLM request timed out. Large images may take longer to process.",
+        start_time=start_time,
+        event_builder=lambda: {k: v for k, v in event_data.items() if v is not None},
+    )
+    start_time = time.perf_counter()
+    api_req: VLMRequestOpenAI | None = None
+    event_data: dict[str, Any] = {
+        "model": None,
+        "stream": None,
+        "images_count": None,
+        "compression_format": None,
+    }
+
+    handle_error = handle_route_errors(
+        ctx,
+        "vlm_openai",
+        timeout_message="VLM request timed out. Large images may take longer to process.",
+        start_time=start_time,
+        event_builder=lambda: {k: v for k, v in event_data.items() if v is not None},
+    )
+    start_time = time.perf_counter()
+    api_req: VLMRequest | None = None
+    event_data: dict[str, Any] = {
+        "model": None,
+        "stream": None,
+        "images_count": None,
+        "compression_format": None,
+    }
+
+    handle_error = handle_route_errors(
+        ctx,
+        "vlm",
+        timeout_message="VLM request timed out. Large images may take longer to process.",
+        start_time=start_time,
+        event_builder=lambda: {k: v for k, v in event_data.items() if v is not None},
+    )
 
     # Parse request body
     try:
         body = await request.json()
         api_req = VLMRequest(**body)
+        event_data["stream"] = api_req.stream
+        event_data["compression_format"] = api_req.compression_format
+        event_data["image_compression"] = api_req.image_compression
+        event_data["max_dimension"] = api_req.max_dimension
+        event_data["images_count"] = len(api_req.images)
     except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -135,6 +195,9 @@ async def vlm_chat(
     try:
         # Convert API model to domain entity (validation happens here)
         domain_req = api_to_domain_vlm_request(api_req)
+        event_data["model"] = (
+            domain_req.model.value if getattr(domain_req, "model", None) else None
+        )
 
         # Acquire VLM queue slot for request processing
         async with queue.acquire(request_id=ctx.request_id):
@@ -177,9 +240,6 @@ async def vlm_chat(
         # Re-raise HTTPException (from parsing or other validation)
         raise
     except Exception as exc:
-        handle_error = handle_route_errors(
-            ctx, "vlm", timeout_message="VLM request timed out. Large images may take longer to process."
-        )
         handle_error(exc)  # This raises HTTPException
 
 
@@ -187,8 +247,8 @@ async def vlm_chat(
 @limiter.limit("30/minute")
 async def vlm_chat_openai(
     request: Request,
-    use_case: VLMUseCase = Depends(get_vlm_use_case),
-    queue: RequestQueue = Depends(get_vlm_queue),
+    use_case: Annotated[VLMUseCase, Depends(get_vlm_use_case)],
+    queue: Annotated[RequestQueue, Depends(get_vlm_queue)],
 ) -> Response:
     """OpenAI-compatible Vision-Language Model (VLM) chat completion endpoint.
 
@@ -206,32 +266,31 @@ async def vlm_chat_openai(
     Returns:
         - VLMResponse (JSON) if stream=False
         - StreamingResponse (text/event-stream) if stream=True
-
-    Raises:
-        HTTPException: With appropriate status code for various error conditions:
-            - 422: Invalid request body or validation error
-            - 400: Invalid messages, missing images, or invalid image format
-            - 503: Ollama service unavailable
-            - 504: Request timeout (120s for VLM)
-            - 500: Internal server error
-
-    Side effects:
-        - Parses request body JSON
-        - Converts OpenAI format to native Ollama format
-        - Validates at least one image present
-        - Processes and compresses images (if enabled)
-        - Checks image cache for duplicates
-        - Acquires VLM queue slot (may wait or timeout)
-        - Makes HTTP request to Ollama service
-        - Logs request with VLM-specific metrics
-        - Records metrics and analytics
     """
     ctx = get_request_context(request)
+    start_time = time.perf_counter()
+    api_req: VLMRequestOpenAI | None = None
+    event_data: dict[str, Any] = {
+        "model": None,
+        "stream": None,
+        "images_count": None,
+        "compression_format": None,
+    }
+
+    handle_error = handle_route_errors(
+        ctx,
+        "vlm_openai",
+        timeout_message="VLM request timed out. Large images may take longer to process.",
+        start_time=start_time,
+        event_builder=lambda: {k: v for k, v in event_data.items() if v is not None},
+    )
 
     # Parse request body (OpenAI-compatible format)
     try:
         body = await request.json()
         api_req = VLMRequestOpenAI(**body)
+        event_data["stream"] = api_req.stream
+        event_data["compression_format"] = api_req.compression_format
     except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -246,9 +305,13 @@ async def vlm_chat_openai(
     try:
         # Convert OpenAI-compatible API model to native Ollama domain entity
         domain_req = api_to_domain_vlm_request_openai(api_req)
+        event_data["model"] = (
+            domain_req.model.value if getattr(domain_req, "model", None) else None
+        )
 
         # Count images for response metrics
         image_count = len(domain_req.images)
+        event_data["images_count"] = image_count
 
         # Acquire VLM queue slot for request processing
         async with queue.acquire(request_id=ctx.request_id):
@@ -256,7 +319,7 @@ async def vlm_chat_openai(
             if api_req.stream:
                 logger.info("streaming_vlm_openai_requested: request_id=%s", ctx.request_id)
                 # Use case returns AsyncIterator for streaming
-                result = await use_case.execute(
+                result_stream = await use_case.execute(
                     request=domain_req,
                     request_id=ctx.request_id,
                     client_ip=ctx.client_ip,
@@ -264,14 +327,18 @@ async def vlm_chat_openai(
                     stream=True,
                     target_format=api_req.compression_format,
                 )
-                # Type narrowing: stream=True returns AsyncIterator
-                assert not isinstance(result, dict)
+                assert not isinstance(result_stream, dict)
+
+                async def openai_stream():
+                    async for chunk in result_stream:
+                        openai_chunk = build_openai_chat_response(chunk, ctx)
+                        yield f"data: {json.dumps(openai_chunk)}\n\n"
+
                 return StreamingResponse(
-                    _stream_chat_sse(result, ctx),
+                    openai_stream(),
                     media_type="text/event-stream",
                 )
 
-            # Non-streaming: use case handles all business logic, logging, and metrics
             result = await use_case.execute(
                 request=domain_req,
                 request_id=ctx.request_id,
@@ -280,18 +347,17 @@ async def vlm_chat_openai(
                 stream=False,
                 target_format=api_req.compression_format,
             )
-            # Type narrowing: stream=False returns dict
             if not is_dict_result(result):
                 raise RuntimeError("Expected dict result for non-streaming request")
 
-            response = build_vlm_response(result, ctx, images_processed=image_count)
-            return json_response(response)
+            openai_response = build_openai_chat_response(result, ctx)
+            return Response(
+                content=json.dumps(openai_response),
+                media_type="application/json",
+            )
 
     except HTTPException:
         # Re-raise HTTPException (from parsing or other validation)
         raise
     except Exception as exc:
-        handle_error = handle_route_errors(
-            ctx, "vlm_openai", timeout_message="VLM request timed out. Large images may take longer to process."
-        )
         handle_error(exc)  # This raises HTTPException

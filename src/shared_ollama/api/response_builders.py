@@ -6,6 +6,8 @@ reducing code duplication across route handlers.
 
 from __future__ import annotations
 
+import time
+import uuid
 from typing import Any
 
 from fastapi.responses import JSONResponse
@@ -145,3 +147,38 @@ def json_response(model: ChatResponse | GenerateResponse | VLMResponse) -> JSONR
         JSONResponse with model data.
     """
     return JSONResponse(content=model.model_dump(mode="json"))
+
+
+def build_openai_chat_response(
+    result_dict: dict[str, Any],
+    ctx: RequestContext,
+) -> dict[str, Any]:
+    """Convert native use-case result into OpenAI chat completion schema."""
+    message = result_dict.get("message") or {}
+    model_used = result_dict.get("model", "unknown")
+    prompt_eval_count = result_dict.get("prompt_eval_count", 0)
+    eval_count = result_dict.get("eval_count", 0)
+    created_ts = int(result_dict.get("created_at") or time.time())
+    finish_reason = result_dict.get("finish_reason", "stop")
+
+    return {
+        "id": ctx.request_id or f"chatcmpl-{uuid.uuid4().hex}",
+        "object": "chat.completion",
+        "created": created_ts,
+        "model": model_used,
+        "choices": [
+            {
+                "index": 0,
+                "message": {
+                    "role": message.get("role", "assistant"),
+                    "content": message.get("content", ""),
+                },
+                "finish_reason": finish_reason,
+            },
+        ],
+        "usage": {
+            "prompt_tokens": prompt_eval_count,
+            "completion_tokens": eval_count,
+            "total_tokens": prompt_eval_count + eval_count,
+        },
+    }

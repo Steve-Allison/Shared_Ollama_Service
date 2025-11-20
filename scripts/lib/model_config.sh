@@ -87,10 +87,12 @@ PY
         fi
     fi
 
-    DEFAULT_VLM_MODEL="${DEFAULT_VLM_MODEL:-qwen3-vl:32b}"
-    DEFAULT_TEXT_MODEL="${DEFAULT_TEXT_MODEL:-qwen3:30b}"
-    MODEL_MEMORY_HINTS_CSV="${MODEL_MEMORY_HINTS_CSV:-$DEFAULT_VLM_MODEL:21,$DEFAULT_TEXT_MODEL:19}"
-    LARGEST_MODEL_GB="${LARGEST_MODEL_GB:-21}"
+    # Fallback defaults: Use mac_32gb profile (safer, works on more systems)
+    # If profile selection fails, default to smaller models rather than workstation models
+    DEFAULT_VLM_MODEL="${DEFAULT_VLM_MODEL:-qwen3-vl:8b-instruct-q4_K_M}"
+    DEFAULT_TEXT_MODEL="${DEFAULT_TEXT_MODEL:-qwen3:14b-q4_K_M}"
+    MODEL_MEMORY_HINTS_CSV="${MODEL_MEMORY_HINTS_CSV:-$DEFAULT_VLM_MODEL:6,$DEFAULT_TEXT_MODEL:8}"
+    LARGEST_MODEL_GB="${LARGEST_MODEL_GB:-8}"
     INFERENCE_BUFFER_GB="${INFERENCE_BUFFER_GB:-4}"
     SERVICE_OVERHEAD_GB="${SERVICE_OVERHEAD_GB:-2}"
 

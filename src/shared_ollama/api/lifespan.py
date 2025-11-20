@@ -15,7 +15,11 @@ from shared_ollama.api.dependencies import set_dependencies
 from shared_ollama.client import AsyncOllamaConfig, AsyncSharedOllamaClient
 from shared_ollama.core.ollama_manager import initialize_ollama_manager
 from shared_ollama.core.queue import RequestQueue
-from shared_ollama.core.utils import get_project_root
+from shared_ollama.core.utils import (
+    get_default_text_model,
+    get_default_vlm_model,
+    get_project_root,
+)
 from shared_ollama.infrastructure.adapters import (
     AnalyticsCollectorAdapter,
     AsyncOllamaClientAdapter,
@@ -55,6 +59,21 @@ async def lifespan_context(app: FastAPI):
     # Debug: Log that lifespan is starting
     print("LIFESPAN: Starting Shared Ollama Service API", flush=True)
     logger.info("LIFESPAN: Starting Shared Ollama Service API")
+
+    # Load and validate model configuration (config-driven defaults)
+    try:
+        default_vlm = get_default_vlm_model()
+        default_text = get_default_text_model()
+        logger.info(
+            "LIFESPAN: Model configuration loaded - VLM: %s, Text: %s",
+            default_vlm,
+            default_text,
+        )
+        print(f"LIFESPAN: Model defaults - VLM: {default_vlm}, Text: {default_text}", flush=True)
+    except Exception as exc:
+        logger.warning("LIFESPAN: Failed to load model configuration: %s", exc, exc_info=True)
+        print(f"LIFESPAN WARNING: Model config load failed: {exc}", flush=True)
+        # Don't fail startup - will use fallback defaults
 
     # Initialize and start Ollama manager (manages Ollama process internally)
     logger.info("LIFESPAN: Initializing Ollama manager")

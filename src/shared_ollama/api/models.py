@@ -24,6 +24,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator
 
+from shared_ollama.core.utils import get_default_text_model, get_default_vlm_model
+
 # ============================================================================
 # Tool/Function Calling Models (for POML and OpenAI compatibility)
 # ============================================================================
@@ -626,7 +628,7 @@ class VLMRequest(BaseModel):
     Attributes:
         messages: List of text-only chat messages. Required.
         images: List of base64-encoded images (data URLs). Required, min 1 image.
-        model: VLM model name (default: qwen3-vl:8b-instruct-q4_K_M).
+        model: VLM model name (defaults to configured profile based on system hardware).
         stream: Whether to stream the response. Defaults to False.
         format: Output format specification. Can be:
             - "json" for JSON mode
@@ -658,7 +660,10 @@ class VLMRequest(BaseModel):
         min_length=1,
         description="List of base64-encoded images as data URLs (data:image/...;base64,...)",
     )
-    model: str | None = Field("qwen3-vl:8b-instruct-q4_K_M", description="VLM model (default: qwen3-vl:8b-instruct-q4_K_M)")
+    model: str | None = Field(
+        default_factory=get_default_vlm_model,
+        description="VLM model (defaults to configured profile based on system hardware)",
+    )
     stream: bool = Field(False, description="Whether to stream the response")
     format: str | dict[str, Any] | None = Field(
         None,
@@ -809,7 +814,7 @@ class VLMRequestOpenAI(BaseModel):
 
     Attributes:
         messages: List of OpenAI-compatible chat messages with multimodal content.
-        model: VLM model name (default: qwen3-vl:8b-instruct-q4_K_M).
+        model: VLM model name (defaults to configured profile based on system hardware).
         stream: Whether to stream the response. Defaults to False.
         temperature: Sampling temperature (0.0-2.0). Optional.
         top_p: Nucleus sampling parameter (0.0-1.0). Optional.
@@ -832,7 +837,10 @@ class VLMRequestOpenAI(BaseModel):
     messages: list[ChatMessageOpenAI] = Field(
         ..., min_length=1, description="List of OpenAI-compatible chat messages"
     )
-    model: str | None = Field("qwen3-vl:8b-instruct-q4_K_M", description="VLM model (default: qwen3-vl:8b-instruct-q4_K_M)")
+    model: str | None = Field(
+        default_factory=get_default_vlm_model,
+        description="VLM model (defaults to configured profile based on system hardware)",
+    )
     stream: bool = Field(False, description="Whether to stream the response")
     format: str | dict[str, Any] | None = Field(
         None,

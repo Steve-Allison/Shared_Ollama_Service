@@ -1,25 +1,34 @@
 """Utility helpers for the Shared Ollama Service.
 
 This module provides common utilities for path resolution, service health checks,
-and dynamic imports. All functions are designed to be stateless and cacheable
-for performance.
+dynamic imports, and model configuration loading. All functions are designed to be
+stateless and cacheable for performance.
 
 Key behaviors:
     - Project root detection works for both editable installs and installed packages
     - Service health checks use timeouts and proper error handling
     - All path operations use pathlib for cross-platform compatibility
+    - Model defaults loaded from config/model_profiles.yaml based on system hardware
 """
 
 from __future__ import annotations
 
 import functools
 import importlib
+import math
+import os
+import platform
 from itertools import takewhile
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
 if TYPE_CHECKING:
     from shared_ollama.client.sync import SharedOllamaClient
+
+try:
+    import yaml
+except ImportError:  # pragma: no cover
+    yaml = None  # type: ignore[assignment]
 
 from shared_ollama.infrastructure.config import OllamaConfig
 from shared_ollama.infrastructure.health_checker import check_ollama_health
@@ -170,10 +179,151 @@ def import_client() -> type[SharedOllamaClient]:
     return module.SharedOllamaClient
 
 
+@functools.cache
+def _detect_system_info() -> tuple[str, int]:
+    """Detect system architecture and RAM.
+
+    Returns:
+        Tuple of (arch, total_ram_gb).
+    """
+    arch = platform.machine()
+    # Try to get total RAM
+    total_ram_gb = 0
+    try:
+        if platform.system() == "Darwin":  # macOS
+            import subprocess
+
+            result = subprocess.run(
+                ["sysctl", "-n", "hw.memsize"],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            if result.returncode == 0:
+                total_ram_gb = int(result.stdout.strip()) // (1024**3)
+        elif platform.system() == "Linux":
+            # Try /proc/meminfo
+            try:
+                with Path("/proc/meminfo").open() as f:
+                    for line in f:
+                        if line.startswith("MemTotal:"):
+                            total_ram_gb = int(line.split()[1]) // (1024**2)
+                            break
+            except (OSError, ValueError):
+                pass
+    except Exception:
+        pass
+
+    return arch, total_ram_gb
+
+
+@functools.cache
+def _load_model_profile_defaults() -> dict[str, str | int | list[str]]:
+    """Load model defaults from config/model_profiles.yaml based on system hardware.
+
+    Selects the appropriate profile based on architecture and RAM, matching the
+    logic in scripts/lib/model_config.sh. Falls back to safe defaults if profile
+    loading fails.
+
+    Returns:
+        Dictionary with model defaults:
+            - vlm_model: Default VLM model name
+            - text_model: Default text model name
+            - required_models: List of required model names
+            - warmup_models: List of warmup model names
+    """
+    # First check environment variables (highest priority)
+    env_vlm = os.getenv("OLLAMA_DEFAULT_VLM_MODEL")
+    env_text = os.getenv("OLLAMA_DEFAULT_TEXT_MODEL")
+
+    if env_vlm and env_text:
+        return {
+            "vlm_model": env_vlm,
+            "text_model": env_text,
+            "required_models": [env_vlm, env_text],
+            "warmup_models": [env_vlm, env_text],
+        }
+
+    # Try to load from profile file
+    defaults: dict[str, str | int | list[str]] = {}
+    if yaml:
+        try:
+            project_root = get_project_root()
+            profile_path = project_root / "config" / "model_profiles.yaml"
+            if profile_path.exists():
+                with profile_path.open(encoding="utf-8") as fh:
+                    data = yaml.safe_load(fh) or {}
+                profiles = data.get("profiles") or {}
+                arch, ram = _detect_system_info()
+
+                # Select matching profile
+                selected = profiles.get("default", {}) if isinstance(profiles, dict) else {}
+                for profile in profiles.values():
+                    if not isinstance(profile, dict):
+                        continue
+                    match = profile.get("match") or {}
+                    min_ram = match.get("min_ram_gb", 0)
+                    max_ram = match.get("max_ram_gb", math.inf)
+                    match_arch = match.get("arch")
+                    if ram >= min_ram and ram <= max_ram and (match_arch is None or match_arch == arch):
+                        selected = profile
+                        break
+
+                profile_defaults = selected.get("defaults") or {}
+                if profile_defaults:
+                    defaults = {
+                        "vlm_model": profile_defaults.get("vlm_model", ""),
+                        "text_model": profile_defaults.get("text_model", ""),
+                        "required_models": profile_defaults.get("required_models", []),
+                        "warmup_models": profile_defaults.get("warmup_models", []),
+                    }
+        except Exception:
+            pass  # Fall through to safe defaults
+
+    # Fallback to safe defaults (mac_32gb profile - works on more systems)
+    if not defaults.get("vlm_model") or not defaults.get("text_model"):
+        defaults = {
+            "vlm_model": "qwen3-vl:8b-instruct-q4_K_M",
+            "text_model": "qwen3:14b-q4_K_M",
+            "required_models": ["qwen3-vl:8b-instruct-q4_K_M", "qwen3:14b-q4_K_M"],
+            "warmup_models": ["qwen3-vl:8b-instruct-q4_K_M", "qwen3:14b-q4_K_M"],
+        }
+
+    return defaults
+
+
+@functools.cache
+def get_default_vlm_model() -> str:
+    """Get the default VLM model name from configuration.
+
+    Loads from environment variable, model profile, or safe fallback.
+
+    Returns:
+        Default VLM model name (e.g., "qwen3-vl:8b-instruct-q4_K_M").
+    """
+    defaults = _load_model_profile_defaults()
+    return str(defaults.get("vlm_model", "qwen3-vl:8b-instruct-q4_K_M"))
+
+
+@functools.cache
+def get_default_text_model() -> str:
+    """Get the default text model name from configuration.
+
+    Loads from environment variable, model profile, or safe fallback.
+
+    Returns:
+        Default text model name (e.g., "qwen3:14b-q4_K_M").
+    """
+    defaults = _load_model_profile_defaults()
+    return str(defaults.get("text_model", "qwen3:14b-q4_K_M"))
+
+
 __all__ = [
     "check_service_health",
     "ensure_service_running",
     "get_client_path",
+    "get_default_text_model",
+    "get_default_vlm_model",
     "get_ollama_base_url",
     "get_project_root",
     "import_client",

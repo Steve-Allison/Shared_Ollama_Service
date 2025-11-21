@@ -3,15 +3,40 @@
 This module provides a single source of truth for all configuration values,
 using pydantic-settings for environment variable loading and validation.
 
-All configuration values can be set via environment variables with sensible defaults.
-Supports .env files for local development.
+Design Principles:
+    - Environment Variables: All settings can be overridden via environment variables
+    - Sensible Defaults: All settings have production-ready defaults
+    - Validation: Pydantic validates all values at load time
+    - Type Safety: Strong typing with Field constraints (ge, le, etc.)
+    - Singleton Pattern: Cached settings instance via lru_cache
+
+Configuration Sections:
+    - OllamaConfig: Ollama service connection and settings
+    - APIConfig: FastAPI server configuration
+    - QueueConfig: Request queue settings (chat and VLM)
+    - BatchConfig: Batch processing limits
+    - ImageProcessingConfig: Image processing parameters
+    - ImageCacheConfig: Image cache settings
+    - ClientConfig: HTTP client configuration
+    - OllamaManagerConfig: Ollama process management settings
+
+Environment Variable Prefixes:
+    - OLLAMA_*: Ollama service settings
+    - API_*: FastAPI server settings
+    - QUEUE_*: Request queue settings
+    - BATCH_*: Batch processing settings
+    - IMAGE_*: Image processing settings
+    - IMAGE_CACHE_*: Image cache settings
+    - CLIENT_*: HTTP client settings
+    - OLLAMA_MANAGER_*: Ollama manager settings
 
 Usage:
-    from shared_ollama.infrastructure.config import settings
+    from shared_ollama.core.config import settings
 
     # Access configuration values
     api_host = settings.api.host
     queue_max_concurrent = settings.queue.chat_max_concurrent
+    ollama_url = settings.ollama.url
 """
 
 from __future__ import annotations
@@ -24,7 +49,34 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class OllamaConfig(BaseSettings):
-    """Ollama service configuration."""
+    """Ollama service configuration.
+
+    Configuration for connecting to and managing the Ollama service. Supports
+    both local and remote Ollama instances. All settings can be overridden via
+    OLLAMA_* environment variables.
+
+    Attributes:
+        host: Ollama service hostname. Default: "localhost".
+        port: Ollama service port. Range: [1, 65535]. Default: 11434.
+        base_url: Full base URL (overrides host/port if set). Must start with
+            http:// or https://. None uses host:port combination.
+        keep_alive: Model keep-alive duration (e.g., "5m", "10s"). Default: "5m".
+        debug: Enable debug logging in Ollama. Default: False.
+        metal: Enable Metal acceleration on Apple Silicon. Default: True.
+        num_gpu: Number of GPU cores to use. -1 means use all available.
+            Default: -1.
+        num_thread: Number of CPU threads to use. None means auto-detect.
+            Default: None.
+        max_ram: Maximum RAM usage (e.g., "24GB", "16GB"). None means no limit.
+            Default: None.
+        num_parallel: Number of parallel models to load. None means single model.
+            Default: None.
+        origins: Allowed CORS origins for Ollama API. Default: "*" (all origins).
+
+    Note:
+        The url property combines host and port, or uses base_url if provided.
+        base_url takes precedence over host/port combination.
+    """
 
     model_config = SettingsConfigDict(
         env_prefix="OLLAMA_",
@@ -46,7 +98,19 @@ class OllamaConfig(BaseSettings):
 
     @property
     def url(self) -> str:
-        """Get the full base URL for Ollama service."""
+        """Get the full base URL for Ollama service.
+
+        Combines host and port, or returns base_url if provided. Strips trailing
+        slashes for consistency.
+
+        Returns:
+            Full base URL string (e.g., "http://localhost:11434" or base_url value).
+
+        Note:
+            base_url takes precedence over host/port combination. If base_url is
+            set, it's returned (with trailing slash removed). Otherwise, constructs
+            URL from host and port.
+        """
         if self.base_url:
             return self.base_url.rstrip("/")
         return f"http://{self.host}:{self.port}"
@@ -54,7 +118,20 @@ class OllamaConfig(BaseSettings):
     @field_validator("base_url")
     @classmethod
     def validate_base_url(cls, v: str | None) -> str | None:
-        """Validate base URL format."""
+        """Validate base URL format.
+
+        Ensures base_url starts with http:// or https:// if provided.
+
+        Args:
+            v: Base URL string to validate. None is allowed.
+
+        Returns:
+            Validated base URL string or None.
+
+        Raises:
+            ValueError: If base_url is provided but doesn't start with http://
+                or https://.
+        """
         if v and not v.startswith(("http://", "https://")):
             msg = "base_url must start with http:// or https://"
             raise ValueError(msg)
@@ -239,7 +316,30 @@ class OllamaManagerConfig(BaseSettings):
 
 
 class Settings(BaseSettings):
-    """Root settings class containing all configuration sections."""
+    """Root settings class containing all configuration sections.
+
+    Aggregates all configuration sections into a single settings object.
+    Uses singleton pattern with lru_cache to ensure only one instance exists.
+
+    Configuration is loaded from:
+        1. Environment variables (with appropriate prefixes)
+        2. .env file (if present in project root)
+        3. Default values (if not set)
+
+    Attributes:
+        ollama: Ollama service configuration.
+        api: FastAPI server configuration.
+        queue: Request queue configuration (chat and VLM).
+        batch: Batch processing configuration.
+        image: Image processing configuration for VLM.
+        image_cache: Image cache configuration.
+        client: HTTP client configuration.
+        ollama_manager: Ollama process manager configuration.
+
+    Note:
+        Settings are loaded once at module import and cached. Changes to
+        environment variables require application restart to take effect.
+    """
 
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -260,7 +360,20 @@ class Settings(BaseSettings):
     @classmethod
     @lru_cache(maxsize=1)
     def get_settings(cls) -> Settings:
-        """Get cached settings instance (singleton pattern)."""
+        """Get cached settings instance (singleton pattern).
+
+        Returns a cached Settings instance, ensuring only one instance exists
+        throughout the application lifecycle. Settings are loaded from environment
+        variables and .env file on first call.
+
+        Returns:
+            Cached Settings instance with all configuration sections populated.
+
+        Note:
+            The cache ensures settings are loaded only once. To reload settings,
+            clear the cache or restart the application. Environment variable
+            changes require application restart.
+        """
         return cls()
 
 

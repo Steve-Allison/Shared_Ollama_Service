@@ -1,7 +1,42 @@
 """Batch routes for batch processing endpoints.
 
 Provides batch endpoints for processing multiple chat and VLM requests
-in parallel.
+in parallel. Batch processing enables efficient handling of multiple
+requests with configurable concurrency limits.
+
+Key Features:
+    - Parallel Processing: Multiple requests processed concurrently
+    - Concurrency Control: Semaphore-based limiting (configurable)
+    - Request Limits: Maximum requests per batch (configurable)
+    - Error Isolation: Individual request failures don't fail entire batch
+    - Rate Limiting: Integrated with slowapi rate limiting
+
+Endpoints:
+    POST /api/v1/batch/chat
+        - Request: BatchChatRequest (list of ChatRequest)
+        - Response: BatchResponse (list of results with success/error per request)
+        - Max Requests: 50 (configurable via BATCH_CHAT_MAX_REQUESTS)
+        - Rate Limited: Yes (10/minute via slowapi)
+
+    POST /api/v1/batch/vlm
+        - Request: BatchVLMRequest (list of VLMRequest)
+        - Response: BatchResponse (list of results with success/error per request)
+        - Max Requests: 20 (configurable via BATCH_VLM_MAX_REQUESTS)
+        - Rate Limited: Yes (10/minute via slowapi)
+
+Batch Processing:
+    - Requests processed concurrently (up to max_concurrent limit)
+    - Individual request failures isolated (reported in results)
+    - Results include success/error status for each request
+    - Total processing time tracked and reported
+
+Request Flow:
+    1. Request validated by Pydantic (BatchChatRequest or BatchVLMRequest)
+    2. Request count validated (must not exceed max_requests)
+    3. Individual requests mapped to domain entities
+    4. Executed via BatchChatUseCase or BatchVLMUseCase
+    5. Results aggregated into BatchResponse
+    6. Returned as JSON with per-request results
 """
 
 from __future__ import annotations

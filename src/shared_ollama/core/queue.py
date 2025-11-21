@@ -2,9 +2,17 @@
 
 This module provides an async request queue that prevents immediate failures
 when capacity is reached, allowing requests to wait for available slots rather
-than failing with 503 errors.
+than failing with 503 errors. The queue manages concurrency limits and tracks
+comprehensive statistics for monitoring.
 
-Key behaviors:
+Design Principles:
+    - Graceful degradation: Requests wait instead of failing immediately
+    - Concurrency control: Semaphore limits simultaneous processing
+    - Statistics tracking: Comprehensive metrics for observability
+    - Timeout handling: Prevents indefinite waiting
+    - Thread safety: All operations are async and safe for concurrent use
+
+Key Behaviors:
     - Uses asyncio.Semaphore for concurrency control
     - Tracks comprehensive statistics (wait times, rejections, timeouts)
     - Implements timeout handling for queue waits
@@ -12,7 +20,8 @@ Key behaviors:
     - Automatic cleanup via async context managers
 
 Concurrency:
-    - All operations are async and safe for concurrent use
+    - All operations are async and safe for concurrent use from multiple
+      coroutines
     - Statistics updates are protected by asyncio.Lock
     - Queue operations use asyncio.Queue for thread safety
 """
@@ -103,10 +112,23 @@ class RequestQueue:
     ) -> None:
         """Initialize request queue.
 
+        Creates a new request queue with specified concurrency and queue limits.
+        The queue uses a semaphore for concurrency control and an asyncio.Queue
+        for waiting requests.
+
         Args:
-            max_concurrent: Maximum concurrent requests. Must be positive.
-            max_queue_size: Maximum queue depth. Must be positive.
-            default_timeout: Default wait timeout in seconds. Must be positive.
+            max_concurrent: Maximum number of requests that can be processed
+                simultaneously. Must be positive. Default: 3.
+            max_queue_size: Maximum number of requests that can wait in queue.
+                When full, new requests are rejected immediately. Must be positive.
+                Default: 50.
+            default_timeout: Default timeout in seconds for waiting in queue.
+                Individual requests can override this via acquire() timeout parameter.
+                Must be positive. Default: 60.0 seconds.
+
+        Note:
+            The queue starts with zero active requests and empty statistics.
+            Statistics accumulate over the queue's lifetime.
         """
         self.max_concurrent = max_concurrent
         self.max_queue_size = max_queue_size

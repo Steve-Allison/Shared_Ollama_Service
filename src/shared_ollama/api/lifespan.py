@@ -1,8 +1,37 @@
 """Application lifespan management.
 
-Handles startup and shutdown of the Shared Ollama Service API, including
-Ollama manager initialization, client setup, queue configuration, and
-image processing infrastructure.
+This module handles startup and shutdown of the Shared Ollama Service API,
+including Ollama manager initialization, client setup, queue configuration,
+and image processing infrastructure.
+
+Lifespan Responsibilities:
+    - Startup:
+        1. Load and validate model configuration
+        2. Initialize and start Ollama manager (manages Ollama process)
+        3. Create and verify async Ollama client connection
+        4. Initialize infrastructure adapters (client, logger, metrics)
+        5. Create request queues (chat and VLM, separate concurrency limits)
+        6. Initialize image processing infrastructure (processor and cache)
+        7. Set up dependency injection (store adapters for FastAPI Depends)
+        8. Pre-warm models (optional, for faster first requests)
+    - Runtime:
+        - Application serves requests using initialized dependencies
+    - Shutdown:
+        1. Stop Ollama manager (shuts down managed Ollama process)
+        2. Clean up client connections
+        3. Close queues and cleanup resources
+
+Error Handling:
+    - Startup failures are logged but don't prevent server from starting
+    - Ollama startup failures allow server to start (will retry on first request)
+    - Client initialization failures are logged with warnings
+    - All errors include detailed logging for debugging
+
+Design Principles:
+    - Graceful Degradation: Server can start even if some components fail
+    - Retry Logic: Failed components can be retried on first use
+    - Comprehensive Logging: All startup steps are logged for observability
+    - Resource Cleanup: Proper shutdown ensures no resource leaks
 """
 
 from __future__ import annotations
@@ -41,20 +70,41 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan_context(app: FastAPI):
-    """Manage application lifespan.
+    """Manage application lifespan (startup and shutdown).
 
-    Handles:
-    - Ollama service initialization and startup
-    - Async client creation and connection verification
-    - Infrastructure adapter setup (client, logger, metrics)
-    - Request queue initialization (separate chat and VLM queues)
-    - Image processing infrastructure (processor and cache)
-    - Dependency injection setup
+    Async context manager that handles complete application lifecycle:
+    startup initialization, runtime operation, and shutdown cleanup.
 
-    Yields control to the application, then handles shutdown.
+    Startup Sequence:
+        1. Load model configuration (defaults from config files)
+        2. Initialize Ollama manager and start Ollama service
+        3. Create async Ollama client and verify connection
+        4. Initialize infrastructure adapters (client, logger, metrics, analytics, performance)
+        5. Create request queues (chat and VLM with separate concurrency limits)
+        6. Initialize image processing (processor and cache with config-based settings)
+        7. Set up dependency injection (store adapters for FastAPI Depends)
+        8. Pre-warm models (optional, for faster first requests)
+
+    Shutdown Sequence:
+        1. Stop Ollama manager (shuts down managed Ollama process)
+        2. Clean up client connections
+        3. Close queues and cleanup resources
+
+    Args:
+        app: FastAPI application instance. Used for storing state if needed.
+
+    Yields:
+        None. Control is yielded to the application for request handling.
 
     Raises:
-        RuntimeError: If Ollama service fails to start.
+        RuntimeError: If critical startup failures occur (rare, most errors
+            are logged but don't prevent startup).
+
+    Note:
+        Startup failures are logged but generally don't prevent the server
+        from starting. Ollama startup failures allow the server to start
+        and will retry on the first request. All errors include detailed
+        logging for debugging.
     """
     # Debug: Log that lifespan is starting
     print("LIFESPAN: Starting Shared Ollama Service API", flush=True)

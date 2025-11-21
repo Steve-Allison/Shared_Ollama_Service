@@ -1,7 +1,28 @@
 """Shared error handling utilities for route handlers.
 
 This module provides centralized error handling logic to reduce code duplication
-across route handlers and ensure consistent error responses.
+across route handlers and ensure consistent error responses. All route handlers
+use these utilities to convert exceptions into appropriate HTTP responses.
+
+Design Principles:
+    - Centralized Logic: Single source of truth for error handling
+    - Consistent Responses: Uniform error format across all endpoints
+    - Comprehensive Logging: Structured logging for all errors
+    - Exception Mapping: Maps domain exceptions to HTTP status codes
+
+Error Handling Strategy:
+    - Domain Exceptions: InvalidRequestError, ValueError -> 400 Bad Request
+    - Connection Errors: ConnectionError -> 503 Service Unavailable
+    - Timeout Errors: TimeoutError -> 504 Gateway Timeout
+    - HTTP Errors: httpx.HTTPStatusError -> Mapped status codes
+    - Request Errors: httpx.RequestError -> 503 Service Unavailable
+    - Unknown Errors: All other exceptions -> 500 Internal Server Error
+
+Logging:
+    - All errors logged with structured logging (log_request_event)
+    - Includes request_id, operation_name, error_type, error_message
+    - HTTP status codes logged for monitoring and alerting
+    - Traceback printed for unexpected errors (development/debugging)
 """
 
 from __future__ import annotations

@@ -1,20 +1,36 @@
 """Enhanced usage analytics for the Shared Ollama Service.
 
 This module provides project-based analytics tracking and reporting with
-time-series aggregation and export capabilities.
+time-series aggregation and export capabilities. Extends MetricsCollector
+with project tracking and comprehensive analytics.
 
-Key behaviors:
-    - Project-based request tracking via X-Project-Name header
-    - Time-series aggregation (hourly metrics)
-    - Comprehensive analytics reports with percentiles
-    - JSON and CSV export functionality
-    - Efficient filtering by time window and project
+Key Features:
+    - Project-Based Tracking: Associates requests with projects via X-Project-Name header
+    - Time-Series Aggregation: Hourly metrics for trend analysis
+    - Comprehensive Reports: Percentiles, success rates, model/operation breakdowns
+    - Export Functionality: JSON and CSV export for external analysis
+    - Efficient Filtering: Filter by time window and/or project
 
-Analytics features:
-    - Project-level metrics aggregation
-    - Hourly time-series data
-    - Success rates and latency percentiles
-    - Model and operation breakdowns
+Design Principles:
+    - Extends MetricsCollector: Builds on base metrics collection
+    - Project Association: Maps metrics to projects via index tracking
+    - Time-Series Analysis: Hourly aggregation for trend visualization
+    - Export Formats: Multiple formats (JSON, CSV) for different use cases
+    - Performance: Efficient filtering and aggregation algorithms
+
+Analytics Features:
+    - Project-Level Metrics: Aggregated statistics per project
+    - Hourly Time-Series: Request counts and latencies by hour
+    - Success Rates: Overall and per-project success rates
+    - Latency Percentiles: p50, p95, p99 across all metrics
+    - Model Breakdowns: Request counts by model
+    - Operation Breakdowns: Request counts by operation type
+
+Project Tracking:
+    - Projects identified via X-Project-Name HTTP header
+    - Project metadata stored separately from metrics for efficiency
+    - Unknown projects tracked as "unknown"
+    - Project filtering enables per-project analytics
 """
 
 from __future__ import annotations
@@ -181,15 +197,33 @@ class AnalyticsCollector:
 
     Extends MetricsCollector with project-based tracking and comprehensive
     analytics reporting. Maintains a mapping from metric indices to project
-    names for efficient filtering.
+    names for efficient filtering and aggregation.
+
+    This collector implements AnalyticsCollectorInterface and is used by
+    AnalyticsCollectorAdapter in the infrastructure layer.
 
     Attributes:
         _project_metadata: Class variable mapping metric indices to project names.
             Used to associate metrics with projects after they're recorded.
+            Index corresponds to position in MetricsCollector._metrics list.
 
-    Thread safety:
-        Not thread-safe. Use from a single thread or protect with locks
-        if accessing from multiple threads.
+    Thread Safety:
+        Not thread-safe by design. This collector is intended for use in
+        single-threaded async applications. If multi-threaded access is needed,
+        add locks around _project_metadata operations.
+
+    Project Tracking:
+        Projects are associated with metrics via index mapping. When a metric
+        is recorded with a project, the metric's index in MetricsCollector._metrics
+        is mapped to the project name in _project_metadata. This enables efficient
+        filtering without modifying the base metrics structure.
+
+    Analytics Capabilities:
+        - Project-level aggregation and breakdowns
+        - Hourly time-series metrics for trend analysis
+        - Comprehensive reports with percentiles and success rates
+        - JSON and CSV export for external analysis
+        - Time window and project filtering
     """
 
     _project_metadata: ClassVar[dict[int, str]] = {}

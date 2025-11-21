@@ -4,21 +4,36 @@ This module provides an asynchronous HTTP client for the Ollama service using
 httpx. It supports connection pooling, streaming responses, semaphore-based
 concurrency control, and comprehensive observability.
 
-Key behaviors:
-    - Uses httpx.AsyncClient for async HTTP operations
-    - Supports streaming responses for real-time text generation
-    - Implements semaphore-based concurrency limiting
-    - Automatic connection pooling and keep-alive
-    - Comprehensive metrics and logging for all operations
+Key Features:
+    - Async HTTP Operations: Uses httpx.AsyncClient for non-blocking requests
+    - Streaming Support: Real-time text generation via streaming responses
+    - Concurrency Control: Optional semaphore-based request limiting
+    - Connection Pooling: Automatic connection reuse and keep-alive
+    - Observability: Comprehensive metrics and structured logging
+
+Design Principles:
+    - Async-First: All operations are async for non-blocking I/O
+    - Resource Management: Context manager support for automatic cleanup
+    - Lazy Initialization: Client connection created on first use
+    - Error Handling: Graceful error handling with detailed logging
+    - Performance: Connection pooling and keep-alive for efficiency
 
 Concurrency:
-    - All operations are async and safe for concurrent use
-    - Optional semaphore limits concurrent requests
+    - All operations are async and safe for concurrent use from multiple tasks
+    - Optional semaphore limits concurrent requests (prevents resource exhaustion)
     - Connection pooling handles multiple simultaneous requests efficiently
-
-Thread safety:
-    - Safe for use from multiple async tasks
     - Each client instance manages its own connection pool
+
+Thread Safety:
+    - Safe for use from multiple async tasks within same event loop
+    - Each client instance manages its own connection pool (no shared state)
+    - Semaphore-based concurrency control is thread-safe
+
+Lifecycle:
+    - Initialize with __init__() or use as async context manager
+    - Client connection initialized lazily on first use
+    - Call close() or use context manager exit to cleanup resources
+    - Connection verification optional (verify_on_init parameter)
 """
 
 from __future__ import annotations

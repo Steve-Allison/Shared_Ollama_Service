@@ -4,7 +4,22 @@ This module provides conversion functions between FastAPI request/response
 models (outer layer) and domain entities (inner layer), following Clean
 Architecture boundaries.
 
-All mapping logic is isolated here to maintain separation of concerns.
+Design Principles:
+    - Unidirectional: API -> Domain (requests) and Domain -> API (responses)
+    - Isolated: All mapping logic centralized in this module
+    - Type-safe: Explicit conversions with validation
+    - Format-aware: Handles OpenAI vs native Ollama format differences
+
+Key Mappers:
+    - api_to_domain_*: Convert API models to domain entities
+    - domain_to_api_*: Convert domain entities to API models
+    - Tool calling: Bidirectional conversion for POML compatibility
+    - VLM requests: Handles both native Ollama and OpenAI formats
+
+Note:
+    Mappers handle format differences between API layer (FastAPI/Pydantic)
+    and domain layer (pure Python dataclasses). They also handle OpenAI
+    format conversion for compatibility with OpenAI-compatible clients.
 """
 
 from __future__ import annotations
@@ -44,11 +59,21 @@ from shared_ollama.domain.value_objects import ModelName, Prompt, SystemMessage
 def api_to_domain_tool(api_tool: APITool) -> Tool:
     """Convert API Tool to domain Tool.
 
+    Transforms a Pydantic API Tool model to a domain Tool entity,
+    preserving function definition and type information.
+
     Args:
-        api_tool: API Tool model.
+        api_tool: API Tool model from FastAPI request. Contains function
+            definition with name, description, and parameters schema.
 
     Returns:
-        Domain Tool entity.
+        Domain Tool entity with ToolFunction and type. Domain entity
+        validates itself during construction.
+
+    Note:
+        Tool type is preserved (currently always "function") for future
+        extensibility. Function definition is converted to ToolFunction
+        value object.
     """
     function = ToolFunction(
         name=api_tool.function.name,
@@ -61,11 +86,20 @@ def api_to_domain_tool(api_tool: APITool) -> Tool:
 def api_to_domain_tool_call(api_tool_call: APIToolCall) -> ToolCall:
     """Convert API ToolCall to domain ToolCall.
 
+    Transforms a Pydantic API ToolCall model to a domain ToolCall entity,
+    preserving call ID, function name, and arguments.
+
     Args:
-        api_tool_call: API ToolCall model.
+        api_tool_call: API ToolCall model from FastAPI request. Contains
+            tool call ID, function name, and JSON-serialized arguments.
 
     Returns:
-        Domain ToolCall entity.
+        Domain ToolCall entity with ToolCallFunction. Domain entity
+        validates itself during construction.
+
+    Note:
+        Arguments remain as JSON string in domain entity (matching OpenAI
+        and POML formats). Parse with json.loads() when executing the function.
     """
     function = ToolCallFunction(
         name=api_tool_call.function.name,
@@ -77,11 +111,19 @@ def api_to_domain_tool_call(api_tool_call: APIToolCall) -> ToolCall:
 def domain_to_api_tool_call(domain_tool_call: ToolCall) -> APIToolCall:
     """Convert domain ToolCall to API ToolCall.
 
+    Transforms a domain ToolCall entity to a Pydantic API ToolCall model
+    for API responses.
+
     Args:
-        domain_tool_call: Domain ToolCall entity.
+        domain_tool_call: Domain ToolCall entity from model generation.
+            Contains tool call ID, function name, and JSON-serialized arguments.
 
     Returns:
-        API ToolCall model.
+        API ToolCall model suitable for FastAPI response serialization.
+
+    Note:
+        This mapper is used when models generate tool calls that need to
+        be returned in API responses (e.g., assistant messages with tool_calls).
     """
     function = APIToolCallFunction(
         name=domain_tool_call.function.name,
@@ -101,14 +143,37 @@ def _resolve_response_format(
 ) -> str | dict[str, Any] | None:
     """Resolve native format + OpenAI response_format into Ollama format payload.
 
-    Uses match/case for cleaner pattern matching (Python 3.13+).
+    Handles format resolution from both native Ollama format field and
+    OpenAI-compatible response_format field. OpenAI format takes precedence
+    when both are provided.
+
+    Format Resolution:
+        - If response_format is None: Use direct_format
+        - If response_format.type is "json_object": Return "json"
+        - If response_format.type is "json_schema": Extract and return schema
+        - If response_format.type is "text": Use direct_format
+        - Unknown types: Use direct_format
 
     Args:
-        direct_format: Native Ollama format field (deprecated).
-        response_format: OpenAI-compatible response_format field.
+        direct_format: Native Ollama format field. Can be "json", dict schema,
+            or None. Deprecated in favor of response_format.
+        response_format: OpenAI-compatible response_format object. Contains
+            type and optional json_schema. Takes precedence over direct_format.
 
     Returns:
-        Resolved format value for Ollama backend.
+        Resolved format value for Ollama backend. Can be:
+            - "json": For JSON mode
+            - dict: JSON schema for structured output
+            - None: Default text output (no constraints)
+
+    Raises:
+        ValueError: If response_format.type is "json_schema" but json_schema
+            is None or missing.
+
+    Note:
+        OpenAI wraps JSON schemas as {"name": "...", "schema": {...}}. This
+        function extracts the inner schema if present, otherwise uses the
+        payload directly.
     """
     # Guard clause: if no response_format, use direct format
     if response_format is None:
@@ -144,14 +209,28 @@ def _resolve_response_format(
 def api_to_domain_generation_request(api_req: APIGenerateRequest) -> GenerationRequest:
     """Convert API GenerateRequest to domain GenerationRequest.
 
+    Transforms a Pydantic API request model to a domain entity, converting
+    primitive types to value objects and building domain structures.
+
     Args:
-        api_req: API request model.
+        api_req: API GenerateRequest model from FastAPI endpoint. Contains
+            prompt, optional model, system, options, format, and tools.
 
     Returns:
-        Domain GenerationRequest entity.
+        Domain GenerationRequest entity with validated value objects.
+        Domain entity validates itself during construction.
 
     Raises:
-        ValueError: If request validation fails (handled by domain entity).
+        ValueError: If request validation fails. Validation is performed by:
+            - Prompt value object (empty/whitespace check, length limit)
+            - ModelName value object (empty check)
+            - GenerationOptions (parameter range validation)
+            - GenerationRequest (prompt validation)
+
+    Note:
+        Options are only created if at least one option is provided (performance
+        optimization). Tools are converted to domain Tool entities. Format is
+        resolved from both native format and OpenAI response_format fields.
     """
     prompt = Prompt(value=api_req.prompt)
     model = ModelName(value=api_req.model) if api_req.model else None
@@ -196,14 +275,27 @@ def api_to_domain_generation_request(api_req: APIGenerateRequest) -> GenerationR
 def api_to_domain_chat_request(api_req: APIChatRequest) -> ChatRequest:
     """Convert API ChatRequest to domain ChatRequest (text-only, native Ollama).
 
+    Transforms a Pydantic API chat request model to a domain entity, converting
+    messages with tool calling support and building domain structures.
+
     Args:
-        api_req: API request model (text-only).
+        api_req: API ChatRequest model from FastAPI endpoint. Contains messages,
+            optional model, options, format, and tools. Messages support tool
+            calling (tool_calls, tool_call_id).
 
     Returns:
-        Domain ChatRequest entity.
+        Domain ChatRequest entity with validated ChatMessage entities.
+        Domain entity validates itself during construction.
 
     Raises:
-        ValueError: If request validation fails (handled by domain entity).
+        ValueError: If request validation fails. Validation is performed by:
+            - ChatMessage entities (role validation, content/tool_calls requirement)
+            - ChatRequest (non-empty messages, total length limit)
+
+    Note:
+        Messages are converted with full tool calling support. Tool calls from
+        assistant messages and tool responses are preserved. Options and tools
+        are handled the same way as generation requests.
     """
     # Convert messages with tool calling support
     domain_messages: list[ChatMessage] = []

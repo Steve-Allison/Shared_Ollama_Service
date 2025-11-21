@@ -1,20 +1,32 @@
 """Resilience patterns for the Shared Ollama Service clients.
 
 This module provides circuit breaker and retry patterns for building resilient
-clients that can handle transient failures gracefully.
+clients that can handle transient failures gracefully. These patterns prevent
+cascading failures and improve system reliability.
 
-Key components:
-    - Circuit breaker: Prevents cascading failures by opening circuit after
+Key Components:
+    - Circuit Breaker: Prevents cascading failures by opening circuit after
       threshold failures (using circuitbreaker library)
-    - exponential_backoff_retry: Retries operations with exponential backoff
+    - Exponential Backoff Retry: Retries operations with exponential backoff
       (using tenacity library, which handles jitter automatically)
     - ResilientOllamaClient: Client wrapper combining both patterns
 
-Key behaviors:
-    - Circuit breaker has three states: CLOSED, OPEN, HALF_OPEN
-    - Retry logic uses exponential backoff (tenacity handles jitter automatically)
-    - All operations are thread-safe for concurrent use
-    - Automatic state transitions based on success/failure patterns
+Design Principles:
+    - Fail Fast: Circuit breaker opens quickly to prevent resource exhaustion
+    - Retry Transient Failures: Exponential backoff for temporary issues
+    - Automatic Recovery: Circuit breaker transitions to HALF_OPEN for recovery
+    - Thread Safety: All operations safe for concurrent use
+
+Circuit Breaker States:
+    - CLOSED: Normal operation, requests pass through
+    - OPEN: Circuit open, requests fail immediately (after failure threshold)
+    - HALF_OPEN: Testing recovery, allows limited requests to test service health
+
+Retry Strategy:
+    - Exponential Backoff: Delays increase exponentially (1s, 2s, 4s, 8s, ...)
+    - Jitter: Automatically handled by tenacity to prevent thundering herd
+    - Configurable: Max retries, initial delay, max delay all configurable
+    - Exception Filtering: Only retries specific exception types (ConnectionError, TimeoutError)
 """
 
 from __future__ import annotations
@@ -149,16 +161,31 @@ class ResilientOllamaClient:
     """Ollama client with built-in resilience patterns.
 
     Combines circuit breaker and retry logic for robust service calls.
-    Wraps SharedOllamaClient with automatic failure handling.
+    Wraps SharedOllamaClient with automatic failure handling. All operations
+    are protected by both circuit breaker (fail-fast) and retry (transient
+    recovery) patterns.
+
+    Resilience Strategy:
+        1. Circuit Breaker: Prevents cascading failures by opening circuit
+           after failure threshold
+        2. Retry Logic: Exponential backoff for transient failures
+        3. Combined: Circuit breaker wraps retry logic for optimal protection
 
     Attributes:
-        base_url: Base URL for Ollama service.
-        retry_config: Retry configuration.
-        circuit_breaker_config: Circuit breaker configuration.
-        client: Underlying SharedOllamaClient instance.
+        base_url: Base URL for Ollama service. Format: "http://host:port".
+        retry_config: Retry configuration for exponential backoff.
+        circuit_breaker_config: Circuit breaker configuration for fail-fast.
+        client: Underlying SharedOllamaClient instance. All operations
+            delegate to this client.
 
-    Thread safety:
+    Thread Safety:
         Thread-safe. Uses circuitbreaker library which is thread-safe.
+        Multiple threads can safely call methods concurrently.
+
+    Note:
+        This client is a wrapper around SharedOllamaClient that adds
+        resilience patterns. All client methods (generate, chat, etc.)
+        are automatically protected by circuit breaker and retry logic.
     """
 
     __slots__ = ("base_url", "circuit_breaker_config", "client", "retry_config")
@@ -171,11 +198,17 @@ class ResilientOllamaClient:
     ) -> None:
         """Initialize resilient Ollama client.
 
+        Creates a new resilient client with configurable retry and circuit
+        breaker settings. The underlying SharedOllamaClient is created
+        without initial verification (verify_on_init=False) for faster startup.
+
         Args:
-            base_url: Base URL for Ollama service.
-            retry_config: Retry configuration. If None, uses default RetryConfig().
-            circuit_breaker_config: Circuit breaker configuration. If None,
-                uses default CircuitBreakerConfig().
+            base_url: Base URL for Ollama service. Format: "http://host:port"
+                or "https://host:port". Default: "http://localhost:11434".
+            retry_config: Retry configuration for exponential backoff. None
+                uses default RetryConfig() (3 retries, 1s initial delay).
+            circuit_breaker_config: Circuit breaker configuration. None uses
+                default CircuitBreakerConfig() (5 failures threshold, 60s recovery).
         """
         self.base_url = base_url
         self.retry_config = retry_config or RetryConfig()
@@ -189,22 +222,39 @@ class ResilientOllamaClient:
     ) -> _T:
         """Execute operation with circuit breaker and retry logic.
 
+        Wraps an operation with both circuit breaker and retry patterns.
+        The circuit breaker is the outer layer (fail-fast), and retry logic
+        is the inner layer (transient recovery).
+
+        Execution Flow:
+            1. Circuit breaker checks state (CLOSED/OPEN/HALF_OPEN)
+            2. If OPEN: Fails immediately with ConnectionError
+            3. If CLOSED/HALF_OPEN: Proceeds to retry logic
+            4. Retry logic attempts operation with exponential backoff
+            5. Success: Circuit breaker records success, returns result
+            6. Failure: Circuit breaker records failure, may open circuit
+
         Args:
-            operation: Function to execute.
+            operation: Function to execute. Should be a method of self.client
+                (e.g., self.client.generate, self.client.chat).
             *args: Positional arguments for operation.
             **kwargs: Keyword arguments for operation.
 
         Returns:
-            Result of operation.
+            Result of operation execution. Type depends on operation.
 
         Raises:
-            ConnectionError: If circuit breaker is OPEN.
-            ConnectionError: If all retries fail.
-            TimeoutError: If operation times out.
+            ConnectionError: If circuit breaker is OPEN (service unavailable).
+            ConnectionError: If all retries fail (service persistently unavailable).
+            TimeoutError: If operation times out during execution.
+            requests.exceptions.HTTPError: For HTTP errors (4xx, 5xx) that
+                aren't retried (client errors, non-transient server errors).
 
-        Side effects:
+        Side Effects:
             - Updates circuit breaker state based on success/failure
-            - May sleep during retry attempts
+            - May sleep during retry attempts (exponential backoff)
+            - Logs warnings for retry attempts
+            - Logs errors for final failures
         """
         # Create circuit breaker decorator
         cb_decorator = circuit(

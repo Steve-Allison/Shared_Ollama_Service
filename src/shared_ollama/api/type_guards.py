@@ -2,6 +2,18 @@
 
 This module provides type guard functions to replace assert isinstance()
 patterns with proper type narrowing that works even when assertions are disabled.
+Type guards enable proper type narrowing in type checkers (mypy, pyright) and
+provide runtime type checking for use case results.
+
+Design Principles:
+    - Type Safety: Proper type narrowing for type checkers
+    - Runtime Safety: Works even when assertions are disabled (-O flag)
+    - Simplicity: Single-purpose functions for specific type checks
+
+Usage:
+    Type guards are used in route handlers to distinguish between streaming
+    and non-streaming results from use case execute() methods. This enables
+    proper type narrowing for type checkers and runtime type safety.
 """
 
 from __future__ import annotations

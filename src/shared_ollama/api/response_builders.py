@@ -1,7 +1,26 @@
 """Shared response building utilities for route handlers.
 
 This module provides helper functions to build consistent API responses,
-reducing code duplication across route handlers.
+reducing code duplication across route handlers. All response builders
+convert use case result dictionaries into Pydantic response models.
+
+Design Principles:
+    - Consistency: Uniform response structure across all endpoints
+    - Type Safety: Returns validated Pydantic models
+    - Data Transformation: Converts nanosecond durations to milliseconds
+    - Request Context: Includes request_id and metadata in responses
+
+Response Builders:
+    - build_chat_response(): Builds ChatResponse from chat use case result
+    - build_generate_response(): Builds GenerateResponse from generate use case result
+    - build_vlm_response(): Builds VLMResponse from VLM use case result
+    - build_streaming_response(): Builds streaming response for SSE/EventSource
+
+Data Transformations:
+    - Duration Conversion: Nanoseconds (Ollama) to milliseconds (API)
+    - Rounding: All duration values rounded to 3 decimal places
+    - Optional Fields: None values for optional fields (model_load_ms, etc.)
+    - Warm Start Detection: model_warm_start = True if load_duration == 0
 """
 
 from __future__ import annotations

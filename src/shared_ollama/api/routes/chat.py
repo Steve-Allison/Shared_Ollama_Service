@@ -1,6 +1,40 @@
 """Chat routes for text-only chat completion endpoint.
 
-Provides the /chat endpoint for multi-turn text conversations.
+Provides the /chat endpoint for multi-turn text conversations. This endpoint
+supports both streaming and non-streaming responses, with comprehensive error
+handling and request queuing.
+
+Key Features:
+    - Multi-Turn Conversations: Chat with message history
+    - Streaming Support: Server-Sent Events (SSE) for real-time responses
+    - Request Queuing: Uses chat queue for concurrency control
+    - Error Handling: Comprehensive error handling with structured logging
+    - Rate Limiting: Integrated with slowapi rate limiting
+    - Tool Calling: Supports OpenAI-compatible tool calling
+
+Endpoint:
+    POST /api/v1/chat
+        - Request: ChatRequest (messages, model, options, stream, tools, etc.)
+        - Response: ChatResponse (non-streaming) or SSE stream (streaming)
+        - Rate Limited: Yes (via slowapi middleware)
+
+Request Flow:
+    1. Request validated by Pydantic (ChatRequest)
+    2. Request queued via RequestQueue (concurrency control)
+    3. Mapped to domain entity (ChatRequest)
+    4. Executed via ChatUseCase
+    5. Response built from use case result
+    6. Returned as JSON or SSE stream
+
+Streaming:
+    - Set stream=True in request to enable SSE streaming
+    - Stream format: "data: {json}\n\n" per chunk
+    - Final chunk includes "done: true" marker
+
+Tool Calling:
+    - Supports OpenAI-compatible tool definitions and tool calls
+    - Tools defined in request.tools
+    - Tool calls returned in message.tool_calls
 """
 
 from __future__ import annotations

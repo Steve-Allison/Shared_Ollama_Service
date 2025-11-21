@@ -1,7 +1,25 @@
 """Middleware and error handlers for the API.
 
-Provides rate limiting configuration, CORS middleware, and global
-exception handlers for validation errors, rate limits, and unexpected errors.
+This module provides FastAPI middleware and global exception handlers for
+rate limiting, CORS, structured logging, and error handling.
+
+Key Features:
+    - Rate Limiting: Configurable per-endpoint rate limits using slowapi
+    - CORS: Cross-origin resource sharing configuration
+    - Structured Logging: HTTP request logging with metadata
+    - Error Handling: Global exception handlers for validation, rate limits, errors
+    - Request Context: Extracts request ID, client IP, project name from headers
+
+Design Principles:
+    - Middleware Order: Structured logging wraps all requests
+    - Error Isolation: Errors don't prevent logging
+    - Observability: Comprehensive request metadata for monitoring
+    - Security: Rate limiting and CORS protection
+
+Middleware Stack:
+    1. StructuredLoggingMiddleware: Logs all HTTP requests
+    2. CORSMiddleware: Handles cross-origin requests
+    3. Rate Limiting: Per-endpoint limits via @limiter.limit decorator
 """
 
 from __future__ import annotations
@@ -34,7 +52,22 @@ limiter = Limiter(key_func=get_remote_address)
 
 
 def _rate_limit_exceeded_handler(request: Request, exc: Exception) -> JSONResponse:
-    """Temporary handler for rate limit exceeded during app setup."""
+    """Handle rate limit exceeded errors.
+
+    Returns a 429 Too Many Requests response with Retry-After header
+    indicating when the client can retry.
+
+    Args:
+        request: FastAPI request object.
+        exc: Exception object. May be RateLimitExceeded or generic Exception.
+
+    Returns:
+        JSONResponse with 429 status code, error message, and Retry-After header.
+
+    Note:
+        This handler is used during app setup before the main exception handler
+        is registered. It extracts retry_after from RateLimitExceeded if available.
+    """
     retry_after = "60"
     if isinstance(exc, RateLimitExceeded):
         retry_after = str(getattr(exc, "retry_after", 60))
@@ -46,7 +79,23 @@ def _rate_limit_exceeded_handler(request: Request, exc: Exception) -> JSONRespon
 
 
 class StructuredLoggingMiddleware(BaseHTTPMiddleware):
-    """Middleware that emits structured logs for every HTTP request."""
+    """Middleware that emits structured logs for every HTTP request.
+
+    Wraps all HTTP requests to log structured data including request metadata,
+    response status, latency, and errors. Logs are emitted even if requests
+    fail, ensuring complete observability.
+
+    The middleware extracts request context (request_id, client_ip, project_name)
+    from headers and includes it in log events. Errors are captured and logged
+    without preventing error propagation.
+
+    Attributes:
+        None. This is a stateless middleware that wraps request/response cycle.
+
+    Note:
+        This middleware should be registered early in the middleware stack to
+        capture all requests. Errors during logging don't affect request processing.
+    """
 
     async def dispatch(
         self,
@@ -93,16 +142,85 @@ class StructuredLoggingMiddleware(BaseHTTPMiddleware):
                 event["error_message"] = error_message
             log_request_event(event)
 
+    async def dispatch(
+        self,
+        request: Request,
+        call_next: Callable[[Request], Awaitable[Response]],
+    ) -> Response:
+        """Dispatch HTTP request with structured logging.
+
+        Wraps request processing to log structured data including metadata,
+        response status, latency, and errors. Logs are emitted in the finally
+        block to ensure they're recorded even if requests fail.
+
+        Args:
+            request: FastAPI request object containing request metadata.
+            call_next: Callable that processes the request and returns response.
+
+        Returns:
+            Response object from the request handler.
+
+        Side Effects:
+            - Logs structured request event via log_request_event
+            - Extracts request context (request_id, client_ip, project_name)
+            - Captures errors for logging without preventing propagation
+
+        Note:
+            Errors during request processing are captured and logged, but
+            exceptions are re-raised to maintain normal error handling flow.
+            Logging errors don't affect request processing.
+        """
+        start_time = time.perf_counter()
+        status_code: int | None = None
+        error_type: str | None = None
+        error_message: str | None = None
+        try:
+            response = await call_next(request)
+            status_code = response.status_code
+            return response
+        except Exception as exc:
+            status_code = getattr(exc, "status_code", status.HTTP_500_INTERNAL_SERVER_ERROR)
+            error_type = type(exc).__name__
+            error_message = str(exc)
+            raise
+        finally:
+            latency_ms = round((time.perf_counter() - start_time) * 1000, 3)
+            try:
+                ctx = get_request_context(request)
+                event = {
+                    "event": "http_request",
+                    "request_id": ctx.request_id,
+                    "client_ip": ctx.client_ip,
+                    "project_name": ctx.project_name,
+                    "path": request.url.path,
+                    "method": request.method,
+                    "status_code": status_code,
+                    "latency_ms": latency_ms,
+                }
+            except Exception:
+                event = {
+                    "event": "http_request",
+                    "path": request.url.path,
+                    "method": request.method,
+                    "status_code": status_code,
+                    "latency_ms": latency_ms,
+                }
+            if error_type:
+                event["error_type"] = error_type
+                event["error_message"] = error_message
+            log_request_event(event)
+
 
 def setup_middleware(app: FastAPI) -> None:
     """Configure middleware for the FastAPI application.
 
-    Sets up:
-    - Rate limiter (slowapi)
-    - CORS middleware (allow all origins for development)
+    Sets up middleware stack in order:
+    1. StructuredLoggingMiddleware: Logs all HTTP requests
+    2. CORSMiddleware: Handles cross-origin requests
+    3. Rate limiter: Per-endpoint rate limiting via @limiter.limit decorator
 
     Args:
-        app: FastAPI application instance.
+        app: FastAPI application instance to configure.
     """
     # Structured logging must run first to capture the full lifecycle
     app.add_middleware(StructuredLoggingMiddleware)

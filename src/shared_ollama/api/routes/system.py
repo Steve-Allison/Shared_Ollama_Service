@@ -1,11 +1,50 @@
 """System routes for health, models, queue stats, and observability.
 
-Provides endpoints for:
-- Health check
-- Available models listing
-- Queue statistics
-- Performance metrics
-- Analytics
+Provides endpoints for system monitoring, health checks, and observability.
+These endpoints enable external systems to monitor service health, query
+available models, and access metrics and analytics.
+
+Key Features:
+    - Health Checks: Service availability and Ollama connectivity
+    - Model Management: List available models with metadata
+    - Queue Statistics: Request queue status and metrics
+    - Performance Metrics: Detailed performance statistics
+    - Analytics: Project-based usage analytics
+    - Rate Limiting: Integrated with slowapi rate limiting
+
+Endpoints:
+    GET /api/v1/health
+        - Response: HealthResponse (service status, Ollama connectivity)
+        - Rate Limited: No (health checks should be fast)
+
+    GET /api/v1/models
+        - Response: ModelsResponse (list of available models with metadata)
+        - Rate Limited: Yes (via slowapi middleware)
+
+    GET /api/v1/queue/stats
+        - Response: QueueStatsResponse (chat and VLM queue statistics)
+        - Rate Limited: Yes (via slowapi middleware)
+
+    GET /api/v1/metrics
+        - Response: MetricsResponse (service metrics with time window)
+        - Query Params: window_minutes (optional, default: all time)
+        - Rate Limited: Yes (via slowapi middleware)
+
+    GET /api/v1/performance/stats
+        - Response: PerformanceStatsResponse (detailed performance metrics)
+        - Query Params: window_minutes (optional, default: all time)
+        - Rate Limited: Yes (via slowapi middleware)
+
+    GET /api/v1/analytics
+        - Response: AnalyticsResponse (project-based analytics)
+        - Query Params: window_minutes, project (optional filters)
+        - Rate Limited: Yes (via slowapi middleware)
+
+Observability:
+    - All endpoints provide structured data for monitoring
+    - Time window filtering for metrics and analytics
+    - Project-based filtering for analytics
+    - Comprehensive statistics for performance analysis
 """
 
 from __future__ import annotations

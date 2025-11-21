@@ -1,9 +1,30 @@
 """Centralized configuration management for Shared Ollama Service.
 
 This module provides a single source of truth for all configuration values,
-using TOML config files with pydantic validation.
+using TOML config files with pydantic validation. This is the infrastructure
+layer's configuration module, complementing core/config.py.
 
-Configuration is loaded from config.toml in the project root.
+Design Principles:
+    - TOML Configuration: Loads from config.toml in project root
+    - Pydantic Validation: Type-safe configuration with validation
+    - Sensible Defaults: All settings have production-ready defaults
+    - Singleton Pattern: Cached settings instance via lru_cache
+
+Configuration Loading:
+    1. Reads config.toml from project root (if exists)
+    2. Merges with environment variables (with appropriate prefixes)
+    3. Falls back to defaults if not set
+    4. Validates all values using Pydantic
+
+Configuration Sections:
+    - OllamaConfig: Ollama service connection and settings
+    - APIConfig: FastAPI server configuration
+    - QueueConfig: Request queue settings (chat and VLM)
+    - BatchConfig: Batch processing limits
+    - ImageProcessingConfig: Image processing parameters
+    - ImageCacheConfig: Image cache settings
+    - ClientConfig: HTTP client configuration
+    - OllamaManagerConfig: Ollama process management settings
 
 Usage:
     from shared_ollama.infrastructure.config import settings
@@ -11,6 +32,12 @@ Usage:
     # Access configuration values
     api_host = settings.api.host
     queue_max_concurrent = settings.queue.chat_max_concurrent
+    ollama_url = settings.ollama.url
+
+Note:
+    This module is similar to core/config.py but uses TOML file loading
+    instead of pure environment variables. Both modules provide the same
+    configuration structure for consistency.
 """
 
 from __future__ import annotations

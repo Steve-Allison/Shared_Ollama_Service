@@ -4,11 +4,28 @@ This module provides common utilities for path resolution, service health checks
 dynamic imports, and model configuration loading. All functions are designed to be
 stateless and cacheable for performance.
 
-Key behaviors:
-    - Project root detection works for both editable installs and installed packages
-    - Service health checks use timeouts and proper error handling
-    - All path operations use pathlib for cross-platform compatibility
-    - Model defaults loaded from config/model_profiles.yaml based on system hardware
+Key Features:
+    - Project Root Detection: Works for both editable installs and installed packages
+    - Service Health Checks: Timeout-based health checks with proper error handling
+    - Path Operations: Cross-platform pathlib-based operations
+    - Model Configuration: Hardware-aware model defaults from config files
+    - Dynamic Imports: Safe module importing with error handling
+
+Design Principles:
+    - Stateless: All functions are pure or cacheable
+    - Performance: Heavy operations (path resolution, config loading) are cached
+    - Cross-platform: Path operations use pathlib
+    - Framework-agnostic: Core utilities have no framework dependencies
+
+Key Functions:
+    - get_project_root(): Cached project root resolution
+    - get_ollama_base_url(): Ollama service URL from config
+    - check_service_health(): Health check with timeout
+    - ensure_service_running(): Health check with exception raising
+    - get_default_text_model(): Hardware-aware text model defaults
+    - get_default_vlm_model(): Hardware-aware VLM model defaults
+    - get_warmup_models(): Models to pre-warm on startup
+    - get_allowed_models(): Models allowed for current hardware profile
 """
 
 from __future__ import annotations

@@ -1,7 +1,20 @@
 """Image processing utilities for VLM endpoints.
 
-Handles image validation, compression, format conversion, and optimization
-for vision-language models.
+This module provides image validation, compression, format conversion, and
+optimization for vision-language models. Images are processed to fit within
+dimension limits, compressed for bandwidth efficiency, and converted to
+target formats.
+
+Key Features:
+    - Data URL validation and parsing
+    - Image format detection and conversion (JPEG, PNG, WebP)
+    - Automatic resizing to fit dimension limits (preserves aspect ratio)
+    - Image compression for bandwidth optimization
+    - RGBA to RGB conversion for JPEG compatibility
+    - Metadata extraction (dimensions, size, compression ratio)
+
+Dependencies:
+    - Pillow (PIL): Required for image processing operations
 """
 
 from __future__ import annotations
@@ -23,7 +36,17 @@ logger = logging.getLogger(__name__)
 
 
 class ImageFormat(StrEnum):
-    """Supported image formats."""
+    """Supported image formats for processing and conversion.
+
+    Enumeration of image formats supported by the image processor.
+    All formats are supported for input, and can be converted to
+    any other format for output.
+
+    Attributes:
+        JPEG: JPEG format (best for photos, lossy compression).
+        PNG: PNG format (best for graphics, lossless compression).
+        WEBP: WebP format (modern, good compression, supports transparency).
+    """
 
     JPEG = "jpeg"
     PNG = "png"
@@ -32,7 +55,21 @@ class ImageFormat(StrEnum):
 
 @dataclass(slots=True, frozen=True)
 class ImageMetadata:
-    """Metadata about a processed image."""
+    """Metadata about a processed image.
+
+    Immutable metadata object containing information about image processing
+    results, including original and processed sizes, dimensions, format, and
+    compression statistics.
+
+    Attributes:
+        original_size: Original image size in bytes before processing.
+        compressed_size: Processed image size in bytes after compression/resizing.
+        width: Image width in pixels after processing.
+        height: Image height in pixels after processing.
+        format: Final image format after processing (ImageFormat enum).
+        compression_ratio: Compression ratio (compressed_size / original_size).
+            Values < 1.0 indicate compression, > 1.0 indicate expansion.
+    """
 
     original_size: int  # bytes
     compressed_size: int  # bytes
@@ -43,7 +80,30 @@ class ImageMetadata:
 
 
 class ImageProcessor:
-    """Handles image validation, compression, and conversion for VLM models."""
+    """Handles image validation, compression, and conversion for VLM models.
+
+    Processes images for vision-language model requests by validating data URLs,
+    resizing to fit dimension limits, compressing for bandwidth efficiency,
+    and converting to target formats.
+
+    The processor preserves aspect ratio during resizing and handles format
+    conversions (including RGBA to RGB for JPEG compatibility). Compression
+    settings are configurable per format.
+
+    Attributes:
+        max_dimension: Maximum width or height in pixels. Images exceeding
+            this are resized while preserving aspect ratio.
+        jpeg_quality: JPEG compression quality (1-100). Higher = better
+            quality but larger files. Default: 85 (good balance).
+        png_compression: PNG compression level (0-9). Higher = better compression
+            but slower. Default: 6 (balanced).
+        max_size_bytes: Maximum image size in bytes before processing.
+            Images exceeding this are rejected. Default: 10MB.
+
+    Note:
+        This class implements ImageProcessorInterface and is used by
+        ImageProcessorAdapter in the infrastructure layer.
+    """
 
     def __init__(
         self,
@@ -55,10 +115,19 @@ class ImageProcessor:
         """Initialize image processor.
 
         Args:
-            max_dimension: Maximum width/height (preserves aspect ratio)
-            jpeg_quality: JPEG compression quality (1-100)
-            png_compression: PNG compression level (0-9)
-            max_size_bytes: Maximum image size in bytes
+            max_dimension: Maximum width or height in pixels. Images larger
+                than this are resized while preserving aspect ratio.
+                Range: [256, 2667]. Default: 2667.
+            jpeg_quality: JPEG compression quality (1-100). Higher values
+                produce better quality but larger files. Default: 85.
+            png_compression: PNG compression level (0-9). Higher values compress
+                better but process slower. Default: 6.
+            max_size_bytes: Maximum image size in bytes before processing.
+                Images exceeding this are rejected. Default: 10MB (10 * 1024 * 1024).
+
+        Note:
+            Compression settings affect file size vs quality tradeoff.
+            Defaults are optimized for VLM model performance and bandwidth.
         """
         self.max_dimension = max_dimension
         self.jpeg_quality = jpeg_quality
@@ -68,14 +137,28 @@ class ImageProcessor:
     def validate_data_url(self, data_url: str) -> tuple[str, bytes]:
         """Validate and parse image data URL.
 
+        Validates the data URL format, extracts image format and raw bytes,
+        and checks size limits. Does not perform image processing.
+
         Args:
-            data_url: Base64-encoded data URL
+            data_url: Base64-encoded data URL. Format:
+                "data:image/{format};base64,{base64_data}"
 
         Returns:
-            Tuple of (format, image_bytes)
+            Tuple of (format, image_bytes) where:
+                - format: Image format string (e.g., "jpeg", "png", "webp")
+                - image_bytes: Raw image bytes decoded from base64
 
         Raises:
-            ValueError: If data URL is invalid
+            ValueError: If:
+                - data_url doesn't start with "data:image/"
+                - data_url is missing ";base64," separator
+                - base64 decoding fails
+                - image size exceeds max_size_bytes
+
+        Note:
+            This method performs validation only. Use process_image() for
+            actual image processing, resizing, and compression.
         """
         if not data_url.startswith("data:image/"):
             raise ValueError("Image URL must start with 'data:image/'")
@@ -108,15 +191,41 @@ class ImageProcessor:
     ) -> tuple[str, ImageMetadata]:
         """Process and optimize image for VLM model.
 
+        Validates, resizes, compresses, and converts an image to the target
+        format. Images are optimized to fit within dimension limits and
+        compressed for efficient transmission to the VLM model.
+
+        Processing Steps:
+            1. Validate and parse data URL
+            2. Load image and validate image data
+            3. Convert color modes (RGBA to RGB for JPEG)
+            4. Resize if dimensions exceed max_dimension (preserves aspect ratio)
+            5. Compress and convert to target format
+            6. Encode as base64 data URL
+            7. Extract and return metadata
+
         Args:
-            data_url: Base64-encoded data URL
-            target_format: Target image format
+            data_url: Base64-encoded image data URL. Must be valid format.
+            target_format: Target image format. One of "jpeg", "png", or "webp".
+                Default: "jpeg" (best compression for photos).
 
         Returns:
-            Tuple of (base64_string, metadata)
+            Tuple of (base64_string, metadata) where:
+                - base64_string: Processed image as base64 data URL in format
+                  "data:image/{target_format};base64,{base64_data}"
+                - metadata: ImageMetadata object with processing results
 
         Raises:
-            ValueError: If image is invalid
+            ValueError: If:
+                - data URL is invalid (see validate_data_url)
+                - image data is corrupted or unreadable
+                - image format is unsupported
+                - image processing fails
+
+        Note:
+            Aspect ratio is always preserved during resizing. RGBA images
+            are converted to RGB with white background for JPEG format
+            (JPEG doesn't support transparency).
         """
         _orig_format, image_bytes = self.validate_data_url(data_url)
         original_size = len(image_bytes)

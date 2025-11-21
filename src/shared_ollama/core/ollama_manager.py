@@ -1,19 +1,40 @@
 """Ollama Process Manager.
 
 Manages the Ollama service process lifecycle internally within the REST API.
-Handles starting, stopping, and health checking of the Ollama backend.
+Handles starting, stopping, and health checking of the Ollama backend. This
+module provides complete process management for the Ollama service, ensuring
+it's available when needed and properly shut down when the application exits.
 
-This module provides process management for the Ollama service, including:
-    - Automatic system optimization detection (Metal GPU, CPU cores, memory)
-    - Graceful process lifecycle management with timeouts
-    - Health checking and readiness verification
-    - Log file management for stdout/stderr
+Key Features:
+    - Automatic System Optimization: Detects Metal GPU, CPU cores, memory limits
+    - Graceful Lifecycle Management: Start, stop, health checks with timeouts
+    - Health Checking: HTTP-based readiness verification
+    - Log Management: Captures stdout/stderr to log files
+    - External Service Management: Can stop Homebrew/launchd Ollama instances
 
-Key behaviors:
-    - Auto-detects system capabilities and applies optimizations
-    - Uses subprocess management with proper signal handling
-    - Implements async patterns for non-blocking operations
-    - Thread-safe status checking via HTTP health endpoints
+Design Principles:
+    - Process Isolation: Manages Ollama as a subprocess, isolated from API
+    - Async Operations: Non-blocking start/stop/health checks
+    - System Detection: Auto-detects platform capabilities for optimization
+    - Graceful Shutdown: Proper signal handling and cleanup
+    - Health Verification: Waits for service readiness before returning
+
+Process Management:
+    - Starts Ollama subprocess with optimized environment variables
+    - Monitors process health via HTTP health checks
+    - Handles process termination with proper signal handling
+    - Captures process output to log files for debugging
+
+System Optimization:
+    - Apple Silicon: Enables Metal GPU acceleration
+    - CPU Cores: Detects and configures optimal thread count
+    - Memory Limits: Configures RAM usage based on available memory
+    - Platform-Specific: Adapts to macOS, Linux, Windows
+
+Thread Safety:
+    - Status checking via HTTP is thread-safe
+    - Process management methods are async and should be called from
+      single async context (not thread-safe for concurrent access)
 """
 
 from __future__ import annotations
@@ -44,24 +65,48 @@ class OllamaManager:
 
     This class handles the complete lifecycle of the Ollama subprocess, including
     starting, stopping, and monitoring. It automatically detects system capabilities
-    and applies optimizations for better performance.
+    and applies optimizations for better performance. The manager ensures Ollama
+    is available when needed and properly shut down when the application exits.
 
     Attributes:
-        base_url: Base URL for Ollama service (default: "http://localhost:11434").
-        process: Managed asyncio.subprocess.Process instance, or None if not started.
-        log_dir: Directory path for Ollama log files.
+        base_url: Base URL for Ollama service. Format: "http://host:port".
+            Default: "http://localhost:11434". Trailing slashes are removed.
+        process: Managed asyncio.subprocess.Process instance. None if not started.
+            Set to None after stop() is called.
+        log_dir: Directory path for Ollama log files. Logs are written to
+            stdout.log and stderr.log in this directory.
         auto_detect_optimizations: Whether to automatically detect and apply
-            system-specific optimizations.
+            system-specific optimizations (Metal GPU, CPU cores, memory).
+            Default: True.
+        force_manage: If True, stops external Ollama instances (Homebrew/launchd)
+            before starting managed instance. If False, skips starting if Ollama
+            is already running. Default: True.
 
-    Thread safety:
-        Methods are not thread-safe. Use from a single async context or
-        protect with locks if accessing from multiple threads.
+    Thread Safety:
+        Methods are async and designed for single async context. Status checking
+        via HTTP (is_running, get_status) is thread-safe, but process management
+        methods (start, stop) should not be called concurrently.
 
     Lifecycle:
-        - Initialize with __init__()
-        - Start process with start()
-        - Check status with is_running() or get_status()
-        - Stop process with stop()
+        1. Initialize with __init__() - sets up configuration
+        2. Start process with start() - launches Ollama subprocess
+        3. Check status with is_running() or get_status() - HTTP health checks
+        4. Stop process with stop() - graceful shutdown with timeout
+        5. Warmup models with warmup_models() - optional pre-loading
+
+    Process Management:
+        - Starts Ollama as subprocess with optimized environment
+        - Captures stdout/stderr to log files
+        - Monitors health via HTTP /api/tags endpoint
+        - Handles termination with SIGTERM (graceful) or SIGKILL (force)
+        - Waits for readiness before returning from start()
+
+    System Optimization:
+        - Detects platform (macOS, Linux, Windows)
+        - Enables Metal GPU on Apple Silicon
+        - Configures CPU thread count based on cores
+        - Sets memory limits based on available RAM
+        - Applies optimizations via environment variables
     """
 
     def __init__(

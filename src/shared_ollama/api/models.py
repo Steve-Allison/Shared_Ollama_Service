@@ -1,20 +1,36 @@
 """Request and response models for the REST API.
 
 This module defines Pydantic v2 models for all REST API request and response
-schemas. All models use Pydantic's validation and serialization features.
+schemas. All models use Pydantic's validation and serialization features for
+type safety, input validation, and automatic API documentation generation.
 
-Key behaviors:
+Design Principles:
+    - Type Safety: All models use Pydantic v2 with strict type validation
+    - Input Validation: Request models validate and reject invalid input
+    - API Documentation: Models auto-generate OpenAPI/Swagger documentation
+    - Compatibility: Supports both native Ollama and OpenAI-compatible formats
+    - Tool Calling: Full POML and OpenAI function calling support
+
+Key Behaviors:
     - All models use Pydantic v2 with ConfigDict for configuration
-    - Request models validate input and reject extra fields
+    - Request models validate input and reject extra fields (extra="forbid")
     - Response models include comprehensive metadata (latency, metrics, etc.)
     - Streaming models allow extra fields for flexibility
     - All numeric fields have appropriate constraints (ge, le)
-
-Validation:
     - String fields are automatically stripped of whitespace
-    - Numeric fields have range constraints where applicable
-    - Required fields are marked with Field(...)
-    - Optional fields use Field(None, ...) with appropriate defaults
+
+Validation Rules:
+    - String fields: Automatically stripped of whitespace
+    - Numeric fields: Range constraints where applicable (temperature, dimensions)
+    - Required fields: Marked with Field(...)
+    - Optional fields: Use Field(None, ...) with appropriate defaults
+    - Image formats: Validated data URL format (data:image/...;base64,...)
+
+Key Models:
+    - Request Models: GenerateRequest, ChatRequest, VLMRequest, VLMRequestOpenAI
+    - Response Models: GenerateResponse, ChatResponse, VLMResponse
+    - Tool Models: Tool, ToolFunction, ToolCall (POML compatible)
+    - Format Models: ResponseFormat (OpenAI compatible)
 """
 
 from __future__ import annotations

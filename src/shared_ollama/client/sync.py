@@ -4,17 +4,32 @@ This module provides a synchronous HTTP client for the Ollama service using
 the requests library. It handles connection pooling, retries, metrics collection,
 and structured logging.
 
-Key behaviors:
-    - Uses requests.Session with HTTPAdapter for connection pooling
-    - Automatic retry logic via HTTPAdapter (max 3 retries)
-    - Comprehensive metrics and logging for all operations
-    - Supports text generation, chat completion, and model management
-    - Validates responses and handles errors gracefully
+Key Features:
+    - Connection Pooling: Uses requests.Session with HTTPAdapter for efficiency
+    - Automatic Retries: HTTPAdapter retry logic (max 3 retries)
+    - Observability: Comprehensive metrics and structured logging
+    - Operations: Text generation, chat completion, model management
+    - Error Handling: Validates responses and handles errors gracefully
 
-Thread safety:
-    - Each SharedOllamaClient instance uses its own session
+Design Principles:
+    - Synchronous I/O: Blocking operations for simple, straightforward usage
+    - Resource Management: Session-based connection pooling for efficiency
+    - Retry Logic: Automatic retries for transient failures
+    - Observability: Metrics and logging for all operations
+    - Error Handling: Graceful error handling with detailed logging
+
+Thread Safety:
+    - Each SharedOllamaClient instance uses its own requests.Session
     - Safe for concurrent use from multiple threads (each thread should
       use its own client instance)
+    - Session objects are not thread-safe, so one instance per thread
+
+Operations:
+    - generate(): Text generation with configurable options
+    - chat(): Chat completion with message history
+    - list_models(): List available models
+    - get_model_info(): Get detailed model information
+    - Health checks and connection verification
 """
 
 from __future__ import annotations

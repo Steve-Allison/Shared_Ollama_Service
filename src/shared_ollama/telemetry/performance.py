@@ -2,18 +2,34 @@
 
 This module provides detailed performance metrics collection including
 token generation rates, model load times, and evaluation durations.
+Metrics are extracted from Ollama responses and computed for analysis.
 
-Key behaviors:
-    - Detailed timing metrics from Ollama responses (nanoseconds)
-    - Automatic conversion to milliseconds and tokens/second
-    - JSON Lines logging to performance.jsonl
-    - In-memory storage with automatic size limiting
-    - Model-specific performance aggregation
+Key Features:
+    - Detailed Timing: Nanosecond-precision timing from Ollama responses
+    - Automatic Conversion: Nanoseconds to milliseconds, tokens/second calculation
+    - Dual Storage: In-memory collection + JSON Lines file logging
+    - Size Limiting: Automatic trimming (max 10,000 metrics in memory)
+    - Derived Metrics: Calculates tokens/second, prompt tokens/second
 
-Log file:
+Design Principles:
+    - Performance: Fast in-memory storage with file logging
+    - Accuracy: Preserves nanosecond precision from Ollama
+    - Observability: Comprehensive metrics for performance analysis
+    - Memory Efficiency: Automatic trimming prevents unbounded growth
+
+Log File:
     - Location: ``logs/performance.jsonl`` (relative to project root)
-    - Format: One JSON object per line
+    - Format: JSON Lines (one JSON object per line)
     - Encoding: UTF-8
+    - Rotation: Not implemented (file grows unbounded)
+
+Metrics Collected:
+    - Model load time (cold start vs warm start)
+    - Prompt evaluation time and token count
+    - Generation time and token count
+    - Total request latency
+    - Tokens/second (generation throughput)
+    - Prompt tokens/second (evaluation throughput)
 """
 
 from __future__ import annotations
@@ -147,18 +163,33 @@ class PerformanceCollector:
 
     Extracts detailed timing and token metrics from Ollama responses and
     computes derived metrics like tokens/second. Stores metrics in-memory
-    and logs to JSON Lines file.
+    and logs to JSON Lines file for analysis.
+
+    This collector implements PerformanceCollectorInterface and is used by
+    PerformanceCollectorAdapter in the infrastructure layer.
 
     Attributes:
         _metrics: Class variable storing list of DetailedPerformanceMetrics.
-        _max_metrics: Maximum number of metrics to retain (default: 10,000).
+            Automatically trimmed when limit exceeded.
+        _max_metrics: Maximum number of metrics to retain. Default: 10,000.
+            Oldest metrics are discarded when limit is reached.
 
-    Thread safety:
-        Not thread-safe. Use from a single thread or protect with locks
-        if accessing from multiple threads.
+    Thread Safety:
+        Not thread-safe by design. This collector is intended for use in
+        single-threaded async applications. If multi-threaded access is needed,
+        add locks around _metrics operations.
 
-    Memory management:
+    Memory Management:
         Automatically trims oldest metrics when _max_metrics is exceeded.
+        Uses efficient list slicing for O(n) trimming operation. Metrics are
+        stored in chronological order (oldest first).
+
+    Metrics Computation:
+        - Load Time: Model load duration (cold start indicator)
+        - Prompt Evaluation: Time and tokens for prompt processing
+        - Generation: Time and tokens for text generation
+        - Throughput: Calculated tokens/second from duration and token counts
+        - All durations converted from nanoseconds (Ollama format) to milliseconds
     """
 
     _metrics: ClassVar[list[DetailedPerformanceMetrics]] = []

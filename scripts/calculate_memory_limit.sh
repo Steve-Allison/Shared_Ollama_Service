@@ -47,15 +47,20 @@ fi
 MODEL_MEMORY_HINTS="${OLLAMA_MODEL_MEMORY_HINTS:-$MODEL_MEMORY_HINTS}"
 
 IFS=',' read -r -a REQUIRED_MODELS <<< "$REQUIRED_MODELS_CSV"
-declare -A MODEL_MEMORY_MAP
-IFS=',' read -r -a HINT_PAIRS <<< "$MODEL_MEMORY_HINTS"
-for pair in "${HINT_PAIRS[@]}"; do
-    model_name="${pair%%:*}"
-    mem_hint="${pair##*:}"
-    if [ -n "$model_name" ] && [ -n "$mem_hint" ]; then
-        MODEL_MEMORY_MAP["$model_name"]="$mem_hint"
-    fi
-done
+# Use a function to look up memory hints (bash 3.2 compatible - no associative arrays)
+get_model_memory_hint() {
+    local model="$1"
+    IFS=',' read -r -a HINT_PAIRS <<< "$MODEL_MEMORY_HINTS"
+    for pair in "${HINT_PAIRS[@]}"; do
+        model_name="${pair%%:*}"
+        mem_hint="${pair##*:}"
+        if [ "$model_name" = "$model" ] && [ -n "$mem_hint" ]; then
+            echo "$mem_hint"
+            return 0
+        fi
+    done
+    echo ""  # Return empty if not found
+}
 
 LARGEST_MODEL=${OLLAMA_LARGEST_MODEL_GB:-$LARGEST_MODEL_GB}
 
@@ -67,11 +72,13 @@ fi
 
 echo -e "${CYAN}Model Memory Requirements:${NC}"
 for model in "${REQUIRED_MODELS[@]}"; do
-    hint="${MODEL_MEMORY_MAP[$model]}"
+    hint=$(get_model_memory_hint "$model")
     if [ -z "$hint" ]; then
         hint=8
     fi
-    if [ "$model" == "${REQUIRED_MODELS[-1]}" ] && [ "$hint" -eq "$LARGEST_MODEL" ]; then
+    # Check if this is the last model and matches largest (bash 3.2 compatible)
+    last_model="${REQUIRED_MODELS[${#REQUIRED_MODELS[@]}-1]}"
+    if [ "$model" = "$last_model" ] && [ "$hint" -eq "$LARGEST_MODEL" ]; then
         echo "  - $model: ${hint} GB (largest)"
     else
         echo "  - $model: ${hint} GB"

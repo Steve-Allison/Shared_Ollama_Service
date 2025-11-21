@@ -1,20 +1,35 @@
 """Structured logging utilities for the Shared Ollama Service.
 
 This module provides JSON-based structured logging for request/response
-events. All events are written as JSON Lines (JSONL) format to a log file.
+events. All events are written as JSON Lines (JSONL) format to a log file
+for easy parsing and analysis.
 
-Key behaviors:
-    - JSON Lines format (one JSON object per line)
-    - Automatic timestamp injection if not present
-    - Custom serialization for datetime and Path objects
-    - Cached log directory resolution for performance
-    - Non-propagating logger to avoid duplicate logs
+Key Features:
+    - JSON Lines Format: One JSON object per line for easy parsing
+    - Automatic Timestamps: Injected if not present in event data
+    - Custom Serialization: Handles datetime and Path objects correctly
+    - Performance: Cached log directory resolution
+    - Isolation: Non-propagating logger to avoid duplicate logs
 
-Log file:
+Log File Configuration:
     - Location: ``logs/requests.jsonl`` (relative to project root)
-    - Format: One JSON object per line
+    - Format: JSON Lines (one JSON object per line)
     - Encoding: UTF-8
-    - Rotation: Not implemented (file grows unbounded)
+    - Rotation: Not implemented (file grows unbounded - consider log rotation
+      for production)
+
+Design Principles:
+    - Structured Data: All events are JSON objects with consistent schema
+    - Performance: Minimal overhead, cached paths, efficient serialization
+    - Reliability: Errors in logging don't affect request processing
+    - Observability: Comprehensive event data for analysis
+
+Event Schema:
+    All events should include:
+        - event: Event type identifier (e.g., "api_request", "http_request")
+        - timestamp: ISO 8601 timestamp (auto-injected if missing)
+        - Additional fields: Operation-specific metadata (request_id, model,
+          latency_ms, status, etc.)
 """
 
 from __future__ import annotations
@@ -93,28 +108,43 @@ def _json_default(value: Any) -> Any:
 def log_request_event(event: dict[str, Any]) -> None:
     """Emit a structured request event.
 
-    Writes a JSON-formatted log entry to the requests log file. Automatically
-    injects timestamp if not present in the event dictionary.
+    Writes a JSON-formatted log entry to the requests log file in JSON Lines
+    format. Automatically injects timestamp if not present in the event dictionary.
+    Handles custom serialization for datetime and Path objects.
 
     Args:
         event: Event payload dictionary. Should contain:
-            - event: str - Event type (e.g., "api_request", "ollama_request")
-            - operation: str - Operation name (e.g., "generate", "chat")
-            - status: str - Status ("success", "error")
-            - Additional fields as needed (model, latency_ms, etc.)
-        The 'timestamp' field is automatically added if missing.
+            - event: str - Event type identifier (e.g., "api_request", "http_request",
+              "ollama_request")
+            - operation: str - Operation name (e.g., "generate", "chat", "vlm")
+            - status: str - Status ("success" or "error")
+            - Additional fields as needed:
+                - request_id: Unique request identifier
+                - model: Model name used
+                - latency_ms: Request latency in milliseconds
+                - client_ip: Client IP address
+                - project_name: Project identifier
+                - error_type: Error type (if status="error")
+                - error_message: Error message (if status="error")
+        The 'timestamp' field is automatically added if missing (ISO 8601 format).
 
-    Side effects:
+    Side Effects:
         - Writes JSON line to logs/requests.jsonl file
-        - Adds timestamp to event dictionary if missing
-        - May raise IOError if file write fails
+        - Adds timestamp to event dictionary if missing (mutates input dict)
+        - May raise IOError if file write fails (rare, but possible)
+
+    Note:
+        This function is designed to be non-blocking and fast. Errors during
+        logging are caught and logged to Python's logging system but don't
+        affect request processing. The function mutates the input event dict
+        by adding a timestamp if missing.
 
     Example:
         >>> log_request_event({
         ...     "event": "api_request",
         ...     "operation": "generate",
         ...     "status": "success",
-        ...     "model": "qwen3-vl:8b-instruct-q4_K_M",
+        ...     "model": "qwen3:14b-q4_K_M",
         ...     "latency_ms": 1234.56
         ... })
     """

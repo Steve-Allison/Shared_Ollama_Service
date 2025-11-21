@@ -1,12 +1,28 @@
 """Use cases for the Shared Ollama Service.
 
-Use cases orchestrate domain logic and coordinate between domain entities
-and infrastructure adapters. They contain application-specific business rules
-but no framework or infrastructure dependencies.
+This module defines application use cases that orchestrate domain logic and
+coordinate between domain entities and infrastructure adapters. Use cases
+contain application-specific business rules but no framework or infrastructure
+dependencies.
 
-All use cases depend only on:
-    - Domain entities and value objects
-    - Interface protocols (not implementations)
+Design Principles:
+    - Dependency Inversion: Depend on interfaces (Protocols), not implementations
+    - Single Responsibility: Each use case handles one business operation
+    - Orchestration: Coordinate domain logic, logging, metrics, and client calls
+    - Framework-agnostic: No FastAPI, Pydantic, or other framework dependencies
+
+Use Case Responsibilities:
+    - Validate domain entities (delegated to entities themselves)
+    - Coordinate infrastructure adapters (client, logger, metrics)
+    - Transform between domain and infrastructure formats
+    - Handle streaming vs non-streaming responses
+    - Record metrics and log requests
+    - Propagate domain exceptions
+
+Key Use Cases:
+    - GenerateUseCase: Single-prompt text generation
+    - ChatUseCase: Multi-turn text conversations
+    - ListModelsUseCase: Retrieve available models
 """
 
 from __future__ import annotations
@@ -33,13 +49,22 @@ if TYPE_CHECKING:
 class GenerateUseCase:
     """Use case for text generation.
 
-    Orchestrates text generation requests, handling domain validation,
-    client coordination, and metrics/logging.
+    Orchestrates single-prompt text generation requests, handling domain
+    validation, client coordination, metrics collection, and logging.
+
+    This use case transforms domain entities (GenerationRequest) into
+    infrastructure calls, handles streaming and non-streaming responses,
+    and records observability data.
 
     Attributes:
-        client: Ollama client implementation (satisfies OllamaClientInterface).
-        logger: Request logger implementation (satisfies RequestLoggerInterface).
-        metrics: Metrics collector implementation (satisfies MetricsCollectorInterface).
+        _client: Ollama client adapter implementing OllamaClientInterface.
+        _logger: Request logger adapter implementing RequestLoggerInterface.
+        _metrics: Metrics collector adapter implementing MetricsCollectorInterface.
+
+    Note:
+        All dependencies are injected via constructor following dependency
+        inversion principle. Use cases depend on interfaces, not concrete
+        implementations.
     """
 
     def __init__(
@@ -51,9 +76,9 @@ class GenerateUseCase:
         """Initialize the generate use case.
 
         Args:
-            client: Ollama client implementation.
-            logger: Request logger implementation.
-            metrics: Metrics collector implementation.
+            client: Ollama client adapter for making generation requests.
+            logger: Request logger for recording request events.
+            metrics: Metrics collector for tracking performance and usage.
         """
         self._client = client
         self._logger = logger
@@ -69,27 +94,47 @@ class GenerateUseCase:
     ) -> dict[str, Any] | AsyncIterator[dict[str, Any]]:
         """Execute a generation request.
 
-        Orchestrates the generation workflow:
-        1. Validates request (domain validation)
-        2. Calls client to generate text
-        3. Logs request and records metrics
-        4. Returns result
+        Orchestrates the complete generation workflow:
+        1. Extracts values from domain entities (prompt, model, options)
+        2. Transforms domain format to client format (options dict, tools list)
+        3. Calls client adapter to generate text (streaming or non-streaming)
+        4. Records metrics and logs request
+        5. Returns result in appropriate format
 
         Args:
-            request: Generation request domain entity.
-            request_id: Unique request identifier.
-            client_ip: Client IP address for logging.
-            project_name: Project name for logging.
-            stream: Whether to stream the response.
+            request: Generation request domain entity. Already validated by
+                domain layer (GenerationRequest.__post_init__).
+            request_id: Unique request identifier for tracing and logging.
+            client_ip: Client IP address for logging and analytics. None if
+                unavailable.
+            project_name: Project name for request tracking and analytics.
+                None if not provided.
+            stream: Whether to stream the response. True returns AsyncIterator,
+                False returns dict.
 
         Returns:
-            - dict with generation result if stream=False
-            - AsyncIterator of chunks if stream=True
+            If stream=False: dict containing generation result with keys:
+                - text: Generated text
+                - model: Model name used
+                - prompt_eval_count: Prompt tokens evaluated
+                - eval_count: Generation tokens produced
+                - total_duration: Total generation time (nanoseconds)
+                - load_duration: Model load time (nanoseconds)
+            If stream=True: AsyncIterator[dict[str, Any]] yielding chunks
+                with incremental text and final chunk with metrics.
 
         Raises:
-            InvalidRequestError: If request violates business rules.
-            ConnectionError: If service is unavailable.
-            Exception: For other errors.
+            TypeError: If stream=True but result is not AsyncIterator, or
+                stream=False but result is not dict.
+            InvalidRequestError: If request violates business rules (rare,
+                as domain entities validate themselves).
+            ConnectionError: If Ollama service is unavailable.
+            Exception: For other client or infrastructure errors.
+
+        Side Effects:
+            - Records metrics via MetricsCollectorInterface
+            - Logs request via RequestLoggerInterface
+            - May acquire semaphore/concurrency limits in client adapter
         """
         start_time = time.perf_counter()
 
@@ -282,13 +327,21 @@ class GenerateUseCase:
 class ChatUseCase:
     """Use case for chat completion.
 
-    Orchestrates chat completion requests, handling domain validation,
-    client coordination, and metrics/logging.
+    Orchestrates multi-turn conversation requests, handling domain validation,
+    client coordination, metrics collection, and logging.
+
+    This use case transforms domain entities (ChatRequest) into infrastructure
+    calls, handles streaming and non-streaming responses, and records
+    observability data for conversation-based interactions.
 
     Attributes:
-        client: Ollama client implementation (satisfies OllamaClientInterface).
-        logger: Request logger implementation (satisfies RequestLoggerInterface).
-        metrics: Metrics collector implementation (satisfies MetricsCollectorInterface).
+        _client: Ollama client adapter implementing OllamaClientInterface.
+        _logger: Request logger adapter implementing RequestLoggerInterface.
+        _metrics: Metrics collector adapter implementing MetricsCollectorInterface.
+
+    Note:
+        ChatUseCase handles multi-turn conversations with message history,
+        unlike GenerateUseCase which handles single-prompt generation.
     """
 
     def __init__(
@@ -300,9 +353,9 @@ class ChatUseCase:
         """Initialize the chat use case.
 
         Args:
-            client: Ollama client implementation.
-            logger: Request logger implementation.
-            metrics: Metrics collector implementation.
+            client: Ollama client adapter for making chat requests.
+            logger: Request logger for recording request events.
+            metrics: Metrics collector for tracking performance and usage.
         """
         self._client = client
         self._logger = logger
@@ -318,27 +371,47 @@ class ChatUseCase:
     ) -> dict[str, Any] | AsyncIterator[dict[str, Any]]:
         """Execute a chat completion request.
 
-        Orchestrates the chat workflow:
-        1. Validates request (domain validation)
-        2. Calls client to complete chat
-        3. Logs request and records metrics
-        4. Returns result
+        Orchestrates the complete chat workflow:
+        1. Transforms domain messages to client format (with tool calling support)
+        2. Extracts model, options, format, and tools from domain entities
+        3. Calls client adapter to complete chat (streaming or non-streaming)
+        4. Records metrics and logs request
+        5. Returns result in appropriate format
 
         Args:
-            request: Chat request domain entity.
-            request_id: Unique request identifier.
-            client_ip: Client IP address for logging.
-            project_name: Project name for logging.
-            stream: Whether to stream the response.
+            request: Chat request domain entity. Already validated by domain
+                layer (ChatRequest.__post_init__). Contains message history.
+            request_id: Unique request identifier for tracing and logging.
+            client_ip: Client IP address for logging and analytics. None if
+                unavailable.
+            project_name: Project name for request tracking and analytics.
+                None if not provided.
+            stream: Whether to stream the response. True returns AsyncIterator,
+                False returns dict.
 
         Returns:
-            - dict with chat result if stream=False
-            - AsyncIterator of chunks if stream=True
+            If stream=False: dict containing chat result with keys:
+                - message: Assistant message dict with role and content
+                - model: Model name used
+                - prompt_eval_count: Prompt tokens evaluated
+                - eval_count: Generation tokens produced
+                - total_duration: Total generation time (nanoseconds)
+                - load_duration: Model load time (nanoseconds)
+            If stream=True: AsyncIterator[dict[str, Any]] yielding chunks
+                with incremental text and final chunk with metrics.
 
         Raises:
-            InvalidRequestError: If request violates business rules.
-            ConnectionError: If service is unavailable.
-            Exception: For other errors.
+            TypeError: If stream=True but result is not AsyncIterator, or
+                stream=False but result is not dict.
+            InvalidRequestError: If request violates business rules (rare,
+                as domain entities validate themselves).
+            ConnectionError: If Ollama service is unavailable.
+            Exception: For other client or infrastructure errors.
+
+        Side Effects:
+            - Records metrics via MetricsCollectorInterface
+            - Logs request via RequestLoggerInterface
+            - May acquire semaphore/concurrency limits in client adapter
         """
         start_time = time.perf_counter()
 
@@ -558,13 +631,20 @@ class ChatUseCase:
 class ListModelsUseCase:
     """Use case for listing available models.
 
-    Orchestrates model listing, handling client coordination and
-    metrics/logging.
+    Orchestrates model listing requests, handling client coordination,
+    domain entity conversion, metrics collection, and logging.
+
+    This use case retrieves available models from the Ollama service and
+    converts them to domain entities (ModelInfo) for use by the application.
 
     Attributes:
-        client: Ollama client implementation (satisfies OllamaClientInterface).
-        logger: Request logger implementation (satisfies RequestLoggerInterface).
-        metrics: Metrics collector implementation (satisfies MetricsCollectorInterface).
+        _client: Ollama client adapter implementing OllamaClientInterface.
+        _logger: Request logger adapter implementing RequestLoggerInterface.
+        _metrics: Metrics collector adapter implementing MetricsCollectorInterface.
+
+    Note:
+        This use case doesn't require a domain request entity since listing
+        models has no input parameters beyond request metadata.
     """
 
     def __init__(
@@ -576,9 +656,9 @@ class ListModelsUseCase:
         """Initialize the list models use case.
 
         Args:
-            client: Ollama client implementation.
-            logger: Request logger implementation.
-            metrics: Metrics collector implementation.
+            client: Ollama client adapter for listing models.
+            logger: Request logger for recording request events.
+            metrics: Metrics collector for tracking performance and usage.
         """
         self._client = client
         self._logger = logger
@@ -592,18 +672,30 @@ class ListModelsUseCase:
     ) -> list[ModelInfo]:
         """Execute a list models request.
 
-        Orchestrates the list models workflow:
-        1. Calls client to list models
-        2. Converts to domain entities
-        3. Logs request and records metrics
-        4. Returns domain entities
+        Orchestrates the complete list models workflow:
+        1. Calls client adapter to retrieve available models
+        2. Converts infrastructure format (dicts) to domain entities (ModelInfo)
+        3. Records metrics and logs request
+        4. Returns list of domain entities
+
+        Args:
+            request_id: Unique request identifier for tracing and logging.
+            client_ip: Client IP address for logging and analytics. None if
+                unavailable.
+            project_name: Project name for request tracking and analytics.
+                None if not provided.
 
         Returns:
-            List of ModelInfo domain entities.
+            List of ModelInfo domain entities representing available models.
+            Each ModelInfo contains name, optional size, and optional modified_at.
 
         Raises:
-            ConnectionError: If service is unavailable.
-            Exception: For other errors.
+            ConnectionError: If Ollama service is unavailable.
+            Exception: For other client or infrastructure errors.
+
+        Side Effects:
+            - Records metrics via MetricsCollectorInterface
+            - Logs request via RequestLoggerInterface
         """
         start_time = time.perf_counter()
 

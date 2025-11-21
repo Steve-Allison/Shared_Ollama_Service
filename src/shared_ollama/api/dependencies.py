@@ -1,10 +1,29 @@
 """Dependency injection for FastAPI endpoints.
 
 This module provides FastAPI dependencies for use cases and infrastructure
-components, enabling dependency injection and removing global state.
+components, enabling dependency injection and removing global state. All
+dependencies are injected via FastAPI's Depends() system, following Clean
+Architecture principles.
 
-All dependencies are injected via FastAPI's Depends() system, following
-Clean Architecture principles.
+Design Principles:
+    - Dependency Injection: All components injected via FastAPI Depends()
+    - No Global State: Dependencies stored in module-level variables but
+      accessed only through dependency functions
+    - Lifecycle Management: Dependencies initialized during lifespan startup
+    - Error Handling: Returns 503 if dependencies not initialized
+
+Key Dependencies:
+    - Use Cases: GenerateUseCase, ChatUseCase, VLMUseCase, ListModelsUseCase
+    - Batch Use Cases: BatchChatUseCase, BatchVLMUseCase
+    - Infrastructure: Client, logger, metrics, queues, image processors
+    - Request Context: Extracts request_id, client_ip, project_name from headers
+
+Dependency Flow:
+    1. Lifespan startup initializes adapters and queues
+    2. set_dependencies() stores global instances
+    3. get_*() functions retrieve instances (raise 503 if not initialized)
+    4. get_*_use_case() functions construct use cases with injected dependencies
+    5. FastAPI Depends() wires everything together
 """
 
 from __future__ import annotations
@@ -74,16 +93,28 @@ def set_dependencies(
 ) -> None:
     """Set global dependencies (called during lifespan startup).
 
+    Stores infrastructure adapters and queues in module-level variables for
+    access by FastAPI dependency functions. This function is called once
+    during application startup in lifespan_context().
+
     Args:
-        client_adapter: Ollama client adapter.
-        logger_adapter: Request logger adapter.
-        metrics_adapter: Metrics collector adapter.
-        chat_queue: Chat request queue instance.
-        vlm_queue: VLM request queue instance.
-        image_processor_adapter: Image processor adapter for VLM.
-        image_cache_adapter: Image cache adapter for VLM.
-        analytics_adapter: Analytics collector adapter. Optional.
-        performance_adapter: Performance collector adapter. Optional.
+        client_adapter: Ollama client adapter for making requests to Ollama service.
+        logger_adapter: Request logger adapter for structured logging.
+        metrics_adapter: Metrics collector adapter for basic metrics.
+        chat_queue: Chat request queue for concurrency control (text-only requests).
+        vlm_queue: VLM request queue for concurrency control (vision-language requests).
+        image_processor_adapter: Image processor adapter for VLM image processing.
+        image_cache_adapter: Image cache adapter for caching processed images.
+        analytics_adapter: Analytics collector adapter for project-based tracking.
+            None if analytics collection is disabled.
+        performance_adapter: Performance collector adapter for detailed metrics.
+            None if detailed performance tracking is disabled.
+
+    Note:
+        This function should only be called once during application startup.
+        All dependencies must be initialized before calling this function.
+        Dependencies are stored in module-level variables and accessed via
+        get_*() functions which raise 503 if not initialized.
     """
     global _client_adapter, _logger_adapter, _metrics_adapter, _analytics_adapter
     global _performance_adapter, _chat_queue, _vlm_queue
@@ -221,14 +252,28 @@ def get_image_cache() -> ImageCacheAdapter:
 def get_request_context(request: Request) -> RequestContext:  # type: ignore[valid-type]
     """Extract (or reuse) request context from FastAPI request.
 
-    Ensures the same context instance is reused throughout the lifetime of a single
-    request so all logging shares the identical request_id.
+    Extracts or creates request context from FastAPI request, ensuring the same
+    context instance is reused throughout the lifetime of a single request. This
+    ensures all logging and metrics share the identical request_id, client_ip,
+    and project_name.
+
+    The context is stored in request.state to avoid recomputation and ensure
+    consistency across middleware, dependencies, and route handlers.
 
     Args:
-        request: FastAPI Request object.
+        request: FastAPI Request object containing headers and state.
 
     Returns:
-        RequestContext with request_id, client_ip, user_agent, and project_name.
+        RequestContext object containing:
+            - request_id: Unique request identifier (UUID v4)
+            - client_ip: Client IP address (from X-Forwarded-For or remote address)
+            - user_agent: User agent string from headers
+            - project_name: Project name from X-Project-Name header (optional)
+
+    Note:
+        Request context is cached in request.state after first access. This
+        ensures consistent request_id across all logging and metrics for a
+        single HTTP request.
     """
     from slowapi.util import get_remote_address
 

@@ -1,7 +1,44 @@
 """VLM routes for Vision-Language Model endpoints.
 
 Provides both native Ollama format (/vlm) and OpenAI-compatible format (/vlm/openai)
-for multimodal conversations with images and text.
+for multimodal conversations with images and text. Supports image processing,
+compression, caching, and streaming responses.
+
+Key Features:
+    - Multimodal Conversations: Text and images in same conversation
+    - Dual Formats: Native Ollama and OpenAI-compatible endpoints
+    - Image Processing: Automatic resizing, compression, format conversion
+    - Image Caching: LRU cache with TTL for processed images
+    - Streaming Support: Server-Sent Events (SSE) for real-time responses
+    - Request Queuing: Uses VLM queue for concurrency control
+    - Tool Calling: Supports OpenAI-compatible tool calling
+
+Endpoints:
+    POST /api/v1/vlm
+        - Request: VLMRequest (native Ollama format)
+        - Response: VLMResponse (non-streaming) or SSE stream (streaming)
+        - Rate Limited: Yes (via slowapi middleware)
+
+    POST /api/v1/vlm/openai
+        - Request: VLMRequestOpenAI (OpenAI-compatible format)
+        - Response: OpenAI-compatible ChatCompletionResponse or SSE stream
+        - Rate Limited: Yes (via slowapi middleware)
+
+Image Processing:
+    - Images validated and processed before sending to Ollama
+    - Automatic resizing to max_dimension (default: 2667px)
+    - Format conversion (RGBA to RGB for JPEG)
+    - Compression with configurable quality
+    - Caching to avoid redundant processing
+
+Request Flow:
+    1. Request validated by Pydantic (VLMRequest or VLMRequestOpenAI)
+    2. Request queued via RequestQueue (concurrency control)
+    3. Images processed and cached (if compression enabled)
+    4. Mapped to domain entity (VLMRequest)
+    5. Executed via VLMUseCase
+    6. Response built from use case result
+    7. Returned as JSON or SSE stream
 """
 
 from __future__ import annotations

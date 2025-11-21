@@ -1,6 +1,34 @@
 """Generation routes for text generation endpoint.
 
-Provides the /generate endpoint for single-prompt text generation.
+Provides the /generate endpoint for single-prompt text generation. This endpoint
+supports both streaming and non-streaming responses, with comprehensive error
+handling and request queuing.
+
+Key Features:
+    - Single-Prompt Generation: Generate text from a single prompt
+    - Streaming Support: Server-Sent Events (SSE) for real-time text generation
+    - Request Queuing: Uses chat queue for concurrency control
+    - Error Handling: Comprehensive error handling with structured logging
+    - Rate Limiting: Integrated with slowapi rate limiting
+
+Endpoint:
+    POST /api/v1/generate
+        - Request: GenerateRequest (prompt, model, options, stream, etc.)
+        - Response: GenerateResponse (non-streaming) or SSE stream (streaming)
+        - Rate Limited: Yes (via slowapi middleware)
+
+Request Flow:
+    1. Request validated by Pydantic (GenerateRequest)
+    2. Request queued via RequestQueue (concurrency control)
+    3. Mapped to domain entity (GenerationRequest)
+    4. Executed via GenerateUseCase
+    5. Response built from use case result
+    6. Returned as JSON or SSE stream
+
+Streaming:
+    - Set stream=True in request to enable SSE streaming
+    - Stream format: "data: {json}\n\n" per chunk
+    - Final chunk includes "done: true" marker
 """
 
 from __future__ import annotations

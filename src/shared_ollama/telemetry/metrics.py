@@ -1,19 +1,32 @@
 """Metrics collection and monitoring utilities for the Shared Ollama Service.
 
 This module provides in-memory metrics collection for request tracking,
-performance monitoring, and service health observability.
+performance monitoring, and service health observability. Metrics are
+collected in real-time and aggregated for analysis.
 
-Key behaviors:
-    - In-memory storage with automatic size limiting (max 10,000 metrics)
-    - Time-window filtering for recent metrics analysis
-    - Statistical calculations (percentiles, averages)
-    - Thread-safe operations (single-threaded by design)
-    - Automatic timestamp tracking with UTC timezone
+Key Features:
+    - In-Memory Storage: Fast, no external dependencies
+    - Automatic Size Limiting: Max 10,000 metrics (oldest discarded)
+    - Time-Window Filtering: Analyze recent metrics (last N minutes)
+    - Statistical Calculations: Percentiles (p50, p95, p99), averages
+    - UTC Timestamps: All timestamps in UTC for consistency
+    - Request Aggregation: Group by model, operation, error type
 
-Memory management:
-    - Metrics are stored in a list with automatic trimming
-    - Oldest metrics are discarded when limit is reached
-    - No external dependencies for storage (in-memory only)
+Design Principles:
+    - Performance: In-memory storage for fast access
+    - Memory Efficiency: Automatic trimming prevents unbounded growth
+    - Statistical Accuracy: Uses Python's statistics module for percentiles
+    - Observability: Comprehensive metrics for monitoring and alerting
+
+Memory Management:
+    - Metrics stored in class-level list (max 10,000 entries)
+    - Oldest metrics automatically discarded when limit exceeded
+    - Efficient O(n) trimming operation using list slicing
+    - No external storage dependencies (in-memory only)
+
+Thread Safety:
+    - Not thread-safe by design (single-threaded async application)
+    - If multi-threaded access needed, add locks around _metrics operations
 """
 
 from __future__ import annotations
@@ -100,20 +113,33 @@ class ServiceMetrics:
 class MetricsCollector:
     """Collects and aggregates metrics for the Ollama service.
 
-    Thread-safe class-level metrics storage with automatic size limiting.
-    Provides efficient aggregation and statistical calculations.
+    Class-level metrics collector with automatic size limiting and efficient
+    aggregation. Provides comprehensive statistics including percentiles,
+    averages, and error breakdowns.
+
+    This collector implements MetricsCollectorInterface and is used by
+    MetricsCollectorAdapter in the infrastructure layer.
 
     Attributes:
-        _metrics: Class variable storing list of RequestMetrics.
-        _max_metrics: Maximum number of metrics to retain (default: 10,000).
+        _metrics: Class variable storing list of RequestMetrics. Automatically
+            trimmed when limit exceeded.
+        _max_metrics: Maximum number of metrics to retain. Default: 10,000.
+            Oldest metrics are discarded when limit is reached.
 
-    Thread safety:
-        Not thread-safe. Use from a single thread or protect with locks
-        if accessing from multiple threads.
+    Thread Safety:
+        Not thread-safe by design. This collector is intended for use in
+        single-threaded async applications. If multi-threaded access is needed,
+        add locks around _metrics operations.
 
-    Memory management:
+    Memory Management:
         Automatically trims oldest metrics when _max_metrics is exceeded.
-        Uses efficient list slicing for O(n) trimming operation.
+        Uses efficient list slicing for O(n) trimming operation. Metrics are
+        stored in chronological order (oldest first).
+
+    Statistical Calculations:
+        - Percentiles: Uses statistics.quantiles() for accurate p50, p95, p99
+        - Aggregation: Uses Counter for efficient O(n) counting
+        - Time Windows: Filters metrics by timestamp for recent analysis
     """
 
     _metrics: ClassVar[list[RequestMetrics]] = []

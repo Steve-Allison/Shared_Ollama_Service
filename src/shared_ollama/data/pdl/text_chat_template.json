@@ -1,0 +1,119 @@
+{
+    "schema": "ibm.com/pdl/v1beta1",
+    "name": "shared-ollama-chat-template",
+    "version": "1.0.0",
+    "description": "Prompt Declarative Language (PDL) template for invoking the Shared Ollama Service text/chat endpoint.",
+    "metadata": {
+        "owner": "Shared Ollama Service",
+        "contact": "platform-team@example.com",
+        "labels": {
+            "service": "shared-ollama",
+            "capability": "text-chat"
+        }
+    },
+    "inputs": {
+        "type": "object",
+        "properties": {
+            "prompt": {
+                "type": "string",
+                "title": "User prompt",
+                "description": "Instruction or query for the assistant.",
+                "examples": [
+                    "Summarize the key takeaways from this meeting transcript.",
+                    "Produce three subject lines tailored for an enterprise IT buyer."
+                ]
+            },
+            "conversation_history": {
+                "type": "array",
+                "title": "Optional chat history",
+                "description": "Array of prior messages, each containing a role and content string.",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "role": {
+                            "type": "string",
+                            "enum": [
+                                "system",
+                                "user",
+                                "assistant"
+                            ]
+                        },
+                        "content": {
+                            "type": "string"
+                        }
+                    },
+                    "required": [
+                        "role",
+                        "content"
+                    ]
+                },
+                "default": []
+            },
+            "project_name": {
+                "type": "string",
+                "title": "Project tag",
+                "description": "Optional project identifier used for logging/analytics.",
+                "default": "ibm-pdl-text"
+            }
+        },
+        "required": [
+            "prompt"
+        ]
+    },
+    "prompt": {
+        "system": "You are a precise enterprise assistant who follows instructions carefully and cites concrete details when possible.",
+        "user": [
+            {
+                "text": "{{inputs.prompt}}"
+            }
+        ]
+    },
+    "runtime": {
+        "invoke": {
+            "method": "POST",
+            "url": "__API_BASE_URL__/api/v1/chat",
+            "headers": {
+                "Content-Type": "application/json",
+                "Authorization": "Bearer ${API_KEY}"
+            },
+            "body": {
+                "model": "llama3.1:8b-instruct-q4_K_M",
+                "messages": [
+                    {
+                        "role": "system",
+                        "content": "You are a precise enterprise assistant who follows instructions carefully."
+                    },
+                    {
+                        "role": "user",
+                        "content": "{{inputs.prompt}}"
+                    }
+                ],
+                "history": "{{inputs.conversation_history}}",
+                "project": "{{inputs.project_name}}",
+                "stream": false
+            }
+        }
+    },
+    "outputs": {
+        "type": "object",
+        "properties": {
+            "text": {
+                "type": "string",
+                "description": "Primary textual response from the assistant."
+            },
+            "request_id": {
+                "type": "string",
+                "description": "Server-generated request identifier."
+            },
+            "model": {
+                "type": "string",
+                "description": "Model that produced the response."
+            }
+        },
+        "required": [
+            "text",
+            "request_id"
+        ]
+    }
+}
+

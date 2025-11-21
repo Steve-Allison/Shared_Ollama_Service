@@ -45,7 +45,7 @@ package-dir = {"" = "src"}
 where = ["src"]
 
 [tool.setuptools.package-data]
-"shared_ollama" = ["**/*.pyi"]
+"shared_ollama" = ["**/*.pyi", "data/pdl/*.json"]
 
 # Ruff Configuration - Modern Python Linter & Formatter
 [tool.ruff]

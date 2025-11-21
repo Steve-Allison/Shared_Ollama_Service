@@ -117,7 +117,7 @@ class ImageProcessingConfig(BaseModel):
     """Image processing configuration for VLM."""
 
     max_dimension: int = Field(
-        default=1024, ge=256, le=2048, description="Max image dimension (pixels)"
+        default=2667, ge=256, le=2667, description="Max image dimension (pixels)"
     )
     jpeg_quality: int = Field(
         default=85, ge=1, le=100, description="JPEG compression quality"

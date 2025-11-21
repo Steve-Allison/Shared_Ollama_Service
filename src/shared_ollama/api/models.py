@@ -20,6 +20,7 @@ Validation:
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator
@@ -642,7 +643,7 @@ class VLMRequest(BaseModel):
         seed: Random seed for reproducibility. Optional.
         stop: List of stop sequences. Optional.
         image_compression: Enable image compression (recommended). Defaults to True.
-        max_dimension: Maximum image dimension for resizing (256-2048). Defaults to 1024.
+        max_dimension: Maximum image dimension for resizing (256-2667). Defaults to 2667.
         compression_format: Image compression format (jpeg, png, or webp). Defaults to jpeg.
     """
 
@@ -681,7 +682,7 @@ class VLMRequest(BaseModel):
     seed: int | None = Field(None, description="Random seed for reproducibility")
     stop: list[str] | None = Field(None, description="Stop sequences")
     image_compression: bool = Field(True, description="Enable image compression (recommended)")
-    max_dimension: int = Field(1024, ge=256, le=2048, description="Maximum image dimension for resizing")
+    max_dimension: int = Field(2667, ge=256, le=2667, description="Maximum image dimension for resizing")
     compression_format: Literal["jpeg", "png", "webp"] = Field(
         "jpeg", description="Image compression format (jpeg, png, or webp)"
     )
@@ -824,7 +825,7 @@ class VLMRequestOpenAI(BaseModel):
         stop: List of stop sequences. Optional.
         tools: Tools/functions the model can call (POML compatible). Optional.
         image_compression: Enable image compression (recommended). Defaults to True.
-        max_dimension: Maximum image dimension for resizing (256-2048). Defaults to 1024.
+        max_dimension: Maximum image dimension for resizing (256-2667). Defaults to 2667.
         compression_format: Image compression format (jpeg, png, or webp). Defaults to jpeg.
     """
 
@@ -858,7 +859,7 @@ class VLMRequestOpenAI(BaseModel):
     stop: list[str] | None = Field(None, description="Stop sequences")
     tools: list[Tool] | None = Field(None, description="Tools/functions the model can call (POML compatible)")
     image_compression: bool = Field(True, description="Enable image compression (recommended)")
-    max_dimension: int = Field(1024, ge=256, le=2048, description="Maximum image dimension for resizing")
+    max_dimension: int = Field(2667, ge=256, le=2667, description="Maximum image dimension for resizing")
     compression_format: Literal["jpeg", "png", "webp"] = Field(
         "jpeg", description="Image compression format (jpeg, png, or webp)"
     )
@@ -1014,3 +1015,138 @@ class RequestContext:
     client_ip: str
     user_agent: str | None = None
     project_name: str | None = None
+
+
+# ============================================================================
+# Observability / Telemetry Response Models
+# ============================================================================
+
+
+class MetricsResponse(BaseModel):
+    """Structured response for /metrics endpoint."""
+
+    model_config = ConfigDict(validate_assignment=True, extra="forbid")
+
+    total_requests: int = Field(..., ge=0, description="Total requests observed")
+    successful_requests: int = Field(..., ge=0, description="Successful requests")
+    failed_requests: int = Field(..., ge=0, description="Failed requests")
+    requests_by_model: dict[str, int] = Field(
+        default_factory=dict, description="Request counts grouped by model"
+    )
+    requests_by_operation: dict[str, int] = Field(
+        default_factory=dict, description="Request counts grouped by operation"
+    )
+    average_latency_ms: float = Field(..., ge=0.0, description="Average latency (ms)")
+    p50_latency_ms: float = Field(..., ge=0.0, description="50th percentile latency (ms)")
+    p95_latency_ms: float = Field(..., ge=0.0, description="95th percentile latency (ms)")
+    p99_latency_ms: float = Field(..., ge=0.0, description="99th percentile latency (ms)")
+    errors_by_type: dict[str, int] = Field(
+        default_factory=dict, description="Error counts grouped by error type"
+    )
+    last_request_time: datetime | None = Field(
+        None, description="Timestamp of most recent request"
+    )
+    first_request_time: datetime | None = Field(
+        None, description="Timestamp of earliest request included"
+    )
+
+
+class PerformanceModelStats(BaseModel):
+    """Per-model performance statistics."""
+
+    model_config = ConfigDict(validate_assignment=True, extra="forbid")
+
+    avg_tokens_per_second: float = Field(..., ge=0.0, description="Average tokens/sec")
+    avg_load_time_ms: float = Field(..., ge=0.0, description="Average load time (ms)")
+    avg_generation_time_ms: float = Field(
+        ..., ge=0.0, description="Average generation time (ms)"
+    )
+    request_count: int = Field(..., ge=0, description="Number of successful requests")
+
+
+class PerformanceStatsResponse(BaseModel):
+    """Structured response for /performance/stats endpoint."""
+
+    model_config = ConfigDict(validate_assignment=True, extra="forbid")
+
+    avg_tokens_per_second: float = Field(..., ge=0.0, description="Overall avg tokens/sec")
+    avg_load_time_ms: float = Field(..., ge=0.0, description="Overall avg load time (ms)")
+    avg_generation_time_ms: float = Field(
+        ..., ge=0.0, description="Overall avg generation time (ms)"
+    )
+    total_requests: int = Field(..., ge=0, description="Successful requests counted")
+    by_model: dict[str, PerformanceModelStats] = Field(
+        default_factory=dict, description="Per-model performance statistics"
+    )
+
+
+class ProjectMetricsResponse(BaseModel):
+    """Per-project analytics details."""
+
+    model_config = ConfigDict(validate_assignment=True, extra="forbid")
+
+    project_name: str = Field(..., description="Project identifier")
+    total_requests: int = Field(..., ge=0, description="Total requests for project")
+    successful_requests: int = Field(..., ge=0, description="Successful requests")
+    failed_requests: int = Field(..., ge=0, description="Failed requests")
+    requests_by_model: dict[str, int] = Field(
+        default_factory=dict, description="Model usage for project"
+    )
+    requests_by_operation: dict[str, int] = Field(
+        default_factory=dict, description="Operation breakdown for project"
+    )
+    average_latency_ms: float = Field(..., ge=0.0, description="Average latency (ms)")
+    total_latency_ms: float = Field(..., ge=0.0, description="Total latency accumulated (ms)")
+    last_request_time: datetime | None = Field(
+        None, description="Most recent request timestamp"
+    )
+    first_request_time: datetime | None = Field(
+        None, description="Oldest request timestamp"
+    )
+
+
+class HourlyMetricsEntry(BaseModel):
+    """Hourly aggregated analytics entry."""
+
+    model_config = ConfigDict(validate_assignment=True, extra="forbid")
+
+    timestamp: datetime = Field(..., description="Hour bucket timestamp (UTC)")
+    requests_count: int = Field(..., ge=0, description="Total requests in this hour")
+    successful_count: int = Field(..., ge=0, description="Successful requests in this hour")
+    failed_count: int = Field(..., ge=0, description="Failed requests in this hour")
+    average_latency_ms: float = Field(..., ge=0.0, description="Average latency (ms)")
+    requests_by_model: dict[str, int] = Field(
+        default_factory=dict, description="Model usage during this hour"
+    )
+
+
+class AnalyticsResponse(BaseModel):
+    """Structured response for /analytics endpoint."""
+
+    model_config = ConfigDict(validate_assignment=True, extra="forbid")
+
+    total_requests: int = Field(..., ge=0, description="Total requests observed")
+    successful_requests: int = Field(..., ge=0, description="Successful requests")
+    failed_requests: int = Field(..., ge=0, description="Failed requests")
+    success_rate: float = Field(..., ge=0.0, le=1.0, description="Success rate (0-1)")
+    average_latency_ms: float = Field(..., ge=0.0, description="Average latency (ms)")
+    p50_latency_ms: float = Field(..., ge=0.0, description="50th percentile latency")
+    p95_latency_ms: float = Field(..., ge=0.0, description="95th percentile latency")
+    p99_latency_ms: float = Field(..., ge=0.0, description="99th percentile latency")
+    requests_by_model: dict[str, int] = Field(
+        default_factory=dict, description="Requests grouped by model"
+    )
+    requests_by_operation: dict[str, int] = Field(
+        default_factory=dict, description="Requests grouped by operation"
+    )
+    requests_by_project: dict[str, int] = Field(
+        default_factory=dict, description="Requests grouped by project"
+    )
+    project_metrics: dict[str, ProjectMetricsResponse] = Field(
+        default_factory=dict, description="Detailed metrics per project"
+    )
+    hourly_metrics: list[HourlyMetricsEntry] = Field(
+        default_factory=list, description="Hourly aggregated metrics"
+    )
+    start_time: datetime | None = Field(None, description="Start of reporting window")
+    end_time: datetime | None = Field(None, description="End of reporting window")

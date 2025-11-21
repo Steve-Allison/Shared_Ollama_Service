@@ -31,6 +31,7 @@ echo ""
 # Check for flags
 RESTART=false
 SKIP_VERIFY=false
+FOREGROUND=false
 for arg in "$@"; do
     case $arg in
         --restart|-r)
@@ -38,6 +39,9 @@ for arg in "$@"; do
             ;;
         --skip-verify|--no-verify)
             SKIP_VERIFY=true
+            ;;
+        --foreground)
+            FOREGROUND=true
             ;;
     esac
 done
@@ -284,17 +288,18 @@ echo ""
 # Save PID for reference (gunicorn manages workers internally)
 echo "$GUNICORN_PID" > "$PROJECT_ROOT/.api.pid"
 
-echo -e "${CYAN}Service is running in the background with gunicorn.${NC}"
+echo -e "${CYAN}Service is running with gunicorn.${NC}"
 echo -e "${CYAN}Gunicorn provides built-in process management and auto-restart.${NC}"
 echo -e "${CYAN}To stop the service, run: ./scripts/shutdown.sh${NC}"
 echo -e "${CYAN}To view logs: tail -f $API_LOG${NC}"
 echo ""
 
-# Wait for gunicorn master process (foreground)
-# Gunicorn manages workers internally and will auto-restart them on crash
-wait $GUNICORN_PID
-
-# If we get here, gunicorn master exited
-echo -e "${YELLOW}⚠ Gunicorn master process exited${NC}"
+if [ "$FOREGROUND" = true ]; then
+    echo -e "${GRAY}Waiting for gunicorn master process (--foreground)${NC}"
+    wait $GUNICORN_PID
+    echo -e "${YELLOW}⚠ Gunicorn master process exited${NC}"
+else
+    echo -e "${GRAY}Tip: run with --foreground to block and monitor the master process${NC}"
+fi
 
 

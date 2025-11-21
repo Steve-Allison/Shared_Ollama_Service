@@ -155,7 +155,7 @@ settings.batch.vlm_max_requests        # Max requests per batch (default: 20)
 VLM image processing settings:
 
 ```python
-settings.image.max_dimension           # Max dimension in pixels (default: 1024)
+settings.image.max_dimension           # Max dimension in pixels (default: 2667)
 settings.image.jpeg_quality            # JPEG quality 1-100 (default: 85)
 settings.image.png_compression         # PNG compression 0-9 (default: 6)
 settings.image.max_size_bytes          # Max size in bytes (default: 10MB)

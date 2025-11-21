@@ -57,7 +57,7 @@ vlm_max_requests = 20        # Max requests per batch VLM (1-500)
 # Image Processing Configuration (for VLM)
 # ==============================================================================
 [image]
-max_dimension = 1024         # Max image dimension in pixels (256-2048)
+max_dimension = 2667         # Max image dimension in pixels (256-2667)
 jpeg_quality = 85            # JPEG compression quality (1-100)
 png_compression = 6          # PNG compression level (0-9)
 max_size_bytes = 10485760    # Max image size in bytes (10MB default, 1MB-100MB)

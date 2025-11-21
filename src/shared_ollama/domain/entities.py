@@ -21,7 +21,7 @@ PROMPT_MAX_LENGTH = 1_000_000
 VALID_ROLES = {"user", "assistant", "system", "tool"}
 MAX_TOTAL_MESSAGE_CHARS = 1_000_000
 MIN_IMAGE_DIMENSION = 256
-MAX_IMAGE_DIMENSION = 2048
+MAX_IMAGE_DIMENSION = 2667
 
 
 class Model(StrEnum):
@@ -371,7 +371,7 @@ class VLMRequest:
         model: Model name (should be VLM-capable like qwen3-vl:8b-instruct-q4_K_M).
         options: Generation options.
         image_compression: Whether to compress images (default: True).
-        max_dimension: Maximum image dimension for resizing (default: 1024).
+        max_dimension: Maximum image dimension for resizing (default: 2667).
         format: Output format specification. Can be:
             - "json" for JSON mode
             - dict with JSON schema for structured output
@@ -383,7 +383,7 @@ class VLMRequest:
     model: ModelName | None = None
     options: GenerationOptions | None = None
     image_compression: bool = True
-    max_dimension: int = 1024
+    max_dimension: int = 2667
     format: str | dict[str, Any] | None = None
     tools: tuple[Tool, ...] | None = None
 
@@ -516,7 +516,7 @@ class VLMRequestOpenAI:
         model: Model name (should be VLM-capable like qwen3-vl:8b-instruct-q4_K_M).
         options: Generation options.
         image_compression: Whether to compress images (default: True).
-        max_dimension: Maximum image dimension for resizing (default: 1024).
+        max_dimension: Maximum image dimension for resizing (default: 2667).
         format: Output format specification. Can be:
             - "json" for JSON mode
             - dict with JSON schema for structured output
@@ -528,7 +528,7 @@ class VLMRequestOpenAI:
     model: ModelName | None = None
     options: GenerationOptions | None = None
     image_compression: bool = True
-    max_dimension: int = 1024
+    max_dimension: int = 2667
     format: str | dict[str, Any] | None = None
     tools: tuple[Tool, ...] | None = None
 

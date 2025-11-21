@@ -189,6 +189,8 @@ def handle_route_errors(
 
             case _:
                 # Handle all other exceptions
+                import traceback
+                traceback.print_exc()
                 logger.exception(
                     f"unexpected_error_{operation_name}: request_id=%s, error_type=%s",
                     ctx.request_id,

@@ -14,6 +14,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import Response, StreamingResponse
+from pydantic import BaseModel
 
 from shared_ollama.api.dependencies import (
     get_request_context,
@@ -38,10 +39,17 @@ from shared_ollama.api.response_builders import (
 )
 from shared_ollama.api.type_guards import is_dict_result
 from shared_ollama.application.vlm_use_cases import VLMUseCase
+from shared_ollama.domain.entities import VLMRequest as DomainVLMRequest
 from shared_ollama.core.queue import RequestQueue
 from shared_ollama.telemetry.structured_logging import log_request_event
 
 logger = logging.getLogger(__name__)
+
+
+def _count_images_from_domain_request(domain_req: DomainVLMRequest) -> int:
+    """Count images attached to messages in a domain VLM request."""
+
+    return sum(len(msg.images or ()) for msg in domain_req.messages)
 
 
 class VLMContext(BaseModel):
@@ -338,7 +346,7 @@ async def vlm_chat_openai(
         )
 
         # Count images for response metrics
-        image_count = len(domain_req.images)
+        image_count = _count_images_from_domain_request(domain_req)
         event_data["images_count"] = image_count
 
         # Acquire VLM queue slot for request processing

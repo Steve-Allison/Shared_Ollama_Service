@@ -1,0 +1,109 @@
+{
+    "schema": "ibm.com/pdl/v1beta1",
+    "name": "shared-ollama-vlm-insights",
+    "version": "1.0.0",
+    "description": "Reference Prompt Declarative Language (PDL) template for invoking the Shared Ollama Service VLM endpoint.",
+    "metadata": {
+        "owner": "Shared Ollama Service",
+        "contact": "platform-team@example.com",
+        "labels": {
+            "service": "shared-ollama",
+            "capability": "vision-language"
+        }
+    },
+    "inputs": {
+        "type": "object",
+        "properties": {
+            "prompt": {
+                "type": "string",
+                "title": "User prompt",
+                "description": "Instruction or question describing what the model should do.",
+                "examples": [
+                    "Summarize the key themes in this slide.",
+                    "Extract call-to-action text from the marketing asset."
+                ]
+            },
+            "image": {
+                "type": "string",
+                "title": "Image data URL",
+                "description": "Base64 encoded data URL (PNG or JPEG) that will be passed to the VLM endpoint.",
+                "format": "data-url"
+            },
+            "project_name": {
+                "type": "string",
+                "title": "Project tag",
+                "description": "Optional project identifier used for logging/analytics.",
+                "default": "ibm-pdl-integration"
+            }
+        },
+        "required": [
+            "prompt",
+            "image"
+        ]
+    },
+    "prompt": {
+        "system": "You are a precise visual analyst. Describe factual, verifiable details from the provided image and reference the user prompt for any additional tasks.",
+        "user": [
+            {
+                "text": "{{inputs.prompt}}"
+            },
+            {
+                "image": "{{inputs.image}}"
+            }
+        ]
+    },
+    "safety": {
+        "profanity_filter": "medium",
+        "pii_filter": "standard"
+    },
+    "runtime": {
+        "invoke": {
+            "method": "POST",
+            "url": "__API_BASE_URL__/api/v1/vlm/openai",
+            "headers": {
+                "Content-Type": "application/json",
+                "Authorization": "Bearer ${API_KEY}"
+            },
+            "body": {
+                "model": "qwen3-vl:8b-instruct-q4_K_M",
+                "messages": [
+                    {
+                        "role": "system",
+                        "content": "You are a precise visual analyst. Describe factual, verifiable details from the provided image."
+                    },
+                    {
+                        "role": "user",
+                        "content": "{{inputs.prompt}}"
+                    }
+                ],
+                "images": [
+                    "{{inputs.image}}"
+                ],
+                "project": "{{inputs.project_name}}",
+                "stream": false
+            }
+        }
+    },
+    "outputs": {
+        "type": "object",
+        "properties": {
+            "text": {
+                "type": "string",
+                "description": "Primary textual response from the assistant."
+            },
+            "request_id": {
+                "type": "string",
+                "description": "Server-generated request identifier for traceability."
+            },
+            "model": {
+                "type": "string",
+                "description": "Model that produced the response."
+            }
+        },
+        "required": [
+            "text",
+            "request_id"
+        ]
+    }
+}
+

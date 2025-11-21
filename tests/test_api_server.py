@@ -27,6 +27,7 @@ from shared_ollama.infrastructure.adapters import (
     MetricsCollectorAdapter,
     RequestLoggerAdapter,
 )
+from tests.test_model_validation import VALID_IMAGE_DATA_URL
 class _DummyImageProcessor:
     def validate_data_url(self, data_url: str) -> tuple[str, bytes]:
         return "image/jpeg", b""
@@ -151,6 +152,43 @@ def api_client(mock_async_client, mock_use_cases):
         cleanup_dependency_overrides(app)
 
 
+@pytest.fixture
+def api_client_with_vlm(mock_async_client, mock_use_cases):
+    """Test client that provides a mocked VLM use case."""
+    client_adapter = AsyncOllamaClientAdapter(mock_async_client)
+    logger_adapter = RequestLoggerAdapter()
+    metrics_adapter = MetricsCollectorAdapter()
+    queue = RequestQueue(max_concurrent=3, max_queue_size=10)
+
+    class DummyVLMUseCase:
+        def __init__(self) -> None:
+            self.execute = AsyncMock()
+
+    vlm_use_case = DummyVLMUseCase()
+    image_processor_adapter = ImageProcessorAdapter(_DummyImageProcessor())
+    image_cache_adapter = ImageCacheAdapter(_DummyImageCache())
+
+    setup_dependency_overrides(
+        app=app,
+        client_adapter=client_adapter,
+        logger_adapter=logger_adapter,
+        metrics_adapter=metrics_adapter,
+        queue=queue,
+        generate_use_case=mock_use_cases["generate"],
+        chat_use_case=mock_use_cases["chat"],
+        list_models_use_case=mock_use_cases["list_models"],
+        image_processor_adapter=image_processor_adapter,
+        image_cache_adapter=image_cache_adapter,
+        vlm_use_case=vlm_use_case,
+    )
+
+    try:
+        with TestClient(app) as client:
+            yield client, vlm_use_case
+    finally:
+        cleanup_dependency_overrides(app)
+
+
 class TestHealthEndpoint:
     """Behavioral tests for health check endpoint."""
 
@@ -238,6 +276,90 @@ class TestQueueStatsEndpoint:
         assert isinstance(data["in_progress"], int)
         assert isinstance(data["max_concurrent"], int)
         assert isinstance(data["max_queue_size"], int)
+
+
+class TestSystemMetricsEndpoints:
+    """Behavioral tests for metrics/performance/analytics endpoints."""
+
+    @staticmethod
+    def _seed_metrics() -> None:
+        """Seed telemetry collectors with deterministic values."""
+        from datetime import datetime, timezone
+
+        from shared_ollama.telemetry.analytics import AnalyticsCollector
+        from shared_ollama.telemetry.metrics import MetricsCollector, RequestMetrics
+        from shared_ollama.telemetry.performance import (
+            DetailedPerformanceMetrics,
+            PerformanceCollector,
+        )
+
+        now = datetime.now(timezone.utc)
+
+        MetricsCollector.reset()
+        PerformanceCollector.reset()
+        AnalyticsCollector._project_metadata.clear()  # type: ignore[attr-defined]
+
+        MetricsCollector._metrics.extend(  # type: ignore[attr-defined]
+            [
+                RequestMetrics("model-a", "chat", 100.0, True, timestamp=now),
+                RequestMetrics("model-a", "chat", 200.0, False, error="RuntimeError", timestamp=now),
+                RequestMetrics("model-b", "vlm", 150.0, True, timestamp=now),
+            ]
+        )
+
+        PerformanceCollector._metrics.extend(  # type: ignore[attr-defined]
+            [
+                DetailedPerformanceMetrics(
+                    model="model-a",
+                    operation="chat",
+                    timestamp=now,
+                    total_latency_ms=120.0,
+                    success=True,
+                    tokens_per_second=20.0,
+                    load_time_ms=50.0,
+                    generation_time_ms=70.0,
+                )
+            ]
+        )
+
+        AnalyticsCollector._project_metadata.update(  # type: ignore[attr-defined]
+            {0: "proj-alpha", 1: "proj-alpha", 2: "proj-beta"}
+        )
+
+    def test_metrics_endpoint_returns_typed_payload(self, api_client):
+        """Metrics endpoint should return structured MetricsResponse data."""
+        self._seed_metrics()
+        response = api_client.get("/api/v1/metrics")
+        data = assert_response_structure(response, 200)
+
+        assert data["total_requests"] == 3
+        assert data["successful_requests"] == 2
+        assert data["failed_requests"] == 1
+        assert set(data["requests_by_model"].keys()) == {"model-a", "model-b"}
+        assert data["p50_latency_ms"] >= 0
+        assert data["last_request_time"] is not None
+
+    def test_performance_stats_endpoint_returns_structured_data(self, api_client):
+        """Performance stats endpoint should emit PerformanceStatsResponse payload."""
+        self._seed_metrics()
+        response = api_client.get("/api/v1/performance/stats")
+        data = assert_response_structure(response, 200)
+
+        assert data["total_requests"] == 1
+        assert data["avg_tokens_per_second"] == 20.0
+        assert "model-a" in data["by_model"]
+        assert data["by_model"]["model-a"]["request_count"] == 1
+
+    def test_analytics_endpoint_returns_structured_data(self, api_client):
+        """Analytics endpoint should emit AnalyticsResponse payload with project/hour data."""
+        self._seed_metrics()
+        response = api_client.get("/api/v1/analytics")
+        data = assert_response_structure(response, 200)
+
+        assert data["total_requests"] == 3
+        assert "proj-alpha" in data["project_metrics"]
+        assert data["project_metrics"]["proj-alpha"]["total_requests"] == 2
+        assert isinstance(data["hourly_metrics"], list)
 
 
 class TestGenerateEndpoint:
@@ -627,6 +749,40 @@ class TestChatEndpoint:
         assert data["message"]["content"] == '{"summary": "done"}'
         forwarded_format = mock_async_client.chat.await_args.kwargs["format"]
         assert forwarded_format == schema
+
+
+class TestVLMOpenAIEndpoint:
+    """Behavioral tests for the OpenAI-compatible VLM endpoint."""
+
+    def test_vlm_openai_success_returns_response(self, api_client_with_vlm):
+        """Ensure VLM OpenAI route handles multimodal payloads."""
+        client, vlm_use_case = api_client_with_vlm
+        vlm_use_case.execute.return_value = {
+            "message": {"role": "assistant", "content": "A colorful slide about workflows."},
+            "model": "qwen3-vl:8b-instruct-q4_K_M",
+            "prompt_eval_count": 5,
+            "eval_count": 10,
+            "total_duration": 100_000_000,
+            "load_duration": 0,
+        }
+
+        payload = {
+            "model": "qwen3-vl:8b-instruct-q4_K_M",
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": "Describe this image"},
+                        {"type": "image_url", "image_url": {"url": VALID_IMAGE_DATA_URL}},
+                    ],
+                }
+            ],
+        }
+
+        response = client.post("/api/v1/vlm/openai", json=payload)
+        data = assert_response_structure(response, 200)
+        assert data["choices"][0]["message"]["content"] == "A colorful slide about workflows."
+        vlm_use_case.execute.assert_awaited_once()
 
     def test_chat_error_returns_400(self, api_client, mock_async_client):
         """Test that chat validation errors return 400."""

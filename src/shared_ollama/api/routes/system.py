@@ -10,7 +10,12 @@ Provides endpoints for:
 
 from __future__ import annotations
 
+import copy
+import functools
+import json
 import logging
+from datetime import datetime, timezone
+from importlib import resources
 from typing import Any
 
 import httpx
@@ -23,7 +28,14 @@ from shared_ollama.api.dependencies import (
 )
 from shared_ollama.api.mappers import domain_to_api_model_info
 from shared_ollama.api.middleware import limiter
-from shared_ollama.api.models import HealthResponse, ModelsResponse, QueueStatsResponse
+from shared_ollama.api.models import (
+    AnalyticsResponse,
+    HealthResponse,
+    MetricsResponse,
+    ModelsResponse,
+    PerformanceStatsResponse,
+    QueueStatsResponse,
+)
 from shared_ollama.application.use_cases import ListModelsUseCase
 from shared_ollama.core.queue import RequestQueue
 from shared_ollama.core.utils import check_service_health
@@ -31,6 +43,62 @@ from shared_ollama.core.utils import check_service_health
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+_PDL_TEMPLATE_PACKAGE = "shared_ollama.data.pdl"
+_PDL_TEMPLATE_FILES = {
+    "vlm": "vlm_insights_template.json",
+    "chat": "text_chat_template.json",
+}
+
+
+@functools.cache
+def _load_pdl_template(filename: str) -> dict[str, Any]:
+    template_path = resources.files(_PDL_TEMPLATE_PACKAGE).joinpath(filename)
+    with template_path.open("r", encoding="utf-8") as file:
+        return json.load(file)
+
+
+def _prepare_pdl_template(filename: str, request: Request) -> dict[str, Any]:
+    template = copy.deepcopy(_load_pdl_template(filename))
+    base_url = str(request.base_url).rstrip("/")
+
+    runtime_section = template.get("runtime", {})
+    invoke_section = runtime_section.get("invoke")
+    if isinstance(invoke_section, dict):
+        url = invoke_section.get("url")
+        if isinstance(url, str):
+            invoke_section["url"] = url.replace("__API_BASE_URL__", base_url)
+
+    metadata = template.setdefault("metadata", {})
+    metadata["served_at"] = datetime.now(timezone.utc).isoformat()
+    metadata["base_url"] = base_url
+    metadata["source"] = "shared-ollama.api.system"
+
+    return template
+
+
+@router.get("/pdl/templates", tags=["PDL"])
+async def list_pdl_templates() -> dict[str, list[str]]:
+    """List the IBM PDL templates exposed by this API."""
+
+    return {"templates": sorted(_PDL_TEMPLATE_FILES.keys())}
+
+
+@router.get("/pdl/templates/{template_name}", tags=["PDL"])
+async def get_pdl_template(template_name: str, request: Request) -> dict[str, Any]:
+    """Return a concrete IBM PDL template with runtime details injected."""
+
+    filename = _PDL_TEMPLATE_FILES.get(template_name)
+    if filename is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=(
+                f"Unknown PDL template '{template_name}'. "
+                f"Available templates: {', '.join(sorted(_PDL_TEMPLATE_FILES))}"
+            ),
+        )
+
+    return _prepare_pdl_template(filename, request)
 
 CLIENT_ERROR_MIN = 400
 SERVER_ERROR_MIN = 500
@@ -141,10 +209,10 @@ async def get_queue_stats(
     )
 
 
-@router.get("/metrics", tags=["Metrics"])
+@router.get("/metrics", response_model=MetricsResponse, tags=["Metrics"])
 async def get_metrics(
     window_minutes: int | None = None,
-) -> dict[str, Any]:
+) -> MetricsResponse:
     """Get service metrics.
 
     Returns comprehensive service metrics including request counts, latency
@@ -172,11 +240,12 @@ async def get_metrics(
     """
     from shared_ollama.telemetry.metrics import get_metrics_endpoint
 
-    return get_metrics_endpoint(window_minutes=window_minutes)
+    data = get_metrics_endpoint()
+    return MetricsResponse.model_validate(data)
 
 
-@router.get("/performance/stats", tags=["Performance"])
-async def get_performance_stats() -> dict[str, Any]:
+@router.get("/performance/stats", response_model=PerformanceStatsResponse, tags=["Performance"])
+async def get_performance_stats() -> PerformanceStatsResponse:
     """Get aggregated performance statistics.
 
     Returns detailed performance metrics including token generation rates,
@@ -192,16 +261,25 @@ async def get_performance_stats() -> dict[str, Any]:
 
         Returns empty dict if no performance data is available.
     """
-    from shared_ollama.telemetry.performance import get_performance_stats
+    from shared_ollama.telemetry.performance import get_performance_stats as _get_performance_stats
 
-    return get_performance_stats()
+    data = _get_performance_stats()
+    if not data:
+        data = {
+            "avg_tokens_per_second": 0.0,
+            "avg_load_time_ms": 0.0,
+            "avg_generation_time_ms": 0.0,
+            "total_requests": 0,
+            "by_model": {},
+        }
+    return PerformanceStatsResponse.model_validate(data)
 
 
-@router.get("/analytics", tags=["Analytics"])
+@router.get("/analytics", response_model=AnalyticsResponse, tags=["Analytics"])
 async def get_analytics(
     window_minutes: int | None = None,
     project: str | None = None,
-) -> dict[str, Any]:
+) -> AnalyticsResponse:
     """Get comprehensive analytics report.
 
     Returns project-based analytics with time-series data, latency percentiles,
@@ -232,7 +310,8 @@ async def get_analytics(
     """
     from shared_ollama.telemetry.analytics import get_analytics_json
 
-    return get_analytics_json(window_minutes=window_minutes, project=project)
+    data = get_analytics_json(window_minutes=window_minutes, project=project)
+    return AnalyticsResponse.model_validate(data)
 
 
 @router.get("/models", response_model=ModelsResponse, tags=["Models"])

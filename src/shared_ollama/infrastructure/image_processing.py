@@ -47,7 +47,7 @@ class ImageProcessor:
 
     def __init__(
         self,
-        max_dimension: int = 1024,
+        max_dimension: int = 2667,
         jpeg_quality: int = 85,
         png_compression: int = 6,
         max_size_bytes: int = 10 * 1024 * 1024,  # 10MB

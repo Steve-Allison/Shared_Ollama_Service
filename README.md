@@ -123,7 +123,7 @@ Both endpoints are optimized for `qwen3-vl:8b-instruct-q4_K_M` and share the sam
 import requests
 
 response = requests.post(
-    "http://localhost:8000/api/v1/chat",
+    "http://0.0.0.0:8000/api/v1/chat",
     json={
         "model": "qwen3:14b-q4_K_M",  # Text-only model
         "messages": [
@@ -140,7 +140,7 @@ print(response.json()["message"]["content"])
 import requests
 
 response = requests.post(
-    "http://localhost:8000/api/v1/chat",
+    "http://0.0.0.0:8000/api/v1/chat",
     json={
         "messages": [{"role": "user", "content": "Return a JSON object"}],
         "response_format": {"type": "json_object"}  # Automatically forwards format="json" to Ollama
@@ -162,7 +162,7 @@ schema = {
 }
 
 response = requests.post(
-    "http://localhost:8000/api/v1/chat",
+    "http://0.0.0.0:8000/api/v1/chat",
     json={
         "messages": [{"role": "user", "content": "Summarize this in JSON"}],
         "response_format": {
@@ -186,7 +186,7 @@ with open("photo.jpg", "rb") as f:
 
 # Native Ollama format: images as separate parameter
 response = requests.post(
-    "http://localhost:8000/api/v1/vlm",
+    "http://0.0.0.0:8000/api/v1/vlm",
     json={
         "model": "qwen3-vl:8b-instruct-q4_K_M",
         "messages": [
@@ -215,7 +215,7 @@ def encode_image(path):
 
 # Native Ollama: all images in separate array
 response = requests.post(
-    "http://localhost:8000/api/v1/vlm",
+    "http://0.0.0.0:8000/api/v1/vlm",
     json={
         "model": "qwen3-vl:8b-instruct-q4_K_M",
         "messages": [
@@ -277,7 +277,7 @@ with open("photo.jpg", "rb") as f:
 
 # OpenAI-compatible format: images in message content
 response = requests.post(
-    "http://localhost:8000/api/v1/vlm/openai",
+    "http://0.0.0.0:8000/api/v1/vlm/openai",
     json={
         "model": "qwen3-vl:8b-instruct-q4_K_M",
         "messages": [
@@ -319,7 +319,7 @@ def encode_image(path):
 
 # OpenAI format: all images in message content parts
 response = requests.post(
-    "http://localhost:8000/api/v1/vlm/openai",
+    "http://0.0.0.0:8000/api/v1/vlm/openai",
     json={
         "model": "qwen3-vl:8b-instruct-q4_K_M",
         "messages": [
@@ -354,7 +354,7 @@ for idx, image in enumerate(doc_images):
 
     # Call OpenAI-compatible VLM endpoint
     response = requests.post(
-        "http://localhost:8000/api/v1/vlm/openai",
+        "http://0.0.0.0:8000/api/v1/vlm/openai",
         json={
             "model": "qwen3-vl:8b-instruct-q4_K_M",
             "messages": [
@@ -396,7 +396,7 @@ for path in ["photo1.jpg", "photo2.jpg", "photo3.jpg"]:
 
 # Batch VLM request (max 20 requests)
 response = requests.post(
-    "http://localhost:8000/api/v1/batch/vlm",
+    "http://0.0.0.0:8000/api/v1/batch/vlm",
     json={
         "requests": [
             {
@@ -427,7 +427,7 @@ const imgBuffer = fs.readFileSync('photo.jpg');
 const imgB64 = imgBuffer.toString('base64');
 
 // Native Ollama format
-const response = await fetch('http://localhost:8000/api/v1/vlm', {
+const response = await fetch('http://0.0.0.0:8000/api/v1/vlm', {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify({
@@ -450,7 +450,7 @@ import requests
 
 # Batch chat request (max 50 requests)
 response = requests.post(
-    "http://localhost:8000/api/v1/batch/chat",
+    "http://0.0.0.0:8000/api/v1/batch/chat",
     json={
         "requests": [
             {
@@ -480,7 +480,7 @@ with open("image.jpg", "rb") as f:
     image_url = f"data:image/jpeg;base64,{base64.b64encode(f.read()).decode()}"
 
 response = requests.post(
-    "http://localhost:8000/api/v1/chat",
+    "http://0.0.0.0:8000/api/v1/chat",
     json={
         "model": "qwen3-vl:8b-instruct-q4_K_M",
         "stream": True,
@@ -550,7 +550,7 @@ Send a text-only message to a language model.
 
 **Request:**
 ```bash
-curl -X POST http://localhost:8000/api/v1/chat \
+curl -X POST http://0.0.0.0:8000/api/v1/chat \
      -H "Content-Type: application/json" \
      -d '{
            "model": "qwen3:14b-q4_K_M",
@@ -590,7 +590,7 @@ Send a multimodal request with text and an image using Ollama's native format. T
 # python -c "import base64; print('data:image/jpeg;base64,' + base64.b64encode(open('photo.jpg', 'rb').read()).decode('utf-8'))"
 IMAGE_DATA_URL="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAA..." # Replace with your actual base64 image data
 
-curl -X POST http://localhost:8000/api/v1/vlm \
+curl -X POST http://0.0.0.0:8000/api/v1/vlm \
      -H "Content-Type: application/json" \
      -d '{
            "model": "qwen3-vl:8b-instruct-q4_K_M",
@@ -634,7 +634,7 @@ Send a multimodal request with text and an image using an OpenAI-compatible mess
 # python -c "import base64; print('data:image/jpeg;base64,' + base64.b64encode(open('photo.jpg', 'rb').read()).decode('utf-8'))"
 IMAGE_DATA_URL="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAA..." # Replace with your actual base64 image data
 
-curl -X POST http://localhost:8000/api/v1/vlm/openai \
+curl -X POST http://0.0.0.0:8000/api/v1/vlm/openai \
      -H "Content-Type: application/json" \
      -d '{
            "model": "qwen3-vl:8b-instruct-q4_K_M",
@@ -768,7 +768,7 @@ params = poml.poml("chat_with_tools.poml", context=context, format="openai_chat"
 
 # Step 2: Send to Shared Ollama Service
 response = requests.post(
-    "http://localhost:8000/api/v1/chat",
+    "http://0.0.0.0:8000/api/v1/chat",
     json=params
 ).json()
 
@@ -789,7 +789,7 @@ if response["message"].get("tool_calls"):
         }
         params = poml.poml("chat_with_tools.poml", context=context, format="openai_chat")
         final_response = requests.post(
-            "http://localhost:8000/api/v1/chat",
+            "http://0.0.0.0:8000/api/v1/chat",
             json=params
         ).json()
 
@@ -838,7 +838,7 @@ context = {
 params = poml.poml("extract_event.poml", context=context, format="openai_chat")
 
 response = requests.post(
-    "http://localhost:8000/api/v1/chat",
+    "http://0.0.0.0:8000/api/v1/chat",
     json=params
 ).json()
 
@@ -903,7 +903,7 @@ request_data = {
 }
 
 response = requests.post(
-    "http://localhost:8000/api/v1/vlm",
+    "http://0.0.0.0:8000/api/v1/vlm",
     json=request_data
 ).json()
 
@@ -1191,22 +1191,22 @@ pip install -e ".[dev]" -c constraints.txt
 ./scripts/start.sh              # Start REST API server (port 8000)
                                  # Automatically runs verify_setup.sh to check/generate optimal config
 ./scripts/start.sh --skip-verify # Skip verification (faster startup)
-curl http://localhost:8000/api/v1/health  # Health check
+curl http://0.0.0.0:8000/api/v1/health  # Health check
 
 # Core Endpoints
-curl http://localhost:8000/api/v1/models  # List available models
-curl http://localhost:8000/api/v1/chat    # Text-only chat (native Ollama)
-curl http://localhost:8000/api/v1/vlm     # VLM with images (native Ollama)
-curl http://localhost:8000/api/v1/vlm/openai  # VLM with images (OpenAI-compatible, for Docling)
+curl http://0.0.0.0:8000/api/v1/models  # List available models
+curl http://0.0.0.0:8000/api/v1/chat    # Text-only chat (native Ollama)
+curl http://0.0.0.0:8000/api/v1/vlm     # VLM with images (native Ollama)
+curl http://0.0.0.0:8000/api/v1/vlm/openai  # VLM with images (OpenAI-compatible, for Docling)
 
 # Monitoring & Analytics Endpoints
-curl http://localhost:8000/api/v1/metrics  # Service metrics
-curl http://localhost:8000/api/v1/performance/stats  # Performance statistics
-curl http://localhost:8000/api/v1/analytics  # Analytics report
-curl "http://localhost:8000/api/v1/analytics?project=Docling_Machine"  # Project-specific analytics
-curl http://localhost:8000/api/v1/queue/stats  # Queue statistics
+curl http://0.0.0.0:8000/api/v1/metrics  # Service metrics
+curl http://0.0.0.0:8000/api/v1/performance/stats  # Performance statistics
+curl http://0.0.0.0:8000/api/v1/analytics  # Analytics report
+curl "http://0.0.0.0:8000/api/v1/analytics?project=Docling_Machine"  # Project-specific analytics
+curl http://0.0.0.0:8000/api/v1/queue/stats  # Queue statistics
 
-# Visit http://localhost:8000/api/docs for interactive API docs
+# Visit http://0.0.0.0:8000/api/docs for interactive API docs
 # Fully async implementation for maximum concurrency
 ```
 
@@ -1261,10 +1261,10 @@ make fix         # Auto-fix issues
 ./scripts/health_check.sh
 
 # Or check REST API health
-curl http://localhost:8000/api/v1/health
+curl http://0.0.0.0:8000/api/v1/health
 
 # List available models (via REST API)
-curl http://localhost:8000/api/v1/models
+curl http://0.0.0.0:8000/api/v1/models
 ```
 
 ## Quick Start - Using in Your Projects
@@ -1293,7 +1293,7 @@ print(response.text)
 
 ```bash
 # For REST API (recommended)
-export API_BASE_URL="http://localhost:8000"
+export API_BASE_URL="http://0.0.0.0:8000"
 
 # For direct Ollama access (not recommended - use REST API instead)
 export OLLAMA_BASE_URL="http://localhost:11434"
@@ -1337,7 +1337,7 @@ The REST API provides centralized logging, metrics, and rate limiting for all pr
 import requests
 
 response = requests.post(
-    "http://localhost:8000/api/v1/generate",
+    "http://0.0.0.0:8000/api/v1/generate",
     json={
         "prompt": "Hello, world!",
         "model": "qwen3:14b-q4_K_M"
@@ -1349,7 +1349,7 @@ print(response.json()["text"])
 **TypeScript/JavaScript Example:**
 
 ```typescript
-const res = await fetch("http://localhost:8000/api/v1/generate", {
+const res = await fetch("http://0.0.0.0:8000/api/v1/generate", {
   method: "POST",
   headers: { "Content-Type": "application/json" },
   body: JSON.stringify({
@@ -1365,13 +1365,13 @@ console.log(data.text);
 
 ```go
 resp, err := http.Post(
-    "http://localhost:8000/api/v1/generate",
+    "http://0.0.0.0:8000/api/v1/generate",
     "application/json",
     bytes.NewBuffer(jsonData),
 )
 ```
 
-**API Documentation**: Visit `http://localhost:8000/api/docs` for interactive API documentation.
+**API Documentation**: Visit `http://0.0.0.0:8000/api/docs` for interactive API documentation.
 
 **Benefits:**
 
@@ -1424,7 +1424,7 @@ import requests
 
 # Streaming generate endpoint
 response = requests.post(
-    "http://localhost:8000/api/v1/generate",
+    "http://0.0.0.0:8000/api/v1/generate",
     json={"prompt": "Write a story", "model": "qwen3:14b-q4_K_M", "stream": True},
     stream=True
 )
@@ -1443,7 +1443,7 @@ for line in response.iter_lines():
 **TypeScript/JavaScript Streaming:**
 
 ```typescript
-const response = await fetch("http://localhost:8000/api/v1/generate", {
+const response = await fetch("http://0.0.0.0:8000/api/v1/generate", {
   method: "POST",
   headers: { "Content-Type": "application/json" },
   body: JSON.stringify({
@@ -1503,7 +1503,7 @@ The REST API includes intelligent request queuing to handle traffic spikes grace
 Monitor queue health in real-time:
 
 ```bash
-curl http://localhost:8000/api/v1/queue/stats
+curl http://0.0.0.0:8000/api/v1/queue/stats
 ```
 
 Response:
@@ -1541,7 +1541,7 @@ import time
 
 def monitor_queue():
     while True:
-        response = requests.get("http://localhost:8000/api/v1/queue/stats")
+        response = requests.get("http://0.0.0.0:8000/api/v1/queue/stats")
         stats = response.json()
 
         print(f"Queue Status: {stats['queued']} waiting, "
@@ -1634,7 +1634,7 @@ See [INTEGRATION_GUIDE.md](docs/INTEGRATION_GUIDE.md) for detailed project-speci
 
 ```bash
 # Recommended: Use REST API (port 8000)
-export API_BASE_URL="http://localhost:8000"
+export API_BASE_URL="http://0.0.0.0:8000"
 
 # Alternative: Direct Ollama access (port 11434)
 # Only if you need direct Ollama API access (bypasses REST API features)
@@ -1720,8 +1720,8 @@ export OLLAMA_KEEP_ALIVE=15m
 
 - **REST API Port**: 8000 (FastAPI service)
 - **Ollama Port**: 11434 (managed internally by REST API)
-- **REST API Endpoint**: `http://localhost:8000/api/v1/generate`
-- **REST API Docs**: `http://localhost:8000/api/docs`
+- **REST API Endpoint**: `http://0.0.0.0:8000/api/v1/generate`
+- **REST API Docs**: `http://0.0.0.0:8000/api/docs`
 
 ## Health Checks
 
@@ -1751,13 +1751,13 @@ export OLLAMA_KEEP_ALIVE=15m
 
 ```bash
 # Health check (REST API)
-curl http://localhost:8000/api/v1/health
+curl http://0.0.0.0:8000/api/v1/health
 
 # List models (REST API)
-curl http://localhost:8000/api/v1/models
+curl http://0.0.0.0:8000/api/v1/models
 
 # Test generation (REST API)
-curl http://localhost:8000/api/v1/generate -d '{
+curl http://0.0.0.0:8000/api/v1/generate -d '{
   "model": "qwen3:14b-q4_K_M",
   "prompt": "Why is the sky blue?"
 }'
@@ -1814,7 +1814,7 @@ ollama pull qwen3:14b-q4_K_M
 ./scripts/status.sh
 
 # Health check (REST API)
-curl http://localhost:8000/api/v1/health
+curl http://0.0.0.0:8000/api/v1/health
 
 # View logs
 tail -f logs/api.log
@@ -1878,7 +1878,7 @@ which ollama
 ./scripts/start.sh
 
 # Check if REST API is running
-curl http://localhost:8000/api/v1/health
+curl http://0.0.0.0:8000/api/v1/health
 
 # View logs
 tail -f logs/api.log
@@ -1897,9 +1897,18 @@ ollama list
 
 ### Connection Refused
 
+If connection issues persist, especially when using `curl` or other client applications from the same machine, try using `http://0.0.0.0:8000` instead of `http://localhost:8000`.
+
+*   **Explanation**: The REST API is bound to `0.0.0.0` by default, meaning it listens on all available network interfaces. On some host systems, `localhost` (which typically resolves to `127.0.0.1`) might not correctly route to services bound to `0.0.0.0`. Using `0.0.0.0` directly ensures you are targeting the correct interface.
+
+```bash
+# Example: Use 0.0.0.0 instead of localhost
+curl http://0.0.0.0:8000/api/v1/health
+```
+
 ```bash
 # Check if REST API is running
-curl http://localhost:8000/api/v1/health
+curl http://0.0.0.0:8000/api/v1/health
 
 # If not running, start it
 ./scripts/start.sh
@@ -1994,7 +2003,7 @@ python scripts/performance_report.py --window 60
 
 - **Quick status**: `./scripts/status.sh` (fast overview)
 - **Health checks**: `./scripts/health_check.sh` (comprehensive)
-- **Model status**: `curl http://localhost:8000/api/v1/models`
+- **Model status**: `curl http://0.0.0.0:8000/api/v1/models`
 - **Resource usage**: `top -pid $(pgrep ollama)` or Activity Monitor
 
 **Note**: See `PERFORMANCE_MONITORING.md` for detailed performance tracking capabilities.
@@ -2009,10 +2018,10 @@ Get comprehensive service metrics including request counts, latency statistics, 
 
 ```bash
 # Get all metrics
-curl http://localhost:8000/api/v1/metrics
+curl http://0.0.0.0:8000/api/v1/metrics
 
 # Get metrics from last hour
-curl "http://localhost:8000/api/v1/metrics?window_minutes=60"
+curl "http://0.0.0.0:8000/api/v1/metrics?window_minutes=60"
 ```
 
 **Response includes**:
@@ -2028,7 +2037,7 @@ curl "http://localhost:8000/api/v1/metrics?window_minutes=60"
 Get detailed performance metrics including token generation rates and timing breakdowns:
 
 ```bash
-curl http://localhost:8000/api/v1/performance/stats
+curl http://0.0.0.0:8000/api/v1/performance/stats
 ```
 
 **Response includes**:
@@ -2044,16 +2053,16 @@ Get comprehensive analytics with project-level tracking and time-series data:
 
 ```bash
 # Get all analytics
-curl http://localhost:8000/api/v1/analytics
+curl http://0.0.0.0:8000/api/v1/analytics
 
 # Get analytics for specific project
-curl "http://localhost:8000/api/v1/analytics?project=Docling_Machine"
+curl "http://0.0.0.0:8000/api/v1/analytics?project=Docling_Machine"
 
 # Get analytics from last hour
-curl "http://localhost:8000/api/v1/analytics?window_minutes=60"
+curl "http://0.0.0.0:8000/api/v1/analytics?window_minutes=60"
 
 # Combined filters
-curl "http://localhost:8000/api/v1/analytics?window_minutes=60&project=Docling_Machine"
+curl "http://0.0.0.0:8000/api/v1/analytics?window_minutes=60&project=Docling_Machine"
 ```
 
 **Response includes**:
@@ -2072,7 +2081,7 @@ curl "http://localhost:8000/api/v1/analytics?window_minutes=60&project=Docling_M
 Get real-time queue performance metrics:
 
 ```bash
-curl http://localhost:8000/api/v1/queue/stats
+curl http://0.0.0.0:8000/api/v1/queue/stats
 ```
 
 **Response includes**:
@@ -2207,7 +2216,7 @@ KEEP_ALIVE=60m ./scripts/warmup_models.sh
 
 ```bash
 # Warm up a specific model via REST API
-curl http://localhost:8000/api/v1/generate -d '{
+curl http://0.0.0.0:8000/api/v1/generate -d '{
   "model": "qwen3:14b-q4_K_M",
   "prompt": "Hi",
   "options": {"num_predict": 1},
@@ -2274,17 +2283,17 @@ asyncio.run(main())
 
 ```bash
 # Service metrics
-curl http://localhost:8000/api/v1/metrics
+curl http://0.0.0.0:8000/api/v1/metrics
 
 # Performance statistics
-curl http://localhost:8000/api/v1/performance/stats
+curl http://0.0.0.0:8000/api/v1/performance/stats
 
 # Analytics (with project tracking)
-curl http://localhost:8000/api/v1/analytics
-curl "http://localhost:8000/api/v1/analytics?project=Docling_Machine&window_minutes=60"
+curl http://0.0.0.0:8000/api/v1/analytics
+curl "http://0.0.0.0:8000/api/v1/analytics?project=Docling_Machine&window_minutes=60"
 
 # Queue statistics
-curl http://localhost:8000/api/v1/queue/stats
+curl http://0.0.0.0:8000/api/v1/queue/stats
 ```
 
 **Via Python**:
@@ -2338,16 +2347,16 @@ See `IMPLEMENTED_ENHANCEMENTS.md` for full details.
 
 ```bash
 # Get all analytics
-curl http://localhost:8000/api/v1/analytics
+curl http://0.0.0.0:8000/api/v1/analytics
 
 # Get analytics for specific project
-curl "http://localhost:8000/api/v1/analytics?project=Docling_Machine"
+curl "http://0.0.0.0:8000/api/v1/analytics?project=Docling_Machine"
 
 # Get analytics from last hour
-curl "http://localhost:8000/api/v1/analytics?window_minutes=60"
+curl "http://0.0.0.0:8000/api/v1/analytics?window_minutes=60"
 
 # Combined filters
-curl "http://localhost:8000/api/v1/analytics?window_minutes=60&project=Docling_Machine"
+curl "http://0.0.0.0:8000/api/v1/analytics?window_minutes=60&project=Docling_Machine"
 ```
 
 **Via Python**:
@@ -2373,7 +2382,7 @@ AnalyticsCollector.export_csv("analytics.csv")
 import requests
 
 response = requests.post(
-    "http://localhost:8000/api/v1/chat",
+    "http://0.0.0.0:8000/api/v1/chat",
     headers={"X-Project-Name": "Docling_Machine"},
     json={"model": "qwen3:14b-q4_K_M", "messages": [...]}
 )
@@ -2586,5 +2595,5 @@ For issues or questions:
 
 - Check logs: `tail -f logs/api.log`
 - Run health check: `./scripts/health_check.sh`
-- Verify service: `curl http://localhost:8000/api/v1/health`
+- Verify service: `curl http://0.0.0.0:8000/api/v1/health`
 - Open issue in project repository

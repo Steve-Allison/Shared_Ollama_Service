@@ -535,6 +535,150 @@ Example error response:
 }
 ```
 
+## API Client Quickstart Guide
+
+This guide provides `curl` examples for quickly interacting with the Shared Ollama Service API. For Python, TypeScript, and Go examples, refer to the "Using VLM with REST API" and "Usage in Projects" sections.
+
+Before you begin, ensure the API service is running:
+```bash
+./scripts/start.sh
+```
+
+### 1. Text-Only Chat (`/api/v1/chat`)
+
+Send a text-only message to a language model.
+
+**Request:**
+```bash
+curl -X POST http://localhost:8000/api/v1/chat \
+     -H "Content-Type: application/json" \
+     -d '{
+           "model": "qwen3:14b-q4_K_M",
+           "messages": [
+             {"role": "user", "content": "Tell me a short story about a brave knight."}
+           ]
+         }'
+```
+
+**Example Response (JSON):**
+```json
+{
+  "message": {
+    "role": "assistant",
+    "content": "Sir Reginald, a knight known for his polka-dotted shield..."
+  },
+  "model": "qwen3:14b-q4_K_M",
+  "created_at": "...",
+  "done": true,
+  "total_duration": ...,
+  "load_duration": ...,
+  "prompt_eval_count": ...,
+  "prompt_eval_duration": ...,
+  "eval_count": ...,
+  "eval_duration": ...
+}
+```
+
+### 2. VLM with Images (Native Ollama Format - `/api/v1/vlm`)
+
+Send a multimodal request with text and an image using Ollama's native format. The image data is passed as a top-level `images` array (though internally it will be associated with the last user message).
+
+**Request:**
+```bash
+# First, convert your image to a base64 data URL
+# Example using Python:
+# python -c "import base64; print('data:image/jpeg;base64,' + base64.b64encode(open('photo.jpg', 'rb').read()).decode('utf-8'))"
+IMAGE_DATA_URL="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAA..." # Replace with your actual base64 image data
+
+curl -X POST http://localhost:8000/api/v1/vlm \
+     -H "Content-Type: application/json" \
+     -d '{
+           "model": "qwen3-vl:8b-instruct-q4_K_M",
+           "messages": [
+             {"role": "user", "content": "Describe this image in detail."}
+           ],
+           "images": ["'"${IMAGE_DATA_URL}"'"],
+           "image_compression": true
+         }'
+```
+
+**Example Response (JSON):**
+```json
+{
+  "message": {
+    "role": "assistant",
+    "content": "The image depicts a vibrant landscape with a serene lake..."
+  },
+  "model": "qwen3-vl:8b-instruct-q4_K_M",
+  "created_at": "...",
+  "done": true,
+  "images_processed": 1,
+  "compression_savings_bytes": ...,
+  "total_duration": ...,
+  "load_duration": ...,
+  "prompt_eval_count": ...,
+  "prompt_eval_duration": ...,
+  "eval_count": ...,
+  "eval_duration": ...
+}
+```
+
+### 3. VLM with Images (OpenAI-Compatible Format - `/api/v1/vlm/openai`)
+
+Send a multimodal request with text and an image using an OpenAI-compatible message format. Images are embedded directly within the message content.
+
+**Request:**
+```bash
+# First, convert your image to a base64 data URL
+# Example using Python:
+# python -c "import base64; print('data:image/jpeg;base64,' + base64.b64encode(open('photo.jpg', 'rb').read()).decode('utf-8'))"
+IMAGE_DATA_URL="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAA..." # Replace with your actual base64 image data
+
+curl -X POST http://localhost:8000/api/v1/vlm/openai \
+     -H "Content-Type: application/json" \
+     -d '{
+           "model": "qwen3-vl:8b-instruct-q4_K_M",
+           "messages": [
+             {
+               "role": "user",
+               "content": [
+                 {"type": "text", "text": "What do you see in this picture?"},
+                 {"type": "image_url", "image_url": {"url": "'"${IMAGE_DATA_URL}"'"}}
+               ]
+             }
+           ],
+           "image_compression": true
+         }'
+```
+
+**Example Response (JSON, OpenAI-like):**
+```json
+{
+  "id": "chatcmpl-...",
+  "object": "chat.completion",
+  "created": ...,
+  "model": "qwen3-vl:8b-instruct-q4_K_M",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "The image shows a bustling city street at night..."
+      },
+      "logprobs": null,
+      "finish_reason": "stop"
+    }
+  ],
+  "usage": {
+    "prompt_tokens": ...,
+    "completion_tokens": ...,
+    "total_tokens": ...
+  }
+}
+```
+
+---
+
 ## POML Support (Prompt Orchestration Markup Language)
 
 The Shared Ollama Service **fully supports** [POML](https://github.com/microsoft/poml) for structured prompt engineering and LLM orchestration.

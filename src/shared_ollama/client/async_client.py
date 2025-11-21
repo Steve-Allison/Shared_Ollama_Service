@@ -717,6 +717,17 @@ class AsyncSharedOllamaClient:
         request_id = str(uuid.uuid4())
         start_time = time.perf_counter()
 
+        log_request_event(
+            {
+                "event": "ollama_payload",
+                "client_type": "async",
+                "operation": "chat",
+                "request_id": request_id,
+                "model": model_str,
+                "payload": payload,
+            }
+        )
+
         try:
             async with self._acquire_slot():
                 response = await self.client.post(
@@ -736,6 +747,18 @@ class AsyncSharedOllamaClient:
                     raise ValueError(msg)
 
             latency_ms = (time.perf_counter() - start_time) * 1000
+            
+            log_request_event(
+                {
+                    "event": "ollama_response",
+                    "client_type": "async",
+                    "operation": "chat",
+                    "request_id": request_id,
+                    "model": model_str,
+                    "response": data,
+                }
+            )
+
             MetricsCollector.record_request(
                 model=model_str,
                 operation="chat",

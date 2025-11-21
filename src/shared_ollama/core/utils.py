@@ -319,6 +319,19 @@ def get_default_text_model() -> str:
 
 
 @functools.cache
+def get_warmup_models() -> list[str]:
+    """Get the list of models to pre-warm from configuration.
+
+    Loads from environment variable, model profile, or safe fallback.
+
+    Returns:
+        List of model names to pre-warm.
+    """
+    defaults = _load_model_profile_defaults()
+    return defaults.get("warmup_models", [])
+
+
+@functools.cache
 def get_allowed_models() -> set[str]:
     """Get the set of allowed models for the current hardware profile.
 
@@ -365,6 +378,7 @@ __all__ = [
     "get_default_vlm_model",
     "get_ollama_base_url",
     "get_project_root",
+    "get_warmup_models",
     "import_client",
     "is_model_allowed",
 ]

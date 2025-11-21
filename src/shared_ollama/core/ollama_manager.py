@@ -29,7 +29,7 @@ from typing import Any, TypeAlias
 
 import psutil
 
-from shared_ollama.core.utils import get_project_root
+from shared_ollama.core.utils import get_project_root, get_warmup_models
 from shared_ollama.infrastructure.health_checker import check_ollama_health_simple
 
 logger = logging.getLogger(__name__)
@@ -482,6 +482,56 @@ class OllamaManager:
                     logger.exception("Error stopping Ollama process")
                     await self._force_kill_process(self.process)
                     return False
+
+    async def warmup_models(self) -> None:
+        """Pull and pre-warm models defined in the hardware profile.
+
+        This method concurrently pulls models listed in the 'warmup_models'
+        section of the active hardware profile. This avoids 'cold start' delays
+        on the first request for these models.
+
+        Side effects:
+            - Executes 'ollama pull' for each model, which can consume significant
+              network and disk resources.
+            - Logs the outcome of each pull operation.
+        """
+        models_to_warmup = get_warmup_models()
+        if not models_to_warmup:
+            logger.info("No models configured for pre-warming.")
+            return
+
+        logger.info("Starting model pre-warming for: %s", ", ".join(models_to_warmup))
+
+        async def _pull_model(model_name: str) -> None:
+            try:
+                logger.info("Pulling model: %s...", model_name)
+                process = await asyncio.create_subprocess_exec(
+                    "ollama",
+                    "pull",
+                    model_name,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+                stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=600)  # 10 min timeout
+
+                if process.returncode == 0:
+                    logger.info("Successfully pulled model: %s", model_name)
+                else:
+                    logger.error(
+                        "Failed to pull model %s. Return code: %s\nStderr: %s",
+                        model_name,
+                        process.returncode,
+                        stderr.decode('utf-8', errors='ignore'),
+                    )
+            except asyncio.TimeoutError:
+                logger.error("Timeout pulling model: %s", model_name)
+            except Exception:
+                logger.exception("An unexpected error occurred while pulling model %s", model_name)
+
+        tasks = [_pull_model(model) for model in models_to_warmup]
+        await asyncio.gather(*tasks)
+
+        logger.info("Model pre-warming complete.")
 
     def is_running(self) -> bool:
         """Check if Ollama service is currently running.

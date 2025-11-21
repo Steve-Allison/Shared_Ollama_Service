@@ -103,6 +103,11 @@ async def lifespan_context(app: FastAPI):
         else:
             logger.info("LIFESPAN: Ollama service started successfully")
             print("LIFESPAN: Ollama service started", flush=True)
+
+            # Proactively warm up models
+            logger.info("LIFESPAN: Initiating model pre-warming")
+            print("LIFESPAN: Initiating model pre-warming...", flush=True)
+            await ollama_manager.warmup_models()
     except Exception as exc:
         logger.error("LIFESPAN: Failed to start Ollama service: %s", exc, exc_info=True)
         print(f"LIFESPAN ERROR: Failed to start Ollama: {exc}", flush=True)

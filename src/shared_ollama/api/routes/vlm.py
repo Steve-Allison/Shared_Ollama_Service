@@ -33,15 +33,21 @@ from shared_ollama.api.models import (
 )
 from shared_ollama.api.response_builders import (
     build_openai_chat_response,
-    build_openai_stream_chunk,
     build_vlm_response,
     json_response,
 )
 from shared_ollama.api.type_guards import is_dict_result
 from shared_ollama.application.vlm_use_cases import VLMUseCase
 from shared_ollama.core.queue import RequestQueue
+from shared_ollama.telemetry.structured_logging import log_request_event
 
 logger = logging.getLogger(__name__)
+
+
+class VLMContext(BaseModel):
+    request_id: str
+    start_time: float
+    event_data: dict[str, Any]
 
 router = APIRouter()
 
@@ -144,6 +150,14 @@ async def vlm_chat(
     # Parse request body
     try:
         body = await request.json()
+        log_request_event(
+            {
+                "event": "api_payload",
+                "route": "vlm",
+                "request_id": ctx.request_id,
+                "payload": body,
+            }
+        )
         api_req = VLMRequest(**body)
         event_data["stream"] = api_req.stream
         event_data["compression_format"] = api_req.compression_format
@@ -216,6 +230,15 @@ async def vlm_chat(
             if not is_dict_result(result):
                 raise RuntimeError("Expected dict result for non-streaming request")
 
+            log_request_event(
+                {
+                    "event": "api_response",
+                    "route": "vlm",
+                    "request_id": ctx.request_id,
+                    "response": result,
+                }
+            )
+
             response = build_vlm_response(result, ctx, images_processed=len(api_req.images))
             return json_response(response)
 
@@ -271,6 +294,14 @@ async def vlm_chat_openai(
     # Parse request body (OpenAI-compatible format)
     try:
         body = await request.json()
+        log_request_event(
+            {
+                "event": "api_payload",
+                "route": "vlm_openai",
+                "request_id": ctx.request_id,
+                "payload": body,
+            }
+        )
         api_req = VLMRequestOpenAI(**body)
         event_data["stream"] = api_req.stream
         event_data["compression_format"] = api_req.compression_format
@@ -356,6 +387,15 @@ async def vlm_chat_openai(
             )
             if not is_dict_result(result):
                 raise RuntimeError("Expected dict result for non-streaming request")
+
+            log_request_event(
+                {
+                    "event": "api_response",
+                    "route": "vlm_openai",
+                    "request_id": ctx.request_id,
+                    "response": result,
+                }
+            )
 
             openai_response = build_openai_chat_response(result, ctx)
             return Response(

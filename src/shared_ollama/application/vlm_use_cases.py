@@ -210,9 +210,14 @@ class VLMUseCase:
 
             # Log and record metrics
             if stream:
+                if not isinstance(result, AsyncIterator):
+                    raise TypeError("Expected streaming iterator for VLM chat()")
                 return result
-            model_used = result.get("model", model_str or "unknown")
-            load_duration = result.get("load_duration", 0)
+            if not isinstance(result, dict):
+                raise TypeError("Expected dict response for non-streaming VLM chat()")
+            result_dict = result
+            model_used = result_dict.get("model", model_str or "unknown")
+            load_duration = result_dict.get("load_duration", 0)
             model_load_ms = round(load_duration / 1_000_000, 3) if load_duration else None
             model_warm_start = (load_duration == 0) if load_duration is not None else None
 
@@ -263,14 +268,14 @@ class VLMUseCase:
                     operation="vlm",
                     total_latency_ms=latency_ms,
                     success=True,
-                    response=result,
+                    response=result_dict,
                 )
 
             # Add compression savings to result if compression was enabled
             if request.image_compression and total_compression_savings > 0:
-                result["compression_savings_bytes"] = total_compression_savings
+                result_dict["compression_savings_bytes"] = total_compression_savings
 
-            return result
+            return result_dict
 
         except ValueError as exc:
             latency_ms = (time.perf_counter() - start_time) * 1000

@@ -58,13 +58,67 @@ The codebase is organized into four main layers following Clean Architecture:
   - `ListModelsUseCase` - Orchestrates model listing
   - `BatchChatUseCase` - Batch chat processing
   - `BatchVLMUseCase` - Batch VLM processing
-  - `VLMUseCase` - Vision-language model processing
+  - `VLMUseCase` - Vision-language model processing with image handling
 
 **Key Characteristics**:
 - Depends only on domain entities and interfaces
 - No framework dependencies
 - Handles logging and metrics via injected adapters
 - Coordinates between domain and infrastructure
+
+**VLMUseCase Dependencies**:
+
+The VLMUseCase has additional dependencies compared to standard use cases due to image processing requirements:
+
+*Required Dependencies:*
+
+1. `client: OllamaClientInterface` - Async Ollama HTTP client for model inference
+2. `logger: RequestLoggerInterface` - Structured logging for request tracking
+3. `metrics: MetricsCollectorInterface` - Request metrics and performance tracking
+4. `image_processor: ImageProcessorInterface` - Image compression and format validation
+5. `image_cache: ImageCacheInterface` - LRU cache for processed images (SHA-256 deduplication)
+
+*Optional Dependencies:*
+6. `analytics: AnalyticsCollectorInterface | None` - Project-based analytics and usage patterns
+7. `performance: PerformanceCollectorInterface | None` - Detailed performance metrics and token rates
+
+**Dependency Injection Pattern:**
+
+```python
+# In api/dependencies.py
+def get_vlm_use_case(
+    client_adapter: Annotated[AsyncOllamaClientAdapter, Depends(get_client_adapter)],
+    logger_adapter: Annotated[RequestLoggerAdapter, Depends(get_logger_adapter)],
+    metrics_adapter: Annotated[MetricsCollectorAdapter, Depends(get_metrics_adapter)],
+    image_processor_adapter: Annotated[ImageProcessorAdapter, Depends(get_image_processor)],
+    image_cache_adapter: Annotated[ImageCacheAdapter, Depends(get_image_cache)],
+) -> VLMUseCase:
+    """Get VLMUseCase instance with all required dependencies."""
+    return VLMUseCase(
+        client=client_adapter,
+        logger=logger_adapter,
+        metrics=metrics_adapter,
+        image_processor=image_processor_adapter,
+        image_cache=image_cache_adapter,
+        analytics=_analytics_adapter,  # Optional global
+        performance=_performance_adapter,  # Optional global
+    )
+```
+
+**Image Processing Pipeline:**
+
+1. **Validation**: Verify base64 data URL format and extract image bytes
+2. **Cache Lookup**: Check LRU cache using SHA-256 hash of original image
+3. **Compression**: If not cached, compress to target format (JPEG/PNG/WebP)
+4. **Cache Storage**: Store compressed image with metadata (original size, compressed size, format)
+5. **Metrics Tracking**: Record compression savings, cache hit rate, images processed
+
+The image cache uses an LRU eviction policy with:
+
+- 1-hour TTL per entry
+- 1GB maximum total cache size
+- SHA-256-based deduplication
+- Thread-safe operations
 
 ### 3. Interface Adapters (`src/shared_ollama/api/`)
 

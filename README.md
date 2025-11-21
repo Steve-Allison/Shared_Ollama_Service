@@ -24,6 +24,84 @@ This service provides a REST API (port 8000) that manages Ollama internally and 
 - **Story Machine**
 - **Docling_Machine**
 
+## 5-Minute Quickstart
+
+Get up and running with the Shared Ollama Service in 5 minutes:
+
+### 1. Start the Service
+
+```bash
+# Start REST API (automatically manages Ollama)
+./scripts/start.sh
+```
+
+The service will:
+
+- Auto-detect your hardware and configure optimal settings
+- Start Ollama with MPS/Metal GPU acceleration (Apple Silicon)
+- Launch the REST API on port 8000
+
+### 2. Verify It's Running
+
+```bash
+# Health check
+curl http://0.0.0.0:8000/api/v1/health
+
+# List available models
+curl http://0.0.0.0:8000/api/v1/models
+```
+
+Expected response:
+
+```json
+{"status": "healthy", "ollama_status": "running"}
+```
+
+### 3. Send Your First Request
+
+**Text Chat:**
+
+```bash
+curl -X POST http://0.0.0.0:8000/api/v1/chat \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "qwen3:14b-q4_K_M",
+    "messages": [
+      {"role": "user", "content": "Explain quantum computing in one sentence"}
+    ]
+  }'
+```
+
+**Vision-Language Model (with Image):**
+
+```bash
+# Encode an image to base64 (replace with your image path)
+IMAGE_DATA=$(python3 -c "import base64; print('data:image/jpeg;base64,' + base64.b64encode(open('photo.jpg', 'rb').read()).decode())")
+
+curl -X POST http://0.0.0.0:8000/api/v1/vlm \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"model\": \"qwen3-vl:8b-instruct-q4_K_M\",
+    \"messages\": [{\"role\": \"user\", \"content\": \"What's in this image?\"}],
+    \"images\": [\"$IMAGE_DATA\"]
+  }"
+```
+
+### 4. View Interactive API Documentation
+
+Open in your browser:
+
+```text
+http://0.0.0.0:8000/api/docs
+```
+
+### Next Steps
+
+- **Detailed Usage**: See [Usage in Projects](#usage-in-projects) for Python, TypeScript, and Go examples
+- **VLM Guide**: See [Vision Language Model Support](#vision-language-model-vlm-support) for multimodal capabilities
+- **API Reference**: See [docs/API_REFERENCE.md](docs/API_REFERENCE.md) for complete endpoint documentation
+- **Monitoring**: See [Monitoring & Metrics](#monitoring--metrics) for observability features
+
 ## Models Available
 
 **Note**: Models are loaded on-demand. Up to 3 models can be loaded simultaneously based on available RAM.
@@ -515,6 +593,35 @@ for line in response.iter_lines():
 6. **Image Size**: Keep images under 10MB for best performance
 7. **Native Format**: The service uses Ollama's native API format internally - no custom formats or proprietary code
 8. **Project Tracking**: Include `X-Project-Name` header for project-based analytics and usage tracking
+
+### VLM Request Tracking
+
+VLM requests automatically track comprehensive metrics and analytics:
+
+- **Image Cache Statistics**: Hit rate, total cache size, entry count, and evictions
+- **Compression Savings**: Bytes saved per request when image compression is enabled
+- **Project Analytics**: Usage tracking by project (via `X-Project-Name` header)
+- **Performance Metrics**: Token generation rates, model load times, and warm start tracking
+- **Image Processing**: Number of images processed, compression format used, and cache utilization
+
+**Example Response with Tracking Data:**
+
+```json
+{
+  "message": {
+    "role": "assistant",
+    "content": "The image shows a beautiful landscape..."
+  },
+  "model": "qwen3-vl:8b-instruct-q4_K_M",
+  "images_processed": 2,
+  "compression_savings_bytes": 1458920,
+  "latency_ms": 1250.5,
+  "model_load_ms": 0,
+  "model_warm_start": true
+}
+```
+
+All VLM metrics are automatically logged to `logs/requests.jsonl` and can be queried via the `/api/v1/analytics` and `/api/v1/performance/stats` endpoints.
 
 ### Error Handling
 
@@ -1373,6 +1480,188 @@ resp, err := http.Post(
 
 **API Documentation**: Visit `http://0.0.0.0:8000/api/docs` for interactive API documentation.
 
+### Connecting from Remote Clients
+
+The examples above show `0.0.0.0:8000` which works for local connections. To connect from **another machine** on your network:
+
+**1. Find the Server's IP Address:**
+
+```bash
+# On macOS/Linux
+ifconfig | grep "inet "
+# Look for your local network IP (e.g., 192.168.1.100)
+
+# Or use hostname
+hostname -I  # Linux
+ipconfig getifaddr en0  # macOS WiFi
+```
+
+**2. Use the Server's IP in Client Code:**
+
+**Python:**
+
+```python
+import requests
+import os
+
+# Set the API base URL to the remote server
+API_BASE_URL = "http://192.168.1.100:8000"
+
+response = requests.post(
+    f"{API_BASE_URL}/api/v1/chat",
+    json={
+        "model": "qwen3:14b-q4_K_M",
+        "messages": [{"role": "user", "content": "Hello from remote client!"}]
+    }
+)
+print(response.json()["message"]["content"])
+```
+
+**TypeScript/JavaScript:**
+
+```typescript
+// Configure API base URL
+const API_BASE_URL = process.env.API_BASE_URL || "http://192.168.1.100:8000";
+
+const response = await fetch(`${API_BASE_URL}/api/v1/chat`, {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({
+    model: "qwen3:14b-q4_K_M",
+    messages: [{ role: "user", content: "Hello from remote client!" }]
+  })
+});
+
+const data = await response.json();
+console.log(data.message.content);
+```
+
+**curl:**
+
+```bash
+# From any machine on the network
+curl -X POST http://192.168.1.100:8000/api/v1/chat \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "qwen3:14b-q4_K_M",
+    "messages": [{"role": "user", "content": "Hello!"}]
+  }'
+```
+
+**3. Network Configuration:**
+
+The REST API binds to `0.0.0.0:8000` by default, making it accessible from the network. The internal Ollama service (`localhost:11434`) remains local-only for security.
+
+If you encounter connection issues:
+
+- **Firewall**: Ensure port 8000 is allowed through your firewall
+- **Network**: Verify both machines are on the same network
+- **Test Connectivity**: Use `curl http://<server-ip>:8000/api/v1/health` from the client machine
+
+**Environment Variable Approach:**
+
+```bash
+# Client machine - set once
+export API_BASE_URL="http://192.168.1.100:8000"
+
+# Python code automatically uses it
+from shared_ollama import SharedOllamaClient
+client = SharedOllamaClient()  # Auto-discovers from environment
+```
+
+### CORS and Browser Support
+
+The REST API has **CORS (Cross-Origin Resource Sharing) enabled** by default, allowing web browsers and client-side JavaScript to make requests to the service.
+
+**CORS Configuration:**
+
+- ✅ **All Origins Allowed**: `Access-Control-Allow-Origin: *` (development default)
+- ✅ **All Methods**: GET, POST, PUT, DELETE, OPTIONS
+- ✅ **All Headers**: Custom headers allowed (including `X-Project-Name`)
+- ✅ **Credentials**: Cookies and authorization headers supported
+
+**Browser JavaScript Example:**
+
+```html
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Ollama Chat Client</title>
+</head>
+<body>
+    <h1>Chat with Ollama</h1>
+    <textarea id="prompt" placeholder="Enter your message..."></textarea>
+    <button onclick="sendMessage()">Send</button>
+    <div id="response"></div>
+
+    <script>
+        async function sendMessage() {
+            const prompt = document.getElementById('prompt').value;
+            const responseDiv = document.getElementById('response');
+
+            try {
+                const response = await fetch('http://192.168.1.100:8000/api/v1/chat', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Project-Name': 'WebChatClient'
+                    },
+                    body: JSON.stringify({
+                        model: 'qwen3:14b-q4_K_M',
+                        messages: [
+                            { role: 'user', content: prompt }
+                        ]
+                    })
+                });
+
+                const data = await response.json();
+                responseDiv.innerHTML = `<strong>Assistant:</strong> ${data.message.content}`;
+            } catch (error) {
+                responseDiv.innerHTML = `<strong>Error:</strong> ${error.message}`;
+            }
+        }
+    </script>
+</body>
+</html>
+```
+
+**Production CORS Configuration:**
+
+For production deployments, you should restrict allowed origins. The CORS middleware is configured in `src/shared_ollama/api/middleware.py`:
+
+```python
+# Production example - restrict to specific domains
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "https://yourapp.com",
+        "https://dashboard.yourapp.com"
+    ],
+    allow_credentials=True,
+    allow_methods=["GET", "POST"],
+    allow_headers=["Content-Type", "X-Project-Name"],
+)
+```
+
+**Security Considerations:**
+
+- **Development**: `allow_origins=["*"]` is convenient but permissive
+- **Production**: Restrict to specific trusted origins
+- **Local Testing**: Browsers can access `http://0.0.0.0:8000` or `http://192.168.1.100:8000`
+- **HTTPS**: Consider SSL/TLS for production (requires reverse proxy like nginx or traefik)
+
+**Supported Browsers:**
+
+- ✅ Chrome/Edge (latest)
+- ✅ Firefox (latest)
+- ✅ Safari (latest)
+- ✅ Opera (latest)
+
+**Known Limitations:**
+
+- Browser-based clients cannot use HTTP streaming with Server-Sent Events (SSE) due to CORS preflight complexity - use non-streaming requests from browsers
+- For advanced streaming in browsers, consider using WebSockets or server-side proxies
+
 **Benefits:**
 
 - ✅ **Fully Async**: Non-blocking I/O operations for maximum concurrency
@@ -1897,25 +2186,208 @@ ollama list
 
 ### Connection Refused
 
-If connection issues persist, especially when using `curl` or other client applications from the same machine, try using `http://0.0.0.0:8000` instead of `http://localhost:8000`.
+Connection issues can occur for several reasons. Follow this systematic troubleshooting guide:
 
-*   **Explanation**: The REST API is bound to `0.0.0.0` by default, meaning it listens on all available network interfaces. On some host systems, `localhost` (which typically resolves to `127.0.0.1`) might not correctly route to services bound to `0.0.0.0`. Using `0.0.0.0` directly ensures you are targeting the correct interface.
+#### 1. Local Connection Issues
+
+If connecting from the **same machine** where the service is running:
+
+**Use `0.0.0.0` instead of `localhost`:**
 
 ```bash
-# Example: Use 0.0.0.0 instead of localhost
+# ✅ Correct - use 0.0.0.0
 curl http://0.0.0.0:8000/api/v1/health
+
+# ❌ May fail - localhost routing issues
+curl http://localhost:8000/api/v1/health
 ```
 
+**Explanation**: The REST API binds to `0.0.0.0` by default (all network interfaces). On some systems, `localhost` (127.0.0.1) may not correctly route to services bound to `0.0.0.0`.
+
+**Verify Service is Running:**
+
 ```bash
-# Check if REST API is running
-curl http://0.0.0.0:8000/api/v1/health
+# Check if REST API process is running
+ps aux | grep "uvicorn"
+
+# Check if port 8000 is listening
+lsof -i :8000  # macOS/Linux
+netstat -an | grep 8000  # Alternative
 
 # If not running, start it
 ./scripts/start.sh
 
-# If already running but not responding, restart
+# If running but not responding, restart
 ./scripts/shutdown.sh && ./scripts/start.sh
 ```
+
+#### 2. Remote Connection Issues
+
+If connecting from a **different machine** on your network:
+
+##### Step 1: Find Server IP Address
+
+```bash
+# On the server machine
+ifconfig | grep "inet "  # macOS/Linux
+ip addr show  # Linux alternative
+
+# Look for local network IP (e.g., 192.168.1.100, 10.0.0.50)
+```
+
+##### Step 2: Test Connectivity
+
+```bash
+# From client machine - test basic connectivity
+ping 192.168.1.100
+
+# Test if port 8000 is reachable
+telnet 192.168.1.100 8000
+# Or
+nc -zv 192.168.1.100 8000
+
+# Test API health endpoint
+curl http://192.168.1.100:8000/api/v1/health
+```
+
+##### Step 3: Check Firewall Rules
+
+###### macOS
+
+```bash
+# Check if firewall is enabled
+sudo /usr/libexec/ApplicationFirewall/socketfilterfw --getglobalstate
+
+# Allow incoming connections on port 8000
+sudo /usr/libexec/ApplicationFirewall/socketfilterfw --add $(which python3)
+sudo /usr/libexec/ApplicationFirewall/socketfilterfw --unblockapp $(which python3)
+```
+
+###### Linux (ufw)
+
+```bash
+# Check firewall status
+sudo ufw status
+
+# Allow port 8000
+sudo ufw allow 8000/tcp
+
+# Reload firewall
+sudo ufw reload
+```
+
+**Linux (firewalld):**
+
+```bash
+# Check firewall status
+sudo firewall-cmd --state
+
+# Allow port 8000
+sudo firewall-cmd --add-port=8000/tcp --permanent
+sudo firewall-cmd --reload
+```
+
+##### Step 4: Verify Network Configuration
+
+```bash
+# On server - verify API is binding to 0.0.0.0
+netstat -an | grep 8000
+# Should show: *.8000 or 0.0.0.0:8000 (not 127.0.0.1:8000)
+
+# Check logs for binding address
+tail -f logs/api.log | grep "Uvicorn running"
+# Should show: http://0.0.0.0:8000
+```
+
+#### 3. Common Issues and Solutions
+
+**Issue**: "Connection timed out"
+
+**Cause**: Firewall blocking port 8000
+
+**Solution**:
+
+```bash
+# Temporarily disable firewall to test (macOS)
+sudo /usr/libexec/ApplicationFirewall/socketfilterfw --setglobalstate off
+
+# Test connection
+curl http://<server-ip>:8000/api/v1/health
+
+# Re-enable firewall and add proper rule
+sudo /usr/libexec/ApplicationFirewall/socketfilterfw --setglobalstate on
+```
+
+**Issue**: "Connection refused" from remote client
+
+**Cause**: Service not binding to correct interface
+
+**Solution**:
+
+```bash
+# Verify API_HOST environment variable
+echo $API_HOST
+# Should be: 0.0.0.0 (not localhost)
+
+# If incorrect, set it before starting
+export API_HOST=0.0.0.0
+./scripts/start.sh
+```
+
+**Issue**: "No route to host"
+
+**Cause**: Machines on different networks or VPN issues
+
+**Solution**:
+
+```bash
+# Verify both machines on same network
+# Client machine
+ip route get <server-ip>
+
+# Check for VPN interference
+# Temporarily disconnect VPN and test
+```
+
+**Issue**: Service accessible locally but not remotely
+
+**Cause**: Router or network firewall
+
+**Solution**:
+
+- Check router firewall settings
+- Ensure both machines are on the same subnet
+- Try connecting from another machine on the same network
+- Contact network administrator if on corporate network
+
+#### 4. Debugging Checklist
+
+Run through this checklist systematically:
+
+- [ ] Service is running: `ps aux | grep uvicorn`
+- [ ] Port 8000 is listening: `lsof -i :8000`
+- [ ] Service bound to `0.0.0.0`: `netstat -an | grep 8000`
+- [ ] Firewall allows port 8000: Check firewall rules
+- [ ] Can ping server from client: `ping <server-ip>`
+- [ ] Port 8000 reachable: `nc -zv <server-ip> 8000`
+- [ ] Health endpoint responds locally: `curl http://0.0.0.0:8000/api/v1/health`
+- [ ] Health endpoint responds remotely: `curl http://<server-ip>:8000/api/v1/health`
+
+#### 5. Getting Help
+
+If issues persist:
+
+1. **Check logs**: `tail -f logs/api.log logs/api.error.log`
+2. **Run diagnostics**: `./scripts/status.sh`
+3. **Verify configuration**: `./scripts/generate_optimal_config.sh`
+4. **Test with verbose curl**:
+
+   ```bash
+   curl -v http://0.0.0.0:8000/api/v1/health
+   ```
+
+5. **Check GitHub issues**: Search for similar problems
+6. **Open an issue**: Include logs, error messages, and system info
 
 ## Security
 
@@ -2431,7 +2903,6 @@ GitHub Actions workflows for automated testing and releases:
 This codebase has been fully modernized to leverage Python 3.13+ native features:
 
 **Native Features:**
-§s
 
 - ✅ `datetime.now(UTC)` for timezone-aware timestamps
 - ✅ `time.perf_counter()` for precise performance measurements

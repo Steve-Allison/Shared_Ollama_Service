@@ -1,24 +1,18 @@
 import base64
-import io
-import os
-import subprocess
-from PIL import Image
+from pathlib import Path
 
-image_path = "tests/_test_files/slide_9.png"
-base64_file_path = "tests/_test_files/slide_9_base64.txt"
+image_path = Path("tests/_test_files/slide_9.png")
+base64_file_path = Path("tests/_test_files/slide_9_base64.txt")
 
-# Method 1: Read directly using subprocess (most reliable for full content)
+# Method 1: Read the existing base64 export if available
 try:
-    full_base64_data_url = subprocess.check_output(f"cat {base64_file_path}", shell=True).decode("utf-8").strip()
-except Exception as e:
-    # print(f"Error reading full base64 file with subprocess: {e}")
+    full_base64_data_url = base64_file_path.read_text(encoding="utf-8").strip()
+except OSError:
     full_base64_data_url = ""
 
 # Method 2: Fallback to reading binary image and encoding (should produce valid base64)
 if not full_base64_data_url:
-    # print("Using fallback: Encoding image directly.")
-    with open(image_path, "rb") as f:
-        image_bytes_raw = f.read()
+    image_bytes_raw = image_path.read_bytes()
     image_base64_fallback = base64.b64encode(image_bytes_raw).decode("utf-8")
     full_base64_data_url = f"data:image/png;base64,{image_base64_fallback}"
 

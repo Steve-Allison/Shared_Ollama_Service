@@ -420,7 +420,8 @@ class TestVLMRequestMapper:
 
         assert isinstance(domain_req, VLMRequest)
         assert len(domain_req.messages) == 1
-        assert len(domain_req.images) == 1
+        assert domain_req.messages[0].images is not None
+        assert len(domain_req.messages[0].images) == 1
         assert domain_req.model is not None
         assert domain_req.model.value == "qwen3-vl:8b-instruct-q4_K_M"
 
@@ -437,7 +438,8 @@ class TestVLMRequestMapper:
 
         domain_req = api_to_domain_vlm_request(api_req)
 
-        assert len(domain_req.images) == 2
+        assert domain_req.messages[0].images is not None
+        assert len(domain_req.messages[0].images) == 2
 
     def test_api_to_domain_vlm_request_openai_converts_multimodal_messages(self):
         """Test that api_to_domain_vlm_request_openai converts OpenAI format."""
@@ -461,7 +463,8 @@ class TestVLMRequestMapper:
 
         assert isinstance(domain_req, VLMRequest)
         assert len(domain_req.messages) == 1
-        assert len(domain_req.images) == 1
+        assert domain_req.messages[0].images is not None
+        assert len(domain_req.messages[0].images) == 1
         assert "What's in this image?" in domain_req.messages[0].content
 
     def test_api_to_domain_vlm_request_openai_handles_text_only_messages(self):
@@ -500,7 +503,8 @@ class TestVLMRequestMapper:
         domain_req = api_to_domain_vlm_request_openai(api_req)
 
         assert len(domain_req.messages) == 1
-        assert len(domain_req.images) == 1
+        assert domain_req.messages[0].images is not None
+        assert len(domain_req.messages[0].images) == 1
         # Should add default prompt for image-only message
         assert len(domain_req.messages[0].content) > 0
 
@@ -583,7 +587,8 @@ class TestMapperEdgeCases:
 
         domain_req = api_to_domain_vlm_request(api_req)
 
-        assert len(domain_req.images) == 10
+        assert domain_req.messages[0].images is not None
+        assert len(domain_req.messages[0].images) == 10
 
     @pytest.mark.parametrize(
         "format_value,response_format_type,expected",

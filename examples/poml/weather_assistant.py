@@ -67,10 +67,8 @@ def calculate(expression: str) -> dict:
         # WARNING: eval() is unsafe for untrusted input!
         # Use a proper expression parser in production (e.g., sympy, numexpr)
         result = eval(expression, {"__builtins__": {}}, {})
-        if isinstance(result, (int, float)):
-            safe_result: float | int = result
-        else:
-            safe_result = str(result)
+        safe_result: float | int | str
+        safe_result = result if isinstance(result, int | float) else str(result)
         return {"result": safe_result, "expression": expression}
     except Exception as e:
         return {"error": str(e), "expression": expression}

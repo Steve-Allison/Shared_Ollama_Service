@@ -9,7 +9,7 @@ import json
 import logging
 import time
 from collections.abc import AsyncIterator
-from typing import Any
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import Response, StreamingResponse
@@ -31,6 +31,9 @@ from shared_ollama.core.queue import RequestQueue
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+UseCaseDep = Annotated[ChatUseCase, Depends(get_chat_use_case)]
+QueueDep = Annotated[RequestQueue, Depends(get_chat_queue)]
 
 
 async def _stream_chat_sse(
@@ -70,8 +73,8 @@ async def _stream_chat_sse(
 @limiter.limit("60/minute")
 async def chat(
     request: Request,
-    use_case: ChatUseCase = Depends(get_chat_use_case),
-    queue: RequestQueue = Depends(get_chat_queue),
+    use_case: ChatUseCase = Depends(get_chat_use_case),  # noqa: B008
+    queue: RequestQueue = Depends(get_chat_queue),  # noqa: B008
 ) -> Response:
     """Chat completion endpoint.
 
@@ -152,7 +155,8 @@ async def chat(
 
         # Convert API model to domain entity (validation happens here)
         domain_req = api_to_domain_chat_request(api_req)
-        model_name = domain_req.model.value if getattr(domain_req, "model", None) else None
+        domain_model = getattr(domain_req, "model", None)
+        model_name = domain_model.value if domain_model else None
 
         # Acquire queue slot for request processing
         async with queue.acquire(request_id=ctx.request_id):

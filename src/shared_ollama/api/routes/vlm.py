@@ -10,7 +10,7 @@ import json
 import logging
 import time
 from collections.abc import AsyncIterator
-from typing import Any
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import Response, StreamingResponse
@@ -34,13 +34,14 @@ from shared_ollama.api.models import (
 )
 from shared_ollama.api.response_builders import (
     build_openai_chat_response,
+    build_openai_stream_chunk,
     build_vlm_response,
     json_response,
 )
 from shared_ollama.api.type_guards import is_dict_result
 from shared_ollama.application.vlm_use_cases import VLMUseCase
-from shared_ollama.domain.entities import VLMRequest as DomainVLMRequest
 from shared_ollama.core.queue import RequestQueue
+from shared_ollama.domain.entities import VLMRequest as DomainVLMRequest
 from shared_ollama.telemetry.structured_logging import log_request_event
 
 logger = logging.getLogger(__name__)
@@ -98,8 +99,8 @@ async def _stream_chat_sse(
 @limiter.limit("30/minute")
 async def vlm_chat(
     request: Request,
-    vlm_use_case_dep: VLMUseCase = Depends(get_vlm_use_case),
-    queue: RequestQueue = Depends(get_vlm_queue),
+    vlm_use_case_dep: VLMUseCase = Depends(get_vlm_use_case),  # noqa: B008
+    queue: RequestQueue = Depends(get_vlm_queue),  # noqa: B008
 ) -> Response:
     """Vision-Language Model (VLM) chat completion endpoint.
 
@@ -200,9 +201,8 @@ async def vlm_chat(
 
         # Convert API model to domain entity (validation happens here)
         domain_req = api_to_domain_vlm_request(api_req)
-        event_data["model"] = (
-            domain_req.model.value if getattr(domain_req, "model", None) else None
-        )
+        domain_model = getattr(domain_req, "model", None)
+        event_data["model"] = domain_model.value if domain_model else None
 
         # Acquire VLM queue slot for request processing
         async with queue.acquire(request_id=ctx.request_id):
@@ -261,8 +261,8 @@ async def vlm_chat(
 @limiter.limit("30/minute")
 async def vlm_chat_openai(
     request: Request,
-    vlm_use_case_dep: VLMUseCase = Depends(get_vlm_use_case),
-    queue: RequestQueue = Depends(get_vlm_queue),
+    vlm_use_case_dep: VLMUseCase = Depends(get_vlm_use_case),  # noqa: B008
+    queue: RequestQueue = Depends(get_vlm_queue),  # noqa: B008
 ) -> Response:
     """OpenAI-compatible Vision-Language Model (VLM) chat completion endpoint.
 
@@ -341,9 +341,8 @@ async def vlm_chat_openai(
 
         # Convert OpenAI-compatible API model to native Ollama domain entity
         domain_req = api_to_domain_vlm_request_openai(api_req)
-        event_data["model"] = (
-            domain_req.model.value if getattr(domain_req, "model", None) else None
-        )
+        domain_model = getattr(domain_req, "model", None)
+        event_data["model"] = domain_model.value if domain_model else None
 
         # Count images for response metrics
         image_count = _count_images_from_domain_request(domain_req)

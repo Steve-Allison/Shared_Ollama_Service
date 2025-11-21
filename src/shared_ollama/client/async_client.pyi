@@ -15,6 +15,24 @@ class AsyncOllamaConfig:
     max_connections: int
     max_keepalive_connections: int
     max_concurrent_requests: int | None
+    client_limits: Any | None
+    client_timeout: Any | None
+
+    def __init__(
+        self,
+        base_url: str = ...,
+        default_model: str = ...,
+        timeout: int = ...,
+        health_check_timeout: int = ...,
+        verbose: bool = ...,
+        max_retries: int = ...,
+        retry_delay: float = ...,
+        max_connections: int = ...,
+        max_keepalive_connections: int = ...,
+        max_concurrent_requests: int | None = ...,
+        client_limits: Any | None = ...,
+        client_timeout: Any | None = ...,
+    ) -> None: ...
 
 class AsyncSharedOllamaClient:
     def __init__(
@@ -38,12 +56,18 @@ class AsyncSharedOllamaClient:
         system: str | None = ...,
         options: GenerateOptions | None = ...,
         stream: bool = ...,
+        format: str | dict[str, Any] | None = ...,
+        tools: list[dict[str, Any]] | None = ...,
     ) -> GenerateResponse: ...
     async def chat(
         self,
         messages: list[dict[str, str]],
         model: str | None = ...,
+        options: GenerateOptions | None = ...,
         stream: bool = ...,
+        images: list[str] | None = ...,
+        format: str | dict[str, Any] | None = ...,
+        tools: list[dict[str, Any]] | None = ...,
     ) -> dict[str, Any]: ...
     async def health_check(self) -> bool: ...
     async def get_model_info(self, model: str) -> dict[str, Any] | None: ...

@@ -49,6 +49,11 @@ from shared_ollama.telemetry.structured_logging import log_request_event
 logger = logging.getLogger(__name__)
 
 
+def _env_default_vlm_model() -> str:
+    """Read the default VLM model from environment with safe fallback."""
+    return os.getenv("OLLAMA_DEFAULT_VLM_MODEL", Model.QWEN3_VL_8B_Q4.value)
+
+
 @dataclass(slots=True, frozen=True)
 class AsyncOllamaConfig:
     """Configuration for the asynchronous Ollama client.
@@ -71,10 +76,7 @@ class AsyncOllamaConfig:
     """
 
     base_url: str = "http://localhost:11434"
-    default_model: str = os.getenv(
-        "OLLAMA_DEFAULT_VLM_MODEL",
-        Model.QWEN3_VL_8B_Q4.value,
-    )
+    default_model: str = field(default_factory=_env_default_vlm_model)
     timeout: int = 300
     health_check_timeout: int = 5
     verbose: bool = False

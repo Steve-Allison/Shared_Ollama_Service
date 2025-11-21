@@ -587,8 +587,12 @@ class TestGenerateStreaming:
 
     def test_generate_stream_handles_errors(self, api_client, mock_async_client):
         """Test that streaming errors are sent as final chunk."""
-        async def mock_stream():
+        from collections.abc import AsyncIterator
+        
+        async def mock_stream() -> AsyncIterator[dict[str, Any]]:
             raise RuntimeError("Streaming error")
+            # This yield is unreachable but makes it an async generator
+            yield {}  # type: ignore[unreachable]
 
         mock_async_client.generate_stream = AsyncMock(return_value=mock_stream())
 

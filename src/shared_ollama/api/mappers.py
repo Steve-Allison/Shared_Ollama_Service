@@ -370,7 +370,9 @@ def _extract_vlm_messages(api_req: Any) -> tuple[VLMMessage, ...]:
                 elif isinstance(part, ImageContentPart):
                     images.append(part.image_url.url)
 
-        messages.append(VLMMessage(role=msg.role, content=" ".join(text_parts), images=tuple(images) if images else None))
+        # Join text parts, or use default prompt for image-only messages
+        text_content = " ".join(text_parts) if text_parts else ("Describe this image." if images else None)
+        messages.append(VLMMessage(role=msg.role, content=text_content, images=tuple(images) if images else None))
 
     return tuple(messages)
 

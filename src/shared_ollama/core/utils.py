@@ -328,7 +328,12 @@ def get_warmup_models() -> list[str]:
         List of model names to pre-warm.
     """
     defaults = _load_model_profile_defaults()
-    return defaults.get("warmup_models", [])
+    warmup_models = defaults.get("warmup_models", [])
+    if isinstance(warmup_models, list):
+        return [str(model) for model in warmup_models]
+    if isinstance(warmup_models, str):
+        return [warmup_models]
+    return []
 
 
 @functools.cache
@@ -344,8 +349,10 @@ def get_allowed_models() -> set[str]:
     defaults = _load_model_profile_defaults()
     required = defaults.get("required_models", [])
     warmup = defaults.get("warmup_models", [])
+    required_set = {str(model) for model in required} if isinstance(required, list) else set()
+    warmup_set = {str(model) for model in warmup} if isinstance(warmup, list) else set()
     # Combine required and warmup models, plus defaults
-    allowed = set(required) | set(warmup)
+    allowed = required_set | warmup_set
     # Add default models if not already included
     if defaults.get("vlm_model"):
         allowed.add(str(defaults["vlm_model"]))

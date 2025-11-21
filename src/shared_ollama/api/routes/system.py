@@ -14,9 +14,9 @@ import copy
 import functools
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from importlib import resources
-from typing import Any
+from typing import Annotated, Any
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -44,6 +44,9 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
+QueueDep = Annotated[RequestQueue, Depends(get_chat_queue)]
+ListModelsDep = Annotated[ListModelsUseCase, Depends(get_list_models_use_case)]
+
 _PDL_TEMPLATE_PACKAGE = "shared_ollama.data.pdl"
 _PDL_TEMPLATE_FILES = {
     "vlm": "vlm_insights_template.json",
@@ -70,7 +73,7 @@ def _prepare_pdl_template(filename: str, request: Request) -> dict[str, Any]:
             invoke_section["url"] = url.replace("__API_BASE_URL__", base_url)
 
     metadata = template.setdefault("metadata", {})
-    metadata["served_at"] = datetime.now(timezone.utc).isoformat()
+    metadata["served_at"] = datetime.now(UTC).isoformat()
     metadata["base_url"] = base_url
     metadata["source"] = "shared-ollama.api.system"
 
@@ -170,7 +173,7 @@ async def health_check() -> HealthResponse:
 
 @router.get("/queue/stats", response_model=QueueStatsResponse, tags=["Queue"])
 async def get_queue_stats(
-    queue: RequestQueue = Depends(get_chat_queue),
+    queue: RequestQueue = Depends(get_chat_queue),  # noqa: B008
 ) -> QueueStatsResponse:
     """Get chat queue statistics.
 
@@ -318,7 +321,7 @@ async def get_analytics(
 @limiter.limit("30/minute")
 async def list_models(
     request: Request,
-    use_case: ListModelsUseCase = Depends(get_list_models_use_case),
+    use_case: ListModelsUseCase = Depends(get_list_models_use_case),  # noqa: B008
 ) -> ModelsResponse:
     """List available models.
 

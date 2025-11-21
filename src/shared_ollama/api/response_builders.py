@@ -46,7 +46,12 @@ def build_chat_response(
     total_ms = total_duration / 1_000_000 if total_duration else 0.0
 
     return ChatResponse(
-        message=ChatMessage(role="assistant", content=message_content),
+        message=ChatMessage(
+            role="assistant",
+            content=message_content,
+            tool_calls=None,
+            tool_call_id=None,
+        ),
         model=model_used,
         request_id=ctx.request_id,
         latency_ms=0.0,  # Use case handles latency tracking internally
@@ -121,7 +126,12 @@ def build_vlm_response(
     total_ms = total_duration / 1_000_000 if total_duration else 0.0
 
     return VLMResponse(
-        message=ChatMessage(role="assistant", content=message_content),
+        message=ChatMessage(
+            role="assistant",
+            content=message_content,
+            tool_calls=None,
+            tool_call_id=None,
+        ),
         model=model_used,
         request_id=ctx.request_id,
         latency_ms=0.0,  # Use case handles latency tracking internally
@@ -153,7 +163,7 @@ def json_response(model: ChatResponse | GenerateResponse | VLMResponse) -> JSONR
 def _coerce_created_timestamp(value: Any) -> int:
     """Normalize created_at values to a Unix timestamp."""
 
-    if isinstance(value, (int, float)):
+    if isinstance(value, int | float):
         return int(value)
     if isinstance(value, str):
         try:

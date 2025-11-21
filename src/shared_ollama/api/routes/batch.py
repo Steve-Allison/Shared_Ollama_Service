@@ -7,6 +7,8 @@ in parallel.
 from __future__ import annotations
 
 import logging
+from typing import Annotated
+
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from shared_ollama.api.dependencies import (
@@ -35,12 +37,15 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
+BatchChatDep = Annotated[BatchChatUseCase, Depends(get_batch_chat_use_case)]
+BatchVLMDep = Annotated[BatchVLMUseCase, Depends(get_batch_vlm_use_case)]
+
 
 @router.post("/batch/chat", tags=["Batch"], response_model=BatchResponse)
 @limiter.limit("10/minute")
 async def batch_chat(
     request: Request,
-    use_case: BatchChatUseCase = Depends(get_batch_chat_use_case),
+    use_case: BatchChatUseCase = Depends(get_batch_chat_use_case),  # noqa: B008
 ) -> BatchResponse:
     """Batch text-only chat completion endpoint.
 
@@ -158,7 +163,7 @@ async def batch_chat(
 @limiter.limit("5/minute")
 async def batch_vlm(
     request: Request,
-    use_case: BatchVLMUseCase = Depends(get_batch_vlm_use_case),
+    use_case: BatchVLMUseCase = Depends(get_batch_vlm_use_case),  # noqa: B008
 ) -> BatchResponse:
     """Batch VLM chat completion endpoint.
 

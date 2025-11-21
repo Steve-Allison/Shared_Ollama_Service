@@ -35,7 +35,7 @@ class PerformanceCollector:
         operation: str,
         total_latency_ms: float,
         success: bool,
-        response: GenerateResponse | None = ...,
+        response: GenerateResponse | dict[str, Any] | None = ...,
         error: str | None = ...,
     ) -> None: ...
     @classmethod

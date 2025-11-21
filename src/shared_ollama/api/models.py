@@ -25,7 +25,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator
 
-from shared_ollama.core.utils import get_default_text_model, get_default_vlm_model
+from shared_ollama.core.utils import get_default_vlm_model
 
 # ============================================================================
 # Tool/Function Calling Models (for POML and OpenAI compatibility)

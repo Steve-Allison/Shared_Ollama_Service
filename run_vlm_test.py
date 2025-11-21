@@ -1,11 +1,5 @@
-import base64
 import asyncio
-import os
-import time
-import types
-import uuid
-from typing import Any, Literal
-from dataclasses import dataclass
+import base64
 
 from shared_ollama.application.interfaces import (
     AnalyticsCollectorInterface,
@@ -17,10 +11,10 @@ from shared_ollama.application.interfaces import (
     RequestLoggerInterface,
 )
 from shared_ollama.application.vlm_use_cases import VLMUseCase
-from shared_ollama.client import AsyncSharedOllamaClient, AsyncOllamaConfig
-from shared_ollama.domain.entities import VLMRequest, VLMMessage, ModelName
+from shared_ollama.domain.entities import ModelName, VLMMessage, VLMRequest
 from shared_ollama.infrastructure.config import settings
-from shared_ollama.infrastructure.image_processing import ImageMetadata, ImageFormat
+from shared_ollama.infrastructure.image_processing import ImageFormat, ImageMetadata
+
 
 # Dummy implementations for interfaces for demonstration purposes
 class DummyOllamaClient(OllamaClientInterface):

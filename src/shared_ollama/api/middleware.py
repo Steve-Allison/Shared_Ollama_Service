@@ -8,9 +8,10 @@ from __future__ import annotations
 
 import logging
 import time
+from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING
 
-from fastapi import Request, status
+from fastapi import Request, Response, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -32,19 +33,26 @@ logger = logging.getLogger(__name__)
 limiter = Limiter(key_func=get_remote_address)
 
 
-def _rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded) -> JSONResponse:
+def _rate_limit_exceeded_handler(request: Request, exc: Exception) -> JSONResponse:
     """Temporary handler for rate limit exceeded during app setup."""
+    retry_after = "60"
+    if isinstance(exc, RateLimitExceeded):
+        retry_after = str(getattr(exc, "retry_after", 60))
     return JSONResponse(
         status_code=status.HTTP_429_TOO_MANY_REQUESTS,
         content={"error": "Rate limit exceeded"},
-        headers={"Retry-After": "60"},
+        headers={"Retry-After": retry_after},
     )
 
 
 class StructuredLoggingMiddleware(BaseHTTPMiddleware):
     """Middleware that emits structured logs for every HTTP request."""
 
-    async def dispatch(self, request: Request, call_next):
+    async def dispatch(
+        self,
+        request: Request,
+        call_next: Callable[[Request], Awaitable[Response]],
+    ) -> Response:
         start_time = time.perf_counter()
         status_code: int | None = None
         error_type: str | None = None
@@ -125,7 +133,6 @@ def setup_exception_handlers(app: FastAPI) -> None:
         app: FastAPI application instance.
     """
 
-    @app.exception_handler(RequestValidationError)
     async def validation_exception_handler(
         request: Request, exc: RequestValidationError
     ) -> JSONResponse:
@@ -160,8 +167,9 @@ def setup_exception_handlers(app: FastAPI) -> None:
             ).model_dump(),
         )
 
-    @app.exception_handler(RateLimitExceeded)
-    async def rate_limit_exception_handler(request: Request, exc: RateLimitExceeded) -> JSONResponse:
+    async def rate_limit_exception_handler(
+        request: Request, exc: RateLimitExceeded
+    ) -> JSONResponse:
         """Handle rate limit exceeded errors.
 
         Global exception handler for rate limiting. Returns structured error
@@ -189,7 +197,6 @@ def setup_exception_handlers(app: FastAPI) -> None:
             headers={"Retry-After": "60"},
         )
 
-    @app.exception_handler(Exception)
     async def global_exception_handler(request: Request, exc: Exception) -> JSONResponse:
         """Global exception handler for unexpected errors.
 
@@ -222,3 +229,7 @@ def setup_exception_handlers(app: FastAPI) -> None:
                 request_id=ctx.request_id,
             ).model_dump(),
         )
+
+    app.exception_handler(RequestValidationError)(validation_exception_handler)
+    app.exception_handler(RateLimitExceeded)(rate_limit_exception_handler)
+    app.exception_handler(Exception)(global_exception_handler)

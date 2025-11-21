@@ -145,11 +145,16 @@ class GenerateUseCase:
             # Log and record metrics
             if stream:
                 # For streaming, we'll log after first chunk
+                if not isinstance(result, AsyncIterator):
+                    raise TypeError("Expected streaming iterator for generate()")
                 return result
+            if not isinstance(result, dict):
+                raise TypeError("Expected dict response for non-streaming generate()")
+            result_dict = result
             # Non-streaming: log immediately
-            model_used = result.get("model", model_str or "unknown")
+            model_used = result_dict.get("model", model_str or "unknown")
             # Extract performance metrics from Ollama response
-            load_duration = result.get("load_duration", 0)
+            load_duration = result_dict.get("load_duration", 0)
             model_load_ms = round(load_duration / 1_000_000, 3) if load_duration else None
             model_warm_start = (load_duration == 0) if load_duration is not None else None
 
@@ -168,7 +173,7 @@ class GenerateUseCase:
             })
 
             self._metrics.record_request(
-                model=result.get("model", model_str or "unknown"),
+                model=result_dict.get("model", model_str or "unknown"),
                 operation="generate",
                 latency_ms=latency_ms,
                 success=True,
@@ -191,10 +196,10 @@ class GenerateUseCase:
                 operation="generate",
                 total_latency_ms=latency_ms,
                 success=True,
-                response=result,  # Pass dict - PerformanceCollector now handles it
+                response=result_dict,
             )
 
-            return result
+            return result_dict
 
         except ValueError as exc:
             latency_ms = (time.perf_counter() - start_time) * 1000
@@ -416,11 +421,16 @@ class ChatUseCase:
             # Log and record metrics
             if stream:
                 # For streaming, we'll log after first chunk
+                if not isinstance(result, AsyncIterator):
+                    raise TypeError("Expected streaming iterator for chat()")
                 return result
+            if not isinstance(result, dict):
+                raise TypeError("Expected dict response for non-streaming chat()")
+            result_dict = result
             # Non-streaming: log immediately
-            model_used = result.get("model", model_str or "unknown")
+            model_used = result_dict.get("model", model_str or "unknown")
             # Extract performance metrics from Ollama response
-            load_duration = result.get("load_duration", 0)
+            load_duration = result_dict.get("load_duration", 0)
             model_load_ms = round(load_duration / 1_000_000, 3) if load_duration else None
             model_warm_start = (load_duration == 0) if load_duration is not None else None
 
@@ -462,10 +472,10 @@ class ChatUseCase:
                 operation="chat",
                 total_latency_ms=latency_ms,
                 success=True,
-                response=result,  # Pass dict - PerformanceCollector now handles it
+                response=result_dict,
             )
 
-            return result
+            return result_dict
 
         except ValueError as exc:
             latency_ms = (time.perf_counter() - start_time) * 1000

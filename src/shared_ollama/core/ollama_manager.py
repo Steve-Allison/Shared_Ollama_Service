@@ -512,7 +512,10 @@ class OllamaManager:
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE,
                 )
-                stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=600)  # 10 min timeout
+                _stdout, stderr = await asyncio.wait_for(
+                    process.communicate(),
+                    timeout=600,
+                )  # 10 min timeout
 
                 if process.returncode == 0:
                     logger.info("Successfully pulled model: %s", model_name)
@@ -523,7 +526,7 @@ class OllamaManager:
                         process.returncode,
                         stderr.decode('utf-8', errors='ignore'),
                     )
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 logger.error("Timeout pulling model: %s", model_name)
             except Exception:
                 logger.exception("An unexpected error occurred while pulling model %s", model_name)

@@ -480,54 +480,54 @@ class TestVLMRequest:
 
     def test_vlm_request_creation(self):
         """Test that VLMRequest can be created."""
-        messages = (VLMMessage(role="user", content="What's in this image?"),)
-        images = ["data:image/jpeg;base64,/9j/4AAQSkZJRg=="]
-        request = VLMRequest(messages=messages, images=images)
+        image_url = "data:image/jpeg;base64,/9j/4AAQSkZJRg=="
+        messages = (VLMMessage(role="user", content="What's in this image?", images=(image_url,)),)
+        request = VLMRequest(messages=messages)
 
         assert len(request.messages) == 1
-        assert len(request.images) == 1
+        assert request.messages[0].images is not None
+        assert len(request.messages[0].images) == 1
 
     def test_vlm_request_rejects_empty_messages(self):
         """Test that VLMRequest rejects empty messages."""
-        images = ["data:image/jpeg;base64,/9j/4AAQSkZJRg=="]
         with pytest.raises(ValueError, match="cannot be empty"):
-            VLMRequest(messages=(), images=images)
+            VLMRequest(messages=())
 
     def test_vlm_request_rejects_empty_images(self):
         """Test that VLMRequest rejects empty images."""
         messages = (VLMMessage(role="user", content="Test"),)
         with pytest.raises(ValueError, match="must contain at least one image"):
-            VLMRequest(messages=messages, images=[])
+            VLMRequest(messages=messages)
 
     def test_vlm_request_validates_max_dimension_min(self):
         """Test that VLMRequest validates max_dimension minimum."""
-        messages = (VLMMessage(role="user", content="Test"),)
-        images = ["data:image/jpeg;base64,/9j/4AAQSkZJRg=="]
+        image_url = "data:image/jpeg;base64,/9j/4AAQSkZJRg=="
+        messages = (VLMMessage(role="user", content="Test", images=(image_url,)),)
         with pytest.raises(ValueError, match="max_dimension must be between"):
-            VLMRequest(messages=messages, images=images, max_dimension=255)
+            VLMRequest(messages=messages, max_dimension=255)
 
     def test_vlm_request_validates_max_dimension_max(self):
         """Test that VLMRequest validates max_dimension maximum."""
-        messages = (VLMMessage(role="user", content="Test"),)
-        images = ["data:image/jpeg;base64,/9j/4AAQSkZJRg=="]
+        image_url = "data:image/jpeg;base64,/9j/4AAQSkZJRg=="
+        messages = (VLMMessage(role="user", content="Test", images=(image_url,)),)
         with pytest.raises(ValueError, match="max_dimension must be between"):
-            VLMRequest(messages=messages, images=images, max_dimension=2049)
+            VLMRequest(messages=messages, max_dimension=2668)
 
     def test_vlm_request_validates_max_dimension_boundaries(self):
         """Test that VLMRequest accepts max_dimension at boundaries."""
-        messages = (VLMMessage(role="user", content="Test"),)
-        images = ["data:image/jpeg;base64,/9j/4AAQSkZJRg=="]
+        image_url = "data:image/jpeg;base64,/9j/4AAQSkZJRg=="
+        messages = (VLMMessage(role="user", content="Test", images=(image_url,)),)
         # Should not raise
-        VLMRequest(messages=messages, images=images, max_dimension=256)
-        VLMRequest(messages=messages, images=images, max_dimension=2048)
+        VLMRequest(messages=messages, max_dimension=256)
+        VLMRequest(messages=messages, max_dimension=2667)
 
     def test_vlm_request_is_immutable(self):
         """Test that VLMRequest is immutable."""
-        messages = (VLMMessage(role="user", content="Test"),)
-        images = ["data:image/jpeg;base64,/9j/4AAQSkZJRg=="]
-        request = VLMRequest(messages=messages, images=images)
+        image_url = "data:image/jpeg;base64,/9j/4AAQSkZJRg=="
+        messages = (VLMMessage(role="user", content="Test", images=(image_url,)),)
+        request = VLMRequest(messages=messages)
         with pytest.raises(Exception):
-            request.images = ["new"]
+            request.messages = (VLMMessage(role="user", content="New"),)
 
 
 class TestImageContent:

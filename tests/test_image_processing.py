@@ -68,7 +68,7 @@ class TestImageProcessorInitialization:
     def test_processor_initializes_with_defaults(self):
         """Test that processor initializes with default values."""
         processor = ImageProcessor()
-        assert processor.max_dimension == 1024
+        assert processor.max_dimension == 2667
         assert processor.jpeg_quality == 85
         assert processor.png_compression == 6
         assert processor.max_size_bytes == 10 * 1024 * 1024

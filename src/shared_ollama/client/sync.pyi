@@ -4,10 +4,10 @@ from enum import StrEnum
 from typing import Any
 
 class Model(StrEnum):
-    QWEN3_VL_8B_Q4: str
-    QWEN3_14B_Q4: str
-    QWEN3_VL_32B: str
-    QWEN3_30B: str
+    QWEN3_VL_8B_Q4: Model
+    QWEN3_14B_Q4: Model
+    QWEN3_VL_32B: Model
+    QWEN3_30B: Model
 
 class OllamaConfig:
     base_url: str

@@ -237,11 +237,14 @@ echo ""
 
 # Start gunicorn server in background with log redirection
 # Gunicorn provides built-in process management and auto-restart
+# Access log format includes timestamp, IP, method, path, status, response time
+ACCESS_LOG_FORMAT='%(t)s %(h)s:%(p)s - "%(r)s" %(s)s %(b)s "%(f)s" "%(a)s" %(D)s'
 nohup "$GUNICORN_CMD" shared_ollama.api.server:app \
     --workers "$WORKERS" \
     --worker-class uvicorn.workers.UvicornWorker \
     --bind "$API_HOST:$API_PORT" \
     --access-logfile "$API_LOG" \
+    --access-logformat "$ACCESS_LOG_FORMAT" \
     --error-logfile "$API_ERROR_LOG" \
     --log-level info \
     --timeout 120 \

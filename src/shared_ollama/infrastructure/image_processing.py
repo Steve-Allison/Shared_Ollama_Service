@@ -143,7 +143,9 @@ class ImageProcessor:
         # Resize if needed (preserve aspect ratio)
         width, height = img.size
         if width > self.max_dimension or height > self.max_dimension:
-            # Use match/case for cleaner conditional logic
+            # Use match/case for cleaner conditional logic (define defaults first for type checkers)
+            new_width = width
+            new_height = height
             match width > height:
                 case True:
                     new_width = self.max_dimension

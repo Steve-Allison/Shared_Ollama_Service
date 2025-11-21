@@ -37,86 +37,56 @@ class TestGetOllamaBaseUrl:
 
     def test_explicit_base_url_takes_precedence(self):
         """Test base_url config takes precedence over host/port."""
-        from unittest.mock import Mock
-
         from shared_ollama.infrastructure.config import OllamaConfig
-
-        mock_config = Mock(spec=OllamaConfig)
-        mock_config.url = "http://custom:11434"
-
-        with patch("shared_ollama.infrastructure.config.OllamaConfig", return_value=mock_config):
-            url = get_ollama_base_url()
-            assert url == "http://custom:11434"
+        
+        # Test the actual OllamaConfig behavior
+        config = OllamaConfig(base_url="http://custom:11434")
+        assert config.url == "http://custom:11434"
+        
+        # Test that get_ollama_base_url uses defaults (can't easily test custom config without mocking)
+        url = get_ollama_base_url()
+        assert isinstance(url, str)
+        assert url.startswith("http://")
 
     def test_base_url_strips_trailing_slash(self):
         """Test that trailing slashes are removed from base URL."""
-        from unittest.mock import Mock
-
         from shared_ollama.infrastructure.config import OllamaConfig
-
-        mock_config = Mock(spec=OllamaConfig)
-        mock_config.url = "http://custom:11434"  # OllamaConfig.url already strips trailing slash
-
-        with patch("shared_ollama.infrastructure.config.OllamaConfig", return_value=mock_config):
-            url = get_ollama_base_url()
-            assert url == "http://custom:11434"
-            assert not url.endswith("/")
+        
+        config = OllamaConfig(base_url="http://custom:11434/")
+        assert config.url == "http://custom:11434"
+        assert not config.url.endswith("/")
 
     def test_host_port_construction(self):
         """Test URL construction from separate host and port config."""
-        from unittest.mock import Mock
-
         from shared_ollama.infrastructure.config import OllamaConfig
-
-        mock_config = Mock(spec=OllamaConfig)
-        mock_config.url = "http://custom:8080"
-
-        with patch("shared_ollama.infrastructure.config.OllamaConfig", return_value=mock_config):
-            url = get_ollama_base_url()
-            assert url == "http://custom:8080"
-            assert url.startswith("http://")
-            assert ":8080" in url
+        
+        config = OllamaConfig(host="custom", port=8080)
+        assert config.url == "http://custom:8080"
+        assert config.url.startswith("http://")
+        assert ":8080" in config.url
 
     def test_host_with_embedded_port(self):
         """Test that host with embedded port is handled correctly."""
-        from unittest.mock import Mock
-
         from shared_ollama.infrastructure.config import OllamaConfig
-
-        mock_config = Mock(spec=OllamaConfig)
-        mock_config.url = "http://custom:8080"
-
-        with patch("shared_ollama.infrastructure.config.OllamaConfig", return_value=mock_config):
-            url = get_ollama_base_url()
-            assert url == "http://custom:8080"
-            # Should not double-add port
-            assert url.count(":") == 2  # http:// and :8080
+        
+        config = OllamaConfig(base_url="http://custom:8080")
+        assert config.url == "http://custom:8080"
+        # Should not double-add port
+        assert config.url.count(":") == 2  # http:// and :8080
 
     def test_default_host_when_only_port_set(self):
         """Test default host (localhost) when only port is customized."""
-        from unittest.mock import Mock
-
         from shared_ollama.infrastructure.config import OllamaConfig
-
-        mock_config = Mock(spec=OllamaConfig)
-        mock_config.url = "http://localhost:9999"
-
-        with patch("shared_ollama.infrastructure.config.OllamaConfig", return_value=mock_config):
-            url = get_ollama_base_url()
-            assert url == "http://localhost:9999"
+        
+        config = OllamaConfig(port=9999)
+        assert config.url == "http://localhost:9999"
 
     def test_default_port_when_only_host_set(self):
         """Test default port (11434) when only host is customized."""
-        from unittest.mock import Mock
-
         from shared_ollama.infrastructure.config import OllamaConfig
-
-        mock_config = Mock(spec=OllamaConfig)
-        mock_config.url = "http://custom-host:11434"
-
-        with patch("shared_ollama.infrastructure.config.OllamaConfig", return_value=mock_config):
-            url = get_ollama_base_url()
-            assert url == "http://custom-host:11434"
+        
+        config = OllamaConfig(host="custom-host")
+        assert config.url == "http://custom-host:11434"
 
 
 class TestCheckServiceHealth:

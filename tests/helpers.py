@@ -38,6 +38,9 @@ def setup_dependency_overrides(
     generate_use_case: Any,
     chat_use_case: Any,
     list_models_use_case: Any,
+    image_processor_adapter: Any | None = None,
+    image_cache_adapter: Any | None = None,
+    vlm_use_case: Any | None = None,
 ) -> None:
     """Set up FastAPI dependency overrides for testing.
 
@@ -53,7 +56,16 @@ def setup_dependency_overrides(
         generate_use_case: Generate use case instance.
         chat_use_case: Chat use case instance.
         list_models_use_case: List models use case instance.
+        image_processor_adapter: Image processor adapter (optional, for VLM tests).
+        image_cache_adapter: Image cache adapter (optional, for VLM tests).
+        vlm_use_case: VLM use case instance (optional, for VLM tests).
     """
+    from shared_ollama.api.dependencies import (
+        get_image_cache,
+        get_image_processor,
+        get_vlm_use_case,
+    )
+
     # Override all dependencies in the chain
     app.dependency_overrides[get_client_adapter] = lambda: client_adapter
     app.dependency_overrides[get_logger_adapter] = lambda: logger_adapter
@@ -64,6 +76,14 @@ def setup_dependency_overrides(
     # Use same queue for both chat and VLM in tests for simplicity
     app.dependency_overrides[get_chat_queue] = lambda: queue
     app.dependency_overrides[get_vlm_queue] = lambda: queue
+    
+    # VLM-specific dependencies (optional)
+    if image_processor_adapter is not None:
+        app.dependency_overrides[get_image_processor] = lambda: image_processor_adapter
+    if image_cache_adapter is not None:
+        app.dependency_overrides[get_image_cache] = lambda: image_cache_adapter
+    if vlm_use_case is not None:
+        app.dependency_overrides[get_vlm_use_case] = lambda: vlm_use_case
 
 
 def cleanup_dependency_overrides(app: FastAPI) -> None:

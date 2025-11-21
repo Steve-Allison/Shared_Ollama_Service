@@ -326,12 +326,14 @@ class VLMMessage:
     Attributes:
         role: Message role. Must be "user", "assistant", "system", or "tool".
         content: Text content of the message (optional if tool_calls present).
+        images: Optional list of base64-encoded images for this message.
         tool_calls: Tool calls made by assistant (POML compatible).
         tool_call_id: Tool call ID this message responds to (for role="tool").
     """
 
     role: Literal["user", "assistant", "system", "tool"]
     content: str | None = None
+    images: tuple[str, ...] | None = None
     tool_calls: tuple[ToolCall, ...] | None = None
     tool_call_id: str | None = None
 
@@ -366,7 +368,6 @@ class VLMRequest:
 
     Attributes:
         messages: Text-only chat messages (native Ollama format).
-        images: List of base64-encoded image data URLs.
         model: Model name (should be VLM-capable like qwen3-vl:8b-instruct-q4_K_M).
         options: Generation options.
         image_compression: Whether to compress images (default: True).
@@ -379,7 +380,6 @@ class VLMRequest:
     """
 
     messages: tuple[VLMMessage, ...]
-    images: tuple[str, ...]
     model: ModelName | None = None
     options: GenerationOptions | None = None
     image_compression: bool = True
@@ -396,8 +396,8 @@ class VLMRequest:
         if not self.messages:
             raise ValueError("Messages list cannot be empty")
 
-        # Validate images
-        if not self.images:
+        # Validate that at least one message contains an image
+        if not any(msg.images for msg in self.messages):
             raise ValueError(
                 "VLM request must contain at least one image. "
                 "Use ChatRequest for text-only requests."

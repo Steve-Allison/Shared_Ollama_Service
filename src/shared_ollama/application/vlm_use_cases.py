@@ -56,8 +56,14 @@ class VLMUseCase:
         self._analytics = analytics
         self._performance = performance
 
-    def _serialize_messages(self, request: VLMRequest) -> list[dict[str, Any]]:
+    def _serialize_messages(
+        self,
+        request: VLMRequest,
+        image_compression: bool,
+        target_format: Literal["jpeg", "png", "webp"],
+    ) -> tuple[list[dict[str, Any]], int]:
         messages: list[dict[str, Any]] = []
+        total_compression_savings = 0
         for msg in request.messages:
             message_dict: dict[str, Any] = {"role": msg.role}
             if msg.content is not None:
@@ -76,38 +82,45 @@ class VLMUseCase:
                 ]
             if msg.tool_call_id:
                 message_dict["tool_call_id"] = msg.tool_call_id
-            messages.append(message_dict)
-        return messages
 
-    def _process_images(
-        self,
-        request: VLMRequest,
-        target_format: Literal["jpeg", "png", "webp"],
-    ) -> tuple[list[str], int]:
-        all_images: list[str] = []
-        total_compression_savings = 0
-        for image_url in request.images:
-            if request.image_compression:
-                cached = self._image_cache.get(image_url, target_format)
-                if cached:
-                    base64_string, metadata = cached
-                else:
-                    base64_string, metadata = self._image_processor.process_image(
-                        image_url,
-                        target_format=target_format,
-                    )
-                    self._image_cache.put(
-                        image_url,
-                        target_format,
-                        base64_string,
-                        metadata,
-                    )
-                    total_compression_savings += metadata.original_size - metadata.compressed_size
-            else:
-                _, image_bytes = self._image_processor.validate_data_url(image_url)
-                base64_string = image_bytes.decode("utf-8") if isinstance(image_bytes, bytes) else image_bytes
-            all_images.append(base64_string)
-        return all_images, total_compression_savings
+            if msg.images:
+                processed_images: list[str] = []
+                for image_url in msg.images:
+                    if image_compression:
+                        cached = self._image_cache.get(image_url, target_format)
+                        if cached:
+                            base64_string, metadata = cached
+                        else:
+                            (
+                                base64_string,
+                                metadata,
+                            ) = self._image_processor.process_image(
+                                image_url,
+                                target_format=target_format,
+                            )
+                            self._image_cache.put(
+                                image_url,
+                                target_format,
+                                base64_string,
+                                metadata,
+                            )
+                            total_compression_savings += (
+                                metadata.original_size - metadata.compressed_size
+                            )
+                        processed_images.append(base64_string)
+                    else:
+                        _, image_bytes = self._image_processor.validate_data_url(image_url)
+                        base64_string = (
+                            image_bytes.decode("utf-8")
+                            if isinstance(image_bytes, bytes)
+                            else image_bytes
+                        )
+                        processed_images.append(base64_string)
+                message_dict["images"] = processed_images
+
+            messages.append(message_dict)
+
+        return messages, total_compression_savings
 
     @staticmethod
     def _build_options_dict(request: VLMRequest) -> dict[str, Any] | None:
@@ -177,8 +190,9 @@ class VLMUseCase:
         start_time = time.perf_counter()
 
         try:
-            messages = self._serialize_messages(request)
-            all_images, total_compression_savings = self._process_images(request, target_format)
+            messages, total_compression_savings = self._serialize_messages(
+                request, request.image_compression, target_format
+            )
             model_str = request.model.value if request.model else None
             options_dict = self._build_options_dict(request)
             tools_list = self._build_tools_payload(request)
@@ -188,7 +202,6 @@ class VLMUseCase:
                 model=model_str,
                 options=options_dict,
                 stream=stream,
-                images=all_images if all_images else None,
                 format=request.format,
                 tools=tools_list,
             )
@@ -219,7 +232,7 @@ class VLMUseCase:
                     "latency_ms": round(latency_ms, 3),
                     "model_load_ms": model_load_ms,
                     "model_warm_start": model_warm_start,
-                    "images_count": len(all_images),
+                    "images_count": sum(len(msg.get("images", [])) for msg in messages),
                     "image_compression_enabled": request.image_compression,
                     "compression_savings_bytes": total_compression_savings,
                     "cache_hit_rate": cache_stats["hit_rate"],

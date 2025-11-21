@@ -281,19 +281,31 @@ def api_to_domain_vlm_request(api_req: Any) -> Any:  # VLMRequest from models
 
     # Convert API messages to domain messages with tool calling support
     messages: list[VLMMessage] = []
-    for msg in api_req.messages:
+    # Find the last user message to attach images to
+    last_user_msg_idx = -1
+    for i, msg in reversed(list(enumerate(api_req.messages))):
+        if msg.role == "user":
+            last_user_msg_idx = i
+            break
+
+    for i, msg in enumerate(api_req.messages):
         # Convert tool calls if present
         tool_calls = None
         if msg.tool_calls:
             tool_calls = tuple(api_to_domain_tool_call(tc) for tc in msg.tool_calls)
 
+        # Attach images to the last user message
+        images = tuple(api_req.images) if i == last_user_msg_idx else None
+
         domain_msg = VLMMessage(
             role=msg.role,
             content=msg.content,
+            images=images,
             tool_calls=tool_calls,
             tool_call_id=msg.tool_call_id,
         )
         messages.append(domain_msg)
+
 
     # Convert model name
     model = ModelName(api_req.model) if api_req.model else None
@@ -333,7 +345,6 @@ def api_to_domain_vlm_request(api_req: Any) -> Any:  # VLMRequest from models
 
     return VLMRequest(
         messages=tuple(messages),
-        images=tuple(api_req.images),  # Native Ollama format: separate images
         model=model,
         options=options,
         image_compression=api_req.image_compression,
@@ -343,12 +354,12 @@ def api_to_domain_vlm_request(api_req: Any) -> Any:  # VLMRequest from models
     )
 
 
-def _extract_vlm_messages_and_images(api_req: Any) -> tuple[list[VLMMessage], list[str]]:
+def _extract_vlm_messages(api_req: Any) -> tuple[VLMMessage, ...]:
     messages: list[VLMMessage] = []
-    images: list[str] = []
 
     for msg in api_req.messages:
         text_parts: list[str] = []
+        images: list[str] = []
         content = msg.content
         if isinstance(content, str):
             text_parts.append(content)
@@ -359,12 +370,9 @@ def _extract_vlm_messages_and_images(api_req: Any) -> tuple[list[VLMMessage], li
                 elif isinstance(part, ImageContentPart):
                     images.append(part.image_url.url)
 
-        if text_parts:
-            messages.append(VLMMessage(role=msg.role, content=" ".join(text_parts)))
-        elif images:
-            messages.append(VLMMessage(role=msg.role, content="What's in this image?"))
+        messages.append(VLMMessage(role=msg.role, content=" ".join(text_parts), images=tuple(images) if images else None))
 
-    return messages, images
+    return tuple(messages)
 
 
 def api_to_domain_vlm_request_openai(api_req: Any) -> Any:
@@ -375,7 +383,7 @@ def api_to_domain_vlm_request_openai(api_req: Any) -> Any:
         VLMRequest,
     )
 
-    messages, images = _extract_vlm_messages_and_images(api_req)
+    messages = _extract_vlm_messages(api_req)
 
     # Convert model name
     model = ModelName(api_req.model) if api_req.model else None
@@ -415,8 +423,7 @@ def api_to_domain_vlm_request_openai(api_req: Any) -> Any:
 
     # Return native Ollama format (text-only messages + separate images)
     return VLMRequest(
-        messages=tuple(messages),
-        images=tuple(images),  # Images extracted from multimodal content
+        messages=messages,
         model=model,
         options=options,
         image_compression=api_req.image_compression,

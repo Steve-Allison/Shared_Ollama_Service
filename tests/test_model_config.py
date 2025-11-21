@@ -525,10 +525,13 @@ class TestGetAllowedModels:
         ):
             get_allowed_models.cache_clear()
             _load_model_profile_defaults.cache_clear()
-
-            allowed = get_allowed_models()
-            assert "env-vlm:test" in allowed
-            assert "env-text:test" in allowed
+            try:
+                allowed = get_allowed_models()
+                assert "env-vlm:test" in allowed
+                assert "env-text:test" in allowed
+            finally:
+                get_allowed_models.cache_clear()
+                _load_model_profile_defaults.cache_clear()
 
     def test_result_is_cached(self):
         """Test that allowed models set is cached."""

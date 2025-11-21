@@ -10,7 +10,7 @@ import json
 import logging
 import time
 from collections.abc import AsyncIterator
-from typing import Annotated, Any
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import Response, StreamingResponse
@@ -84,8 +84,8 @@ async def _stream_chat_sse(
 @limiter.limit("30/minute")
 async def vlm_chat(
     request: Request,
-    vlm_use_case_dep: Annotated[VLMUseCase, Depends(get_vlm_use_case)],
-    queue: Annotated[RequestQueue, Depends(get_vlm_queue)],
+    vlm_use_case_dep: VLMUseCase = Depends(get_vlm_use_case),
+    queue: RequestQueue = Depends(get_vlm_queue),
 ) -> Response:
     """Vision-Language Model (VLM) chat completion endpoint.
 
@@ -230,8 +230,8 @@ async def vlm_chat(
 @limiter.limit("30/minute")
 async def vlm_chat_openai(
     request: Request,
-    vlm_use_case_dep: Annotated[VLMUseCase, Depends(get_vlm_use_case)],
-    queue: Annotated[RequestQueue, Depends(get_vlm_queue)],
+    vlm_use_case_dep: VLMUseCase = Depends(get_vlm_use_case),
+    queue: RequestQueue = Depends(get_vlm_queue),
 ) -> Response:
     """OpenAI-compatible Vision-Language Model (VLM) chat completion endpoint.
 
@@ -286,6 +286,20 @@ async def vlm_chat_openai(
         ) from e
 
     try:
+        # Validate model is allowed for current hardware profile
+        from shared_ollama.core.utils import get_allowed_models, is_model_allowed
+
+        requested_model = api_req.model
+        if requested_model and not is_model_allowed(requested_model):
+            allowed = get_allowed_models()
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    f"Model '{requested_model}' is not supported on this hardware profile. "
+                    f"Allowed models: {', '.join(sorted(allowed))}"
+                ),
+            )
+
         # Convert OpenAI-compatible API model to native Ollama domain entity
         domain_req = api_to_domain_vlm_request_openai(api_req)
         event_data["model"] = (

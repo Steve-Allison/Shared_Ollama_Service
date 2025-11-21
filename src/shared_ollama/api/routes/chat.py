@@ -9,7 +9,7 @@ import json
 import logging
 import time
 from collections.abc import AsyncIterator
-from typing import Annotated, Any
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import Response, StreamingResponse
@@ -70,8 +70,8 @@ async def _stream_chat_sse(
 @limiter.limit("60/minute")
 async def chat(
     request: Request,
-    use_case: Annotated[ChatUseCase, Depends(get_chat_use_case)],
-    queue: Annotated[RequestQueue, Depends(get_chat_queue)],
+    use_case: ChatUseCase = Depends(get_chat_use_case),
+    queue: RequestQueue = Depends(get_chat_queue),
 ) -> Response:
     """Chat completion endpoint.
 

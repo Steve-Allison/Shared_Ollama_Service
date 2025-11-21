@@ -32,6 +32,11 @@ from shared_ollama.infrastructure.adapters import (
 )
 from tests.helpers import assert_error_response, cleanup_dependency_overrides, setup_dependency_overrides
 
+VALID_IMAGE_DATA_URL = (
+    "data:image/png;base64,"
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNgYAAAAAMAASsJTYQAAAAASUVORK5CYII="
+)
+
 
 @pytest.fixture
 def mock_async_client():
@@ -114,7 +119,7 @@ class TestVLMEndpointModelValidation:
             pytest.skip("No allowed models configured")
 
         test_model = next(iter(allowed_models))
-        mock_async_client.vlm_chat = AsyncMock(
+        mock_async_client.chat = AsyncMock(
             return_value={"response": "Test response", "done": True}
         )
 
@@ -123,12 +128,12 @@ class TestVLMEndpointModelValidation:
             json={
                 "model": test_model,
                 "messages": [{"role": "user", "content": "What's in this image?"}],
-                "images": ["data:image/jpeg;base64,/9j/4AAQSkZJRg=="],  # Native format requires separate images
+                "images": [VALID_IMAGE_DATA_URL],  # Native format requires separate images
             },
         )
 
         assert response.status_code == 200
-        mock_async_client.vlm_chat.assert_called_once()
+        mock_async_client.chat.assert_called_once()
 
     def test_disallowed_model_rejects_request(self, api_client_with_validation):
         """Test that a disallowed model is rejected with 400 error."""
@@ -139,7 +144,7 @@ class TestVLMEndpointModelValidation:
             json={
                 "model": disallowed_model,
                 "messages": [{"role": "user", "content": "Test"}],
-                "images": ["data:image/jpeg;base64,/9j/4AAQSkZJRg=="],  # Native format requires separate images
+                "images": [VALID_IMAGE_DATA_URL],  # Native format requires separate images
             },
         )
 
@@ -158,7 +163,7 @@ class TestVLMEndpointModelValidation:
         from shared_ollama.core.utils import get_default_vlm_model
 
         default_model = get_default_vlm_model()
-        mock_async_client.vlm_chat = AsyncMock(
+        mock_async_client.chat = AsyncMock(
             return_value={"response": "Test response", "done": True}
         )
 
@@ -167,13 +172,13 @@ class TestVLMEndpointModelValidation:
             json={
                 # model field omitted - should use default
                 "messages": [{"role": "user", "content": "Test"}],
-                "images": ["data:image/jpeg;base64,/9j/4AAQSkZJRg=="],  # Native format requires separate images
+                "images": [VALID_IMAGE_DATA_URL],  # Native format requires separate images
             },
         )
 
         assert response.status_code == 200
         # Verify the default model was used
-        call_args = mock_async_client.vlm_chat.call_args
+        call_args = mock_async_client.chat.call_args
         assert call_args is not None
 
     def test_error_message_includes_allowed_models(self, api_client_with_validation):
@@ -185,18 +190,8 @@ class TestVLMEndpointModelValidation:
             "/api/v1/vlm",
             json={
                 "model": disallowed_model,
-                "messages": [
-                    {
-                        "role": "user",
-                        "content": [
-                            {"type": "text", "text": "Test"},
-                            {
-                                "type": "image_url",
-                                "image_url": {"url": "data:image/jpeg;base64,/9j/4AAQSkZJRg=="},
-                            },
-                        ],
-                    }
-                ],
+                "messages": [{"role": "user", "content": "Test"}],
+                "images": [VALID_IMAGE_DATA_URL],
             },
         )
 
@@ -225,7 +220,7 @@ class TestVLMEndpointModelValidation:
                             {"type": "text", "text": "Test"},
                             {
                                 "type": "image_url",
-                                "image_url": {"url": "data:image/jpeg;base64,/9j/4AAQSkZJRg=="},
+                                "image_url": {"url": VALID_IMAGE_DATA_URL},
                             },
                         ],
                     }
@@ -322,7 +317,7 @@ class TestGenerateEndpointModelValidation:
 
         test_model = text_models[0]
         mock_async_client.generate = AsyncMock(
-            return_value=GenerateResponse(text="Test response", done=True)
+            return_value=GenerateResponse(text="Test response", model=test_model)
         )
 
         response = api_client_with_validation.post(
@@ -358,7 +353,7 @@ class TestGenerateEndpointModelValidation:
 
         default_model = get_default_text_model()
         mock_async_client.generate = AsyncMock(
-            return_value=GenerateResponse(text="Test response", done=True)
+            return_value=GenerateResponse(text="Test response", model=default_model)
         )
 
         response = api_client_with_validation.post(
@@ -385,15 +380,21 @@ class TestBatchEndpointModelValidation:
 
         test_model = next(iter(allowed_models))
         mock_async_client.generate = AsyncMock(
-            return_value=GenerateResponse(text="Test response", done=True)
+            return_value=GenerateResponse(text="Test response", model=test_model)
         )
 
         response = api_client_with_validation.post(
-            "/api/v1/batch/generate",
+            "/api/v1/batch/chat",
             json={
                 "requests": [
-                    {"model": test_model, "prompt": "Prompt 1"},
-                    {"model": test_model, "prompt": "Prompt 2"},
+                    {
+                        "model": test_model,
+                        "messages": [{"role": "user", "content": "Prompt 1"}],
+                    },
+                    {
+                        "model": test_model,
+                        "messages": [{"role": "user", "content": "Prompt 2"}],
+                    },
                 ]
             },
         )
@@ -405,10 +406,13 @@ class TestBatchEndpointModelValidation:
         disallowed_model = "invalid-model:test"
 
         response = api_client_with_validation.post(
-            "/api/v1/batch/generate",
+            "/api/v1/batch/chat",
             json={
                 "requests": [
-                    {"model": disallowed_model, "prompt": "Prompt 1"},
+                    {
+                        "model": disallowed_model,
+                        "messages": [{"role": "user", "content": "Prompt 1"}],
+                    },
                 ]
             },
         )
@@ -427,11 +431,17 @@ class TestBatchEndpointModelValidation:
         disallowed_model = "invalid-model:test"
 
         response = api_client_with_validation.post(
-            "/api/v1/batch/generate",
+            "/api/v1/batch/chat",
             json={
                 "requests": [
-                    {"model": test_model, "prompt": "Prompt 1"},
-                    {"model": disallowed_model, "prompt": "Prompt 2"},
+                    {
+                        "model": test_model,
+                        "messages": [{"role": "user", "content": "Prompt 1"}],
+                    },
+                    {
+                        "model": disallowed_model,
+                        "messages": [{"role": "user", "content": "Prompt 2"}],
+                    },
                 ]
             },
         )
@@ -448,7 +458,7 @@ class TestModelValidationEdgeCases:
     def test_empty_string_model_treated_as_none(self, api_client_with_validation, mock_async_client):
         """Test that empty string model is treated as None (use default)."""
         mock_async_client.generate = AsyncMock(
-            return_value=GenerateResponse(text="Test response", done=True)
+            return_value=GenerateResponse(text="Test response", model="qwen3-vl:8b-instruct-q4_K_M")
         )
 
         response = api_client_with_validation.post(
@@ -499,7 +509,7 @@ class TestModelValidationEdgeCases:
             json={
                 "model": disallowed,
                 "messages": [{"role": "user", "content": "Test"}],
-                "images": ["data:image/jpeg;base64,/9j/4AAQSkZJRg=="],  # Native format requires separate images
+                "images": [VALID_IMAGE_DATA_URL],  # Native format requires separate images
             },
         )
 

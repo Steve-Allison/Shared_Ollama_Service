@@ -401,7 +401,7 @@ class TestGenerateEndpoint:
 
         response = api_client.post(
             "/api/v1/generate",
-            json={"prompt": "Hello", "model": "nonexistent"},
+            json={"prompt": "Hello"},
         )
         assert_error_response(response, 500)
 

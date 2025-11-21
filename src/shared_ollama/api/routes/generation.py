@@ -9,7 +9,7 @@ import json
 import logging
 import time
 from collections.abc import AsyncIterator
-from typing import Annotated, Any
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import Response, StreamingResponse
@@ -69,8 +69,8 @@ async def _stream_generate_sse(
 @limiter.limit("60/minute")
 async def generate(
     request: Request,
-    use_case: Annotated[GenerateUseCase, Depends(get_generate_use_case)],
-    queue: Annotated[RequestQueue, Depends(get_chat_queue)],
+    use_case: GenerateUseCase = Depends(get_generate_use_case),
+    queue: RequestQueue = Depends(get_chat_queue),
 ) -> Response:
     """Generate text from a prompt.
 

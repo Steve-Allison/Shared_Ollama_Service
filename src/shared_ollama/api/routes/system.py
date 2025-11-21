@@ -11,7 +11,7 @@ Provides endpoints for:
 from __future__ import annotations
 
 import logging
-from typing import Annotated, Any
+from typing import Any
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -102,7 +102,7 @@ async def health_check() -> HealthResponse:
 
 @router.get("/queue/stats", response_model=QueueStatsResponse, tags=["Queue"])
 async def get_queue_stats(
-    queue: Annotated[RequestQueue, Depends(get_chat_queue)],
+    queue: RequestQueue = Depends(get_chat_queue),
 ) -> QueueStatsResponse:
     """Get chat queue statistics.
 
@@ -239,7 +239,7 @@ async def get_analytics(
 @limiter.limit("30/minute")
 async def list_models(
     request: Request,
-    use_case: Annotated[ListModelsUseCase, Depends(get_list_models_use_case)],
+    use_case: ListModelsUseCase = Depends(get_list_models_use_case),
 ) -> ModelsResponse:
     """List available models.
 

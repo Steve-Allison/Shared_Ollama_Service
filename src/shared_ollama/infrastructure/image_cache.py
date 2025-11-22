@@ -7,7 +7,7 @@ compression, format conversion) when the same images are used multiple times.
 Key Features:
     - LRU eviction: Least recently used entries evicted when cache is full
     - TTL expiration: Entries automatically expire after TTL period
-    - Async-safe: Safe for concurrent access from multiple coroutines (single event loop)
+    - Thread-safe: All operations protected by threading.Lock
     - Statistics tracking: Hit/miss rates for monitoring
     - SHA-256 keys: Deterministic cache keys from data URL + format
 
@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import threading
 import time
 from typing import TYPE_CHECKING, Literal
 
@@ -89,11 +90,9 @@ class ImageCache:
         _hits: Total number of cache hits since initialization.
         _misses: Total number of cache misses since initialization.
 
-    Concurrency:
-        This cache is designed for single-threaded async use (one event loop).
-        TTLCache is NOT inherently thread-safe for multi-threaded access.
-        Statistics updates are not atomic but acceptable for monitoring purposes.
-        For thread-safe access from multiple threads, external locking is required.
+    Thread Safety:
+        Thread-safe via threading.Lock for all cache and statistics operations.
+        Safe for concurrent access from multiple threads or async contexts.
 
     Note:
         Cache keys are SHA-256 hashes of "{data_url}:{target_format}" to
@@ -115,6 +114,7 @@ class ImageCache:
         self._cache: TTLCache[str, CacheEntry] = TTLCache(
             maxsize=max_size, ttl=ttl_seconds
         )
+        self._lock = threading.Lock()
         self._hits = 0
         self._misses = 0
 
@@ -161,15 +161,16 @@ class ImageCache:
             are treated as cache misses and automatically removed by TTLCache.
         """
         key = self._compute_key(data_url, target_format)
-        entry = self._cache.get(key)
+        with self._lock:
+            entry = self._cache.get(key)
 
-        if entry is None:
-            self._misses += 1
-            return None
+            if entry is None:
+                self._misses += 1
+                return None
 
-        self._hits += 1
-        logger.debug(f"Cache hit: {key[:16]}...")
-        return entry.base64_string, entry.metadata
+            self._hits += 1
+            logger.debug(f"Cache hit: {key[:16]}...")
+            return entry.base64_string, entry.metadata
 
     def put(
         self,
@@ -198,11 +199,12 @@ class ImageCache:
         """
         key = self._compute_key(data_url, target_format)
 
-        self._cache[key] = CacheEntry(
-            base64_string=base64_string,
-            metadata=metadata,
-            timestamp=time.time(),
-        )
+        with self._lock:
+            self._cache[key] = CacheEntry(
+                base64_string=base64_string,
+                metadata=metadata,
+                timestamp=time.time(),
+            )
         logger.debug(f"Cached image: {key[:16]}...")
 
     def clear(self) -> None:
@@ -215,9 +217,10 @@ class ImageCache:
             This method clears the cache and resets statistics. It does not
             affect cache configuration (max_size, ttl_seconds).
         """
-        self._cache.clear()
-        self._hits = 0
-        self._misses = 0
+        with self._lock:
+            self._cache.clear()
+            self._hits = 0
+            self._misses = 0
 
     def get_stats(self) -> dict[str, int | float]:
         """Get cache statistics.
@@ -237,12 +240,13 @@ class ImageCache:
             Hit rate is calculated as hits / (hits + misses). Returns 0.0
             if no requests have been made yet.
         """
-        total = self._hits + self._misses
-        hit_rate = self._hits / total if total > 0 else 0.0
-        return {
-            "size": len(self._cache),
-            "max_size": self.max_size,
-            "hits": self._hits,
-            "misses": self._misses,
-            "hit_rate": hit_rate,
-        }
+        with self._lock:
+            total = self._hits + self._misses
+            hit_rate = self._hits / total if total > 0 else 0.0
+            return {
+                "size": len(self._cache),
+                "max_size": self.max_size,
+                "hits": self._hits,
+                "misses": self._misses,
+                "hit_rate": hit_rate,
+            }

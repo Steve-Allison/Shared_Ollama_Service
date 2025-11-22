@@ -201,7 +201,18 @@ def build_openai_chat_response(
     result_dict: dict[str, Any],
     ctx: RequestContext,
 ) -> dict[str, Any]:
-    """Convert native use-case result into OpenAI chat completion schema."""
+    """Convert native use-case result into OpenAI chat completion schema.
+
+    Builds a fully OpenAI-compliant chat completion response including all
+    required and optional fields per the OpenAI API specification.
+
+    Args:
+        result_dict: Result dictionary from use case execute().
+        ctx: Request context with request_id.
+
+    Returns:
+        OpenAI-compliant chat completion response dictionary.
+    """
     message = result_dict.get("message") or {}
     model_used = result_dict.get("model", "unknown")
     prompt_eval_count = result_dict.get("prompt_eval_count", 0)
@@ -209,18 +220,23 @@ def build_openai_chat_response(
     created_ts = _coerce_created_timestamp(result_dict.get("created_at"))
     finish_reason = result_dict.get("finish_reason", "stop")
 
+    # Build OpenAI-compliant message payload with all required fields
     message_payload: dict[str, Any] = {
         "role": message.get("role", "assistant"),
         "content": message.get("content", ""),
+        "refusal": message.get("refusal"),  # Required: null when not refusing
     }
+
+    # Add tool_calls if present (OpenAI spec: null when not present)
     if "tool_calls" in message and message["tool_calls"] is not None:
         message_payload["tool_calls"] = message["tool_calls"]
+
+    # Add function_call if present (deprecated but still supported)
     if "function_call" in message and message["function_call"] is not None:
         message_payload["function_call"] = message["function_call"]
-    if "refusal" in message:
-        message_payload["refusal"] = message["refusal"]
-    if "annotations" in message:
-        message_payload["annotations"] = message["annotations"]
+
+    # Add annotations if present (OpenAI spec: empty array by default)
+    message_payload["annotations"] = message.get("annotations", [])
 
     return {
         "id": ctx.request_id or f"chatcmpl-{uuid.uuid4().hex}",
@@ -231,6 +247,7 @@ def build_openai_chat_response(
             {
                 "index": 0,
                 "message": message_payload,
+                "logprobs": None,  # Required: null unless logprobs requested
                 "finish_reason": finish_reason,
             },
         ],
@@ -239,6 +256,7 @@ def build_openai_chat_response(
             "completion_tokens": eval_count,
             "total_tokens": prompt_eval_count + eval_count,
         },
+        "system_fingerprint": None,  # Optional: backend configuration fingerprint
     }
 
 
@@ -249,7 +267,20 @@ def build_openai_stream_chunk(
     created_ts: int,
     include_role: bool,
 ) -> dict[str, Any]:
-    """Convert a native streaming chunk into an OpenAI chat completion chunk."""
+    """Convert a native streaming chunk into an OpenAI chat completion chunk.
+
+    Builds a fully OpenAI-compliant streaming chunk including all required
+    fields per the OpenAI API specification.
+
+    Args:
+        chunk_dict: Chunk dictionary from streaming use case.
+        ctx: Request context with request_id.
+        created_ts: Unix timestamp for the response.
+        include_role: Whether to include role in the first delta.
+
+    Returns:
+        OpenAI-compliant chat completion chunk dictionary.
+    """
     chunk_text = chunk_dict.get("chunk") or ""
     model_used = chunk_dict.get("model", "unknown")
     done = bool(chunk_dict.get("done"))
@@ -264,6 +295,7 @@ def build_openai_stream_chunk(
     choice: dict[str, Any] = {
         "index": 0,
         "delta": delta,
+        "logprobs": None,  # Required: null unless logprobs requested
         "finish_reason": finish_reason if done else None,
     }
 
@@ -273,6 +305,7 @@ def build_openai_stream_chunk(
         "created": created_ts,
         "model": model_used,
         "choices": [choice],
+        "system_fingerprint": None,  # Optional: backend configuration fingerprint
     }
 
     if done:

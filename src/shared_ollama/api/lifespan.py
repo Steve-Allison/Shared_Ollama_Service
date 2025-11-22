@@ -106,8 +106,6 @@ async def lifespan_context(app: FastAPI):
         and will retry on the first request. All errors include detailed
         logging for debugging.
     """
-    # Debug: Log that lifespan is starting
-    print("LIFESPAN: Starting Shared Ollama Service API", flush=True)
     logger.info("LIFESPAN: Starting Shared Ollama Service API")
 
     # Load and validate model configuration (config-driven defaults)
@@ -119,10 +117,8 @@ async def lifespan_context(app: FastAPI):
             default_vlm,
             default_text,
         )
-        print(f"LIFESPAN: Model defaults - VLM: {default_vlm}, Text: {default_text}", flush=True)
     except Exception as exc:
         logger.warning("LIFESPAN: Failed to load model configuration: %s", exc, exc_info=True)
-        print(f"LIFESPAN WARNING: Model config load failed: {exc}", flush=True)
         # Don't fail startup - will use fallback defaults
 
     # Initialize and start Ollama manager (manages Ollama process internally)
@@ -152,18 +148,12 @@ async def lifespan_context(app: FastAPI):
             logger.warning("LIFESPAN: Continuing despite Ollama startup failure - will retry on first request")
         else:
             logger.info("LIFESPAN: Ollama service started successfully")
-            print("LIFESPAN: Ollama service started", flush=True)
 
             # Proactively warm up models
             logger.info("LIFESPAN: Initiating model pre-warming")
-            print("LIFESPAN: Initiating model pre-warming...", flush=True)
             await ollama_manager.warmup_models()
     except Exception as exc:
-        logger.error("LIFESPAN: Failed to start Ollama service: %s", exc, exc_info=True)
-        print(f"LIFESPAN ERROR: Failed to start Ollama: {exc}", flush=True)
-        import traceback
-
-        traceback.print_exc()
+        logger.exception("LIFESPAN: Failed to start Ollama service: %s", exc)
         # Don't raise - log the error and allow server to start
         # The server can still run even if Ollama fails to start initially
         # (it will be retried on first request or can be started manually)
@@ -188,18 +178,10 @@ async def lifespan_context(app: FastAPI):
         # Don't verify on init - we'll do it manually to ensure it completes
         client = AsyncSharedOllamaClient(config=config, verify_on_init=False)
         logger.info("LIFESPAN: Client created, ensuring initialization")
-        # Ensure client is initialized and verified (async)
-        await client._ensure_client()  # type: ignore[attr-defined]
-        logger.info("LIFESPAN: Client ensured, verifying connection")
-        await client._verify_connection()  # type: ignore[attr-defined]
+        await client.initialize()
         logger.info("LIFESPAN: Ollama async client initialized successfully")
-        print("LIFESPAN: Client initialized successfully", flush=True)
     except Exception as exc:
-        logger.error("LIFESPAN: Failed to initialize Ollama async client: %s", exc, exc_info=True)
-        print(f"LIFESPAN ERROR: {exc}", flush=True)
-        import traceback
-
-        traceback.print_exc()
+        logger.exception("LIFESPAN: Failed to initialize Ollama async client: %s", exc)
         client = None
         # Don't raise - allow server to start but client will be None
         # This way we can see the error in logs
@@ -238,7 +220,6 @@ async def lifespan_context(app: FastAPI):
         settings.queue.vlm_max_concurrent,
         settings.queue.vlm_max_queue_size,
     )
-    print("LIFESPAN: Separate queues initialized (chat + VLM)", flush=True)
 
     # Initialize image processing infrastructure
     logger.info("LIFESPAN: Initializing image processing infrastructure")
@@ -253,7 +234,6 @@ async def lifespan_context(app: FastAPI):
         ttl_seconds=settings.image_cache.ttl_seconds,
     )
     logger.info("LIFESPAN: Image processor and cache initialized")
-    print("LIFESPAN: Image processing ready", flush=True)
 
     # Create adapters for image processing
     image_processor_adapter = ImageProcessorAdapter(image_processor)
@@ -297,6 +277,5 @@ async def lifespan_context(app: FastAPI):
         ollama_manager = get_ollama_manager()
         await ollama_manager.stop(timeout=settings.ollama_manager.shutdown_timeout)
         logger.info("LIFESPAN: Ollama service stopped")
-        print("LIFESPAN: Ollama service stopped", flush=True)
     except Exception as exc:
         logger.warning("Error stopping Ollama service: %s", exc)

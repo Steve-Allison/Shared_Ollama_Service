@@ -180,6 +180,11 @@ class AsyncSharedOllamaClient:
         """
         await self.close()
 
+    async def initialize(self) -> None:
+        """Initialize the client and verify the connection."""
+        await self._ensure_client()
+        await self._verify_connection()
+
     async def _ensure_client(self) -> None:
         """Ensure httpx client is initialized.
 
@@ -308,6 +313,56 @@ class AsyncSharedOllamaClient:
             await self.client.aclose()
             self.client = None
 
+    def _log_request_error(
+        self,
+        model: str,
+        operation: str,
+        stream: bool,
+        request_id: str,
+        start_time: float,
+        error: Exception,
+    ) -> None:
+        """Log a request error with consistent format."""
+        latency_ms = (time.perf_counter() - start_time) * 1000
+        error_type = error.__class__.__name__
+        status_code = None
+        if isinstance(error, httpx.HTTPStatusError):
+            status_code = error.response.status_code
+            error_name = f"{error_type}:{status_code}"
+        else:
+            error_name = error_type
+
+        MetricsCollector.record_request(
+            model=model,
+            operation=operation,
+            latency_ms=latency_ms,
+            success=False,
+            error=error_name,
+        )
+
+        log_data: dict[str, Any] = {
+            "event": "ollama_request",
+            "client_type": "async",
+            "operation": operation,
+            "status": "error",
+            "model": model,
+            "stream": stream,
+            "request_id": request_id,
+            "latency_ms": round(latency_ms, 3),
+            "error_type": error_type,
+            "error_message": str(error),
+        }
+        if status_code is not None:
+            log_data["http_status"] = status_code
+
+        log_request_event(log_data)
+        logger.exception(
+            "Error during %s for model %s (status: %s)",
+            operation,
+            model,
+            status_code or "N/A",
+        )
+    
     async def list_models(self) -> list[dict[str, Any]]:
         """List all available models.
 

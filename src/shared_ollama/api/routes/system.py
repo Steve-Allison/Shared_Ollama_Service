@@ -65,6 +65,7 @@ from shared_ollama.api.dependencies import (
     get_list_models_use_case,
     get_request_context,
 )
+from shared_ollama.api.error_handlers import _map_http_status_code
 from shared_ollama.api.mappers import domain_to_api_model_info
 from shared_ollama.api.middleware import limiter
 from shared_ollama.api.models import (
@@ -141,48 +142,6 @@ async def get_pdl_template(template_name: str, request: Request) -> dict[str, An
         )
 
     return _prepare_pdl_template(filename, request)
-
-CLIENT_ERROR_MIN = 400
-SERVER_ERROR_MIN = 500
-SERVER_ERROR_MAX = 600
-
-
-def _map_http_status_code(status_code: int | None) -> tuple[int, str]:
-    """Map Ollama HTTP status codes to appropriate API responses.
-
-    Converts Ollama service HTTP status codes to appropriate FastAPI
-    status codes and error messages for client consumption.
-
-    Args:
-        status_code: HTTP status code from Ollama service. None if
-            status code unavailable.
-
-    Returns:
-        Tuple of (http_status_code, error_message):
-            - (400, ...) for 4xx client errors from Ollama
-            - (502, ...) for 5xx server errors from Ollama
-            - (503, ...) for unknown/unavailable status
-    """
-    if status_code is None:
-        return (
-            status.HTTP_503_SERVICE_UNAVAILABLE,
-            "Ollama service returned unknown status. Please try again.",
-        )
-    if CLIENT_ERROR_MIN <= status_code < SERVER_ERROR_MIN:
-        return (
-            status.HTTP_400_BAD_REQUEST,
-            f"Ollama service rejected the request (status {status_code}). Please check your request.",
-        )
-    if SERVER_ERROR_MIN <= status_code < SERVER_ERROR_MAX:
-        return (
-            status.HTTP_502_BAD_GATEWAY,
-            f"Ollama service error (status {status_code}). Please try again later.",
-        )
-    return (
-        status.HTTP_503_SERVICE_UNAVAILABLE,
-        f"Ollama service returned unexpected status {status_code}.",
-    )
-
 
 @router.get("/health", response_model=HealthResponse, tags=["Health"])
 async def health_check() -> HealthResponse:

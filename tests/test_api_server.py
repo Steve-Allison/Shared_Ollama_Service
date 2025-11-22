@@ -18,7 +18,7 @@ from shared_ollama.api.dependencies import set_dependencies
 from shared_ollama.api.server import app
 from shared_ollama.application.use_cases import ChatUseCase, GenerateUseCase, ListModelsUseCase
 from shared_ollama.client import AsyncOllamaConfig, AsyncSharedOllamaClient, GenerateResponse
-from shared_ollama.core.config import settings
+from shared_ollama.infrastructure.config import settings
 from shared_ollama.core.queue import RequestQueue
 from shared_ollama.infrastructure.adapters import (
     AsyncOllamaClientAdapter,

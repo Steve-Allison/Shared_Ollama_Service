@@ -47,7 +47,7 @@ import json
 import logging
 import time
 from collections.abc import AsyncIterator
-from typing import Annotated, Any
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import Response, StreamingResponse
@@ -415,6 +415,8 @@ async def vlm_chat_openai(
                         )
                         role_emitted = True
                         yield f"data: {json.dumps(openai_chunk)}\n\n"
+                    # Send final [DONE] marker per OpenAI SSE spec
+                    yield "data: [DONE]\n\n"
 
                 return StreamingResponse(
                     openai_stream(),

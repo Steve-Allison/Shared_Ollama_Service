@@ -11,6 +11,10 @@ The application layer:
     - Depends only on domain and interfaces (not implementations)
 """
 
+from shared_ollama.application.batch_use_cases import (
+    BatchChatUseCase,
+    BatchVLMUseCase,
+)
 from shared_ollama.application.interfaces import (
     AnalyticsCollectorInterface,
     ImageCacheInterface,
@@ -25,9 +29,12 @@ from shared_ollama.application.use_cases import (
     GenerateUseCase,
     ListModelsUseCase,
 )
+from shared_ollama.application.vlm_use_cases import VLMUseCase
 
 __all__ = [
     "AnalyticsCollectorInterface",
+    "BatchChatUseCase",
+    "BatchVLMUseCase",
     "ChatUseCase",
     "GenerateUseCase",
     "ImageCacheInterface",
@@ -37,4 +44,5 @@ __all__ = [
     "OllamaClientInterface",
     "PerformanceCollectorInterface",
     "RequestLoggerInterface",
+    "VLMUseCase",
 ]

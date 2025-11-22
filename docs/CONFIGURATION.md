@@ -39,7 +39,7 @@ Configuration is organized into logical sections:
 ### In Python Code
 
 ```python
-from shared_ollama.core.config import settings
+from shared_ollama.infrastructure.config import settings
 
 # Access configuration values
 api_host = settings.api.host
@@ -316,6 +316,6 @@ export BATCH_CHAT_MAX_REQUESTS=100
 
 ## See Also
 
-- `src/shared_ollama/core/config.py` - Configuration implementation
+- `src/shared_ollama/infrastructure/config.py` - Configuration implementation
 - API documentation at `/api/docs` - Runtime configuration values
 

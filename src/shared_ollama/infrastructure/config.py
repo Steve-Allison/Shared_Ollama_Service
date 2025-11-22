@@ -164,7 +164,7 @@ class ImageCacheConfig(BaseModel):
     """Image cache configuration."""
 
     max_size: int = Field(
-        default=100, ge=1, le=10000, description="Max cached images"
+        default=100, ge=1, le=10000, description="Max number of cached images (count, not bytes)"
     )
     ttl_seconds: float = Field(
         default=3600.0, ge=60.0, le=86400.0, description="Cache TTL (seconds)"

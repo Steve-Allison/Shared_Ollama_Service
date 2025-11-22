@@ -102,51 +102,6 @@ class StructuredLoggingMiddleware(BaseHTTPMiddleware):
         request: Request,
         call_next: Callable[[Request], Awaitable[Response]],
     ) -> Response:
-        start_time = time.perf_counter()
-        status_code: int | None = None
-        error_type: str | None = None
-        error_message: str | None = None
-        try:
-            response = await call_next(request)
-            status_code = response.status_code
-            return response
-        except Exception as exc:
-            status_code = getattr(exc, "status_code", status.HTTP_500_INTERNAL_SERVER_ERROR)
-            error_type = type(exc).__name__
-            error_message = str(exc)
-            raise
-        finally:
-            latency_ms = round((time.perf_counter() - start_time) * 1000, 3)
-            try:
-                ctx = get_request_context(request)
-                event = {
-                    "event": "http_request",
-                    "request_id": ctx.request_id,
-                    "client_ip": ctx.client_ip,
-                    "project_name": ctx.project_name,
-                    "path": request.url.path,
-                    "method": request.method,
-                    "status_code": status_code,
-                    "latency_ms": latency_ms,
-                }
-            except Exception:
-                event = {
-                    "event": "http_request",
-                    "path": request.url.path,
-                    "method": request.method,
-                    "status_code": status_code,
-                    "latency_ms": latency_ms,
-                }
-            if error_type:
-                event["error_type"] = error_type
-                event["error_message"] = error_message
-            log_request_event(event)
-
-    async def dispatch(
-        self,
-        request: Request,
-        call_next: Callable[[Request], Awaitable[Response]],
-    ) -> Response:
         """Dispatch HTTP request with structured logging.
 
         Wraps request processing to log structured data including metadata,
@@ -222,6 +177,8 @@ def setup_middleware(app: FastAPI) -> None:
     Args:
         app: FastAPI application instance to configure.
     """
+    from shared_ollama.infrastructure.config import settings
+
     # Structured logging must run first to capture the full lifecycle
     app.add_middleware(StructuredLoggingMiddleware)
 
@@ -229,10 +186,15 @@ def setup_middleware(app: FastAPI) -> None:
     app.state.limiter = limiter
     app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-    # Add CORS middleware
+    # Add CORS middleware with configurable origins
+    # Origins can be configured via config.toml [ollama] origins = "http://localhost:3000,http://example.com"
+    # or set to "*" for development (default)
+    cors_origins = settings.ollama.origins
+    allow_origins = [origin.strip() for origin in cors_origins.split(",")] if cors_origins != "*" else ["*"]
+
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],  # Configure appropriately for production
+        allow_origins=allow_origins,
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],

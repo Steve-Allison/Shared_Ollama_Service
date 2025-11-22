@@ -793,7 +793,9 @@ class ChatMessageOpenAI(BaseModel):
     for function calling workflows.
 
     Attributes:
-        role: Message role. Must be "user", "assistant", "system", or "tool".
+        role: Message role. Must be "user", "assistant", "system", "developer", or "tool".
+            The "developer" role is OpenAI's newer equivalent of "system" for setting
+            model behavior instructions.
         content: Either a string (text-only) or list of content parts (multimodal).
             Optional when tool_calls present (for assistant messages).
         tool_calls: List of tool calls made by the assistant. Optional.
@@ -806,8 +808,8 @@ class ChatMessageOpenAI(BaseModel):
         extra="forbid",
     )
 
-    role: Literal["user", "assistant", "system", "tool"] = Field(
-        ..., description="Message role: 'user', 'assistant', 'system', or 'tool'"
+    role: Literal["user", "assistant", "system", "developer", "tool"] = Field(
+        ..., description="Message role: 'user', 'assistant', 'system', 'developer', or 'tool'"
     )
     content: str | list[ContentPart] | None = Field(
         None,
@@ -883,10 +885,24 @@ class ChatRequestOpenAI(BaseModel):
     temperature: float | None = Field(None, ge=0.0, le=2.0, description="Temperature for sampling")
     top_p: float | None = Field(None, ge=0.0, le=1.0, description="Top-p sampling parameter")
     top_k: int | None = Field(None, ge=1, description="Top-k sampling parameter")
-    max_tokens: int | None = Field(None, ge=1, description="Maximum tokens to generate")
+    max_tokens: int | None = Field(
+        None,
+        ge=1,
+        description="(Deprecated) Maximum tokens to generate. Prefer max_completion_tokens.",
+    )
+    max_completion_tokens: int | None = Field(
+        None,
+        ge=1,
+        description="Maximum tokens to generate (OpenAI's preferred parameter). Overrides max_tokens when provided.",
+    )
     seed: int | None = Field(None, description="Random seed for reproducibility")
     stop: list[str] | None = Field(None, description="Stop sequences")
     tools: list[Tool] | None = Field(None, description="Tools/functions the model can call (POML compatible)")
+
+    @property
+    def effective_max_tokens(self) -> int | None:
+        """Get the effective max tokens value, preferring max_completion_tokens."""
+        return self.max_completion_tokens if self.max_completion_tokens is not None else self.max_tokens
 
     @field_validator("messages")
     @classmethod
@@ -953,7 +969,16 @@ class VLMRequestOpenAI(BaseModel):
     temperature: float | None = Field(None, ge=0.0, le=2.0, description="Temperature for sampling")
     top_p: float | None = Field(None, ge=0.0, le=1.0, description="Top-p sampling parameter")
     top_k: int | None = Field(None, ge=1, description="Top-k sampling parameter")
-    max_tokens: int | None = Field(None, ge=1, description="Maximum tokens to generate")
+    max_tokens: int | None = Field(
+        None,
+        ge=1,
+        description="(Deprecated) Maximum tokens to generate. Prefer max_completion_tokens.",
+    )
+    max_completion_tokens: int | None = Field(
+        None,
+        ge=1,
+        description="Maximum tokens to generate (OpenAI's preferred parameter). Overrides max_tokens when provided.",
+    )
     seed: int | None = Field(None, description="Random seed for reproducibility")
     stop: list[str] | None = Field(None, description="Stop sequences")
     tools: list[Tool] | None = Field(None, description="Tools/functions the model can call (POML compatible)")
@@ -962,6 +987,11 @@ class VLMRequestOpenAI(BaseModel):
     compression_format: Literal["jpeg", "png", "webp"] = Field(
         "jpeg", description="Image compression format (jpeg, png, or webp)"
     )
+
+    @property
+    def effective_max_tokens(self) -> int | None:
+        """Get the effective max tokens value, preferring max_completion_tokens."""
+        return self.max_completion_tokens if self.max_completion_tokens is not None else self.max_tokens
 
     @field_validator("messages")
     @classmethod

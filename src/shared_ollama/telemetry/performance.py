@@ -21,7 +21,7 @@ Log File:
     - Location: ``logs/performance.jsonl`` (relative to project root)
     - Format: JSON Lines (one JSON object per line)
     - Encoding: UTF-8
-    - Rotation: Not implemented (file grows unbounded)
+    - Rotation: 10MB per file, 5 backup files (~50MB total max)
 
 Metrics Collected:
     - Model load time (cold start vs warm start)
@@ -42,6 +42,7 @@ from collections import defaultdict
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar
 
@@ -78,7 +79,14 @@ def _get_logs_dir() -> Path:
 
 LOGS_DIR = _get_logs_dir()
 
-performance_handler = logging.FileHandler(LOGS_DIR / "performance.jsonl")
+# Use RotatingFileHandler to prevent unbounded file growth
+# Max 10MB per file, keep 5 backup files (total ~50MB max)
+performance_handler = RotatingFileHandler(
+    LOGS_DIR / "performance.jsonl",
+    maxBytes=10 * 1024 * 1024,  # 10MB
+    backupCount=5,
+    encoding="utf-8",
+)
 performance_handler.setFormatter(logging.Formatter("%(message)s"))
 performance_logger.addHandler(performance_handler)
 

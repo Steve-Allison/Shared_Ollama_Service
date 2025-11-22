@@ -447,6 +447,17 @@ def api_to_domain_vlm_request(api_req: Any) -> Any:  # VLMRequest from models
 
 
 def _extract_vlm_messages(api_req: Any) -> tuple[VLMMessage, ...]:
+    """Extract VLM messages from OpenAI-format request.
+
+    Converts OpenAI-compatible multimodal messages to native VLMMessage format,
+    handling role normalization and image extraction.
+
+    Args:
+        api_req: OpenAI-compatible VLM request with multimodal messages.
+
+    Returns:
+        Tuple of VLMMessage entities ready for processing.
+    """
     messages: list[VLMMessage] = []
 
     for msg in api_req.messages:
@@ -464,9 +475,30 @@ def _extract_vlm_messages(api_req: Any) -> tuple[VLMMessage, ...]:
 
         # Join text parts, or use default prompt for image-only messages
         text_content = " ".join(text_parts) if text_parts else ("Describe this image." if images else None)
-        messages.append(VLMMessage(role=msg.role, content=text_content, images=tuple(images) if images else None))
+
+        # Normalize role: "developer" -> "system" for Ollama compatibility
+        normalized_role = _normalize_openai_role(msg.role)
+
+        messages.append(VLMMessage(role=normalized_role, content=text_content, images=tuple(images) if images else None))
 
     return tuple(messages)
+
+
+def _normalize_openai_role(role: str) -> str:
+    """Normalize OpenAI role to Ollama-compatible role.
+
+    OpenAI uses "developer" role for system instructions in newer models.
+    Ollama uses "system" role for the same purpose.
+
+    Args:
+        role: OpenAI message role.
+
+    Returns:
+        Ollama-compatible role string.
+    """
+    if role == "developer":
+        return "system"
+    return role
 
 
 def api_to_domain_chat_request_openai(api_req: Any) -> ChatRequest:
@@ -491,7 +523,8 @@ def api_to_domain_chat_request_openai(api_req: Any) -> ChatRequest:
 
     Note:
         OpenAI format uses string content for text-only messages, which is
-        directly converted to native ChatMessage format. Tool calls and
+        directly converted to native ChatMessage format. The "developer" role
+        is converted to "system" for Ollama compatibility. Tool calls and
         other features are preserved.
     """
     from shared_ollama.domain.entities import (
@@ -520,9 +553,12 @@ def api_to_domain_chat_request_openai(api_req: Any) -> ChatRequest:
         if api_msg.tool_calls:
             tool_calls = tuple(api_to_domain_tool_call(tc) for tc in api_msg.tool_calls)
 
+        # Normalize role: "developer" -> "system" for Ollama compatibility
+        normalized_role = _normalize_openai_role(api_msg.role)
+
         domain_messages.append(
             ChatMessage(
-                role=api_msg.role,  # type: ignore[arg-type]  # OpenAI roles compatible
+                role=normalized_role,  # type: ignore[arg-type]
                 content=content,
                 tool_calls=tool_calls,
                 tool_call_id=api_msg.tool_call_id,  # OpenAI format supports tool_call_id
@@ -532,13 +568,14 @@ def api_to_domain_chat_request_openai(api_req: Any) -> ChatRequest:
     messages = tuple(domain_messages)
     model = ModelName(value=api_req.model) if api_req.model else None
 
-    # Convert options
+    # Convert options (use effective_max_tokens for OpenAI compatibility)
+    effective_max = api_req.effective_max_tokens
     options: GenerationOptions | None = None
     if any((
         api_req.temperature is not None,
         api_req.top_p is not None,
         api_req.top_k is not None,
-        api_req.max_tokens is not None,
+        effective_max is not None,
         api_req.seed is not None,
         api_req.stop is not None,
     )):
@@ -546,7 +583,7 @@ def api_to_domain_chat_request_openai(api_req: Any) -> ChatRequest:
             temperature=api_req.temperature or 0.2,
             top_p=api_req.top_p or 0.9,
             top_k=api_req.top_k or 40,
-            max_tokens=api_req.max_tokens,
+            max_tokens=effective_max,
             seed=api_req.seed,
             stop=api_req.stop,
         )
@@ -580,14 +617,14 @@ def api_to_domain_vlm_request_openai(api_req: Any) -> Any:
     # Convert model name
     model = ModelName(value=api_req.model) if api_req.model else None
 
-    # Convert options
+    # Convert options (use effective_max_tokens for OpenAI compatibility)
+    effective_max = api_req.effective_max_tokens
     options = None
-    # Convert options (performance: use generator instead of list)
     if any((
         api_req.temperature is not None,
         api_req.top_p is not None,
         api_req.top_k is not None,
-        api_req.max_tokens is not None,
+        effective_max is not None,
         api_req.seed is not None,
         api_req.stop is not None,
     )):
@@ -598,8 +635,8 @@ def api_to_domain_vlm_request_openai(api_req: Any) -> Any:
             option_kwargs["top_p"] = api_req.top_p
         if api_req.top_k is not None:
             option_kwargs["top_k"] = api_req.top_k
-        if api_req.max_tokens is not None:
-            option_kwargs["max_tokens"] = api_req.max_tokens
+        if effective_max is not None:
+            option_kwargs["max_tokens"] = effective_max
         if api_req.seed is not None:
             option_kwargs["seed"] = api_req.seed
         if api_req.stop is not None:

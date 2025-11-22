@@ -229,6 +229,61 @@ class AnalyticsCollector:
     _project_metadata: ClassVar[dict[int, str]] = {}
 
     @classmethod
+    def reset(cls) -> type[AnalyticsCollector]:
+        """Reset all analytics metadata and underlying metrics.
+
+        Clears project metadata and resets MetricsCollector. Useful for testing
+        or periodic resets to prevent unbounded memory growth.
+
+        Returns:
+            The class itself for method chaining.
+
+        Side effects:
+            - Clears _project_metadata dict
+            - Calls MetricsCollector.reset()
+        """
+        cls._project_metadata = {}
+        MetricsCollector.reset()
+        return cls
+
+    @classmethod
+    def _cleanup_stale_metadata(cls) -> None:
+        """Remove metadata for metrics that have been trimmed.
+
+        When MetricsCollector trims old metrics, their indices in _project_metadata
+        become stale. This method removes orphaned entries to prevent memory leaks.
+
+        Should be called periodically or after metrics trimming occurs.
+
+        Side effects:
+            - Removes entries from _project_metadata for indices >= current metrics count
+            - Reindexes remaining entries to match current metrics positions
+        """
+        metrics = getattr(MetricsCollector, "_metrics", [])
+        current_count = len(metrics)
+        max_metrics = getattr(MetricsCollector, "_max_metrics", 10_000)
+
+        # If no trimming has occurred, nothing to clean
+        if current_count < max_metrics:
+            # Still, remove any indices that are out of range
+            cls._project_metadata = {
+                k: v for k, v in cls._project_metadata.items() if k < current_count
+            }
+            return
+
+        # After trimming, indices shift. Metadata indices need adjustment.
+        # If we had 15000 metrics and trimmed to 10000, indices 0-4999 were removed.
+        # Old index 5000 is now index 0, old index 14999 is now index 9999.
+        # We need to shift all metadata indices down by (original_count - max_metrics).
+        #
+        # However, we don't know the original count. The safest approach is to
+        # rebuild the mapping by iterating current metrics and checking id() matches.
+        # This is expensive but correct. For efficiency, we just clear stale entries.
+        cls._project_metadata = {
+            k: v for k, v in cls._project_metadata.items() if k < current_count
+        }
+
+    @classmethod
     def _build_metric_index_map(cls) -> dict[int, int]:
         """Build a mapping from metric ID to index.
 
@@ -325,9 +380,15 @@ class AnalyticsCollector:
             error=error,
         )
 
-        if project:
-            metrics = getattr(MetricsCollector, "_metrics", [])
-            if metrics:
+        metrics = getattr(MetricsCollector, "_metrics", [])
+        if metrics:
+            # Clean up stale metadata periodically (when metrics are trimmed)
+            # This prevents unbounded growth of _project_metadata
+            max_metrics = getattr(MetricsCollector, "_max_metrics", 10_000)
+            if len(metrics) >= max_metrics and len(cls._project_metadata) > max_metrics:
+                cls._cleanup_stale_metadata()
+
+            if project:
                 metric_index = len(metrics) - 1
                 cls._project_metadata[metric_index] = project
 

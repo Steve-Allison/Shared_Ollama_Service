@@ -24,14 +24,16 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any, Literal
 
-from shared_ollama.domain.value_objects import ModelName, Prompt, SystemMessage
+from shared_ollama.domain.value_objects import (
+    PROMPT_MAX_LENGTH,
+    ModelName,
+    Prompt,
+    SystemMessage,
+)
 
 # Domain constants for validation
 TEMPERATURE_MAX = 2.0
 """Maximum allowed temperature value for generation (inclusive)."""
-
-PROMPT_MAX_LENGTH = 1_000_000
-"""Maximum character length for prompts (inclusive)."""
 
 VALID_ROLES = {"user", "assistant", "system", "tool"}
 """Set of valid message roles for chat/VLM messages."""
@@ -348,7 +350,7 @@ class GenerationRequest:
     model: ModelName | None = None
     system: SystemMessage | None = None
     options: GenerationOptions | None = None
-    format: str | dict[str, object] | None = None
+    format: str | dict[str, Any] | None = None
     tools: tuple[Tool, ...] | None = None
 
     def __post_init__(self) -> None:
@@ -548,7 +550,7 @@ class VLMMessage:
                 - role="tool" but tool_call_id is missing
                 - content is provided but empty (unless tool_calls present)
         """
-        if self.role not in ("user", "assistant", "system", "tool"):
+        if self.role not in VALID_ROLES:
             raise ValueError(f"Invalid role '{self.role}'. Must be 'user', 'assistant', 'system', or 'tool'")
 
         # Validate that either content or tool_calls is present

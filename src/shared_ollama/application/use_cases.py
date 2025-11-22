@@ -40,8 +40,10 @@ from shared_ollama.domain.exceptions import InvalidRequestError
 
 if TYPE_CHECKING:
     from shared_ollama.application.interfaces import (
+        AnalyticsCollectorInterface,
         MetricsCollectorInterface,
         OllamaClientInterface,
+        PerformanceCollectorInterface,
         RequestLoggerInterface,
     )
 
@@ -72,6 +74,8 @@ class GenerateUseCase:
         client: OllamaClientInterface,
         logger: RequestLoggerInterface,
         metrics: MetricsCollectorInterface,
+        analytics: AnalyticsCollectorInterface | None = None,
+        performance: PerformanceCollectorInterface | None = None,
     ) -> None:
         """Initialize the generate use case.
 
@@ -79,10 +83,14 @@ class GenerateUseCase:
             client: Ollama client adapter for making generation requests.
             logger: Request logger for recording request events.
             metrics: Metrics collector for tracking performance and usage.
+            analytics: Optional analytics collector for project-based tracking.
+            performance: Optional performance collector for detailed metrics.
         """
         self._client = client
         self._logger = logger
         self._metrics = metrics
+        self._analytics = analytics
+        self._performance = performance
 
     async def execute(
         self,
@@ -224,25 +232,25 @@ class GenerateUseCase:
                 success=True,
             )
 
-            # Record project-based analytics
-            from shared_ollama.telemetry.analytics import AnalyticsCollector
-            AnalyticsCollector.record_request_with_project(
-                model=model_used,
-                operation="generate",
-                latency_ms=latency_ms,
-                success=True,
-                project=project_name,
-            )
+            # Record project-based analytics (via injected interface)
+            if self._analytics:
+                self._analytics.record_request_with_project(
+                    model=model_used,
+                    operation="generate",
+                    latency_ms=latency_ms,
+                    success=True,
+                    project=project_name,
+                )
 
-            # Record detailed performance metrics
-            from shared_ollama.telemetry.performance import PerformanceCollector
-            PerformanceCollector.record_performance(
-                model=model_used,
-                operation="generate",
-                total_latency_ms=latency_ms,
-                success=True,
-                response=result_dict,
-            )
+            # Record detailed performance metrics (via injected interface)
+            if self._performance:
+                self._performance.record_performance(
+                    model=model_used,
+                    operation="generate",
+                    total_latency_ms=latency_ms,
+                    success=True,
+                    response=result_dict,
+                )
 
             return result_dict
 
@@ -272,16 +280,16 @@ class GenerateUseCase:
                 error="ValueError",
             )
 
-            # Record project-based analytics for errors too
-            from shared_ollama.telemetry.analytics import AnalyticsCollector
-            AnalyticsCollector.record_request_with_project(
-                model=model_str,
-                operation="generate",
-                latency_ms=latency_ms,
-                success=False,
-                project=project_name,
-                error="ValueError",
-            )
+            # Record project-based analytics for errors too (via injected interface)
+            if self._analytics:
+                self._analytics.record_request_with_project(
+                    model=model_str,
+                    operation="generate",
+                    latency_ms=latency_ms,
+                    success=False,
+                    project=project_name,
+                    error="ValueError",
+                )
 
             raise InvalidRequestError(f"Invalid request: {exc!s}") from exc
         except Exception as exc:
@@ -310,16 +318,16 @@ class GenerateUseCase:
                 error=type(exc).__name__,
             )
 
-            # Record project-based analytics for errors too
-            from shared_ollama.telemetry.analytics import AnalyticsCollector
-            AnalyticsCollector.record_request_with_project(
-                model=model_str,
-                operation="generate",
-                latency_ms=latency_ms,
-                success=False,
-                project=project_name,
-                error=type(exc).__name__,
-            )
+            # Record project-based analytics for errors too (via injected interface)
+            if self._analytics:
+                self._analytics.record_request_with_project(
+                    model=model_str,
+                    operation="generate",
+                    latency_ms=latency_ms,
+                    success=False,
+                    project=project_name,
+                    error=type(exc).__name__,
+                )
 
             raise
 
@@ -349,6 +357,8 @@ class ChatUseCase:
         client: OllamaClientInterface,
         logger: RequestLoggerInterface,
         metrics: MetricsCollectorInterface,
+        analytics: AnalyticsCollectorInterface | None = None,
+        performance: PerformanceCollectorInterface | None = None,
     ) -> None:
         """Initialize the chat use case.
 
@@ -356,10 +366,14 @@ class ChatUseCase:
             client: Ollama client adapter for making chat requests.
             logger: Request logger for recording request events.
             metrics: Metrics collector for tracking performance and usage.
+            analytics: Optional analytics collector for project-based tracking.
+            performance: Optional performance collector for detailed metrics.
         """
         self._client = client
         self._logger = logger
         self._metrics = metrics
+        self._analytics = analytics
+        self._performance = performance
 
     async def execute(
         self,
@@ -528,25 +542,25 @@ class ChatUseCase:
                 success=True,
             )
 
-            # Record project-based analytics
-            from shared_ollama.telemetry.analytics import AnalyticsCollector
-            AnalyticsCollector.record_request_with_project(
-                model=model_used,
-                operation="chat",
-                latency_ms=latency_ms,
-                success=True,
-                project=project_name,
-            )
+            # Record project-based analytics (via injected interface)
+            if self._analytics:
+                self._analytics.record_request_with_project(
+                    model=model_used,
+                    operation="chat",
+                    latency_ms=latency_ms,
+                    success=True,
+                    project=project_name,
+                )
 
-            # Record detailed performance metrics
-            from shared_ollama.telemetry.performance import PerformanceCollector
-            PerformanceCollector.record_performance(
-                model=model_used,
-                operation="chat",
-                total_latency_ms=latency_ms,
-                success=True,
-                response=result_dict,
-            )
+            # Record detailed performance metrics (via injected interface)
+            if self._performance:
+                self._performance.record_performance(
+                    model=model_used,
+                    operation="chat",
+                    total_latency_ms=latency_ms,
+                    success=True,
+                    response=result_dict,
+                )
 
             return result_dict
 
@@ -576,16 +590,16 @@ class ChatUseCase:
                 error="ValueError",
             )
 
-            # Record project-based analytics for errors too
-            from shared_ollama.telemetry.analytics import AnalyticsCollector
-            AnalyticsCollector.record_request_with_project(
-                model=model_str,
-                operation="chat",
-                latency_ms=latency_ms,
-                success=False,
-                project=project_name,
-                error="ValueError",
-            )
+            # Record project-based analytics for errors too (via injected interface)
+            if self._analytics:
+                self._analytics.record_request_with_project(
+                    model=model_str,
+                    operation="chat",
+                    latency_ms=latency_ms,
+                    success=False,
+                    project=project_name,
+                    error="ValueError",
+                )
 
             raise InvalidRequestError(f"Invalid request: {exc!s}") from exc
         except Exception as exc:
@@ -614,16 +628,16 @@ class ChatUseCase:
                 error=type(exc).__name__,
             )
 
-            # Record project-based analytics for errors too
-            from shared_ollama.telemetry.analytics import AnalyticsCollector
-            AnalyticsCollector.record_request_with_project(
-                model=model_str,
-                operation="chat",
-                latency_ms=latency_ms,
-                success=False,
-                project=project_name,
-                error=type(exc).__name__,
-            )
+            # Record project-based analytics for errors too (via injected interface)
+            if self._analytics:
+                self._analytics.record_request_with_project(
+                    model=model_str,
+                    operation="chat",
+                    latency_ms=latency_ms,
+                    success=False,
+                    project=project_name,
+                    error=type(exc).__name__,
+                )
 
             raise
 

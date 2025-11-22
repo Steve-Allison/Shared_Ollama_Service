@@ -86,6 +86,43 @@ _image_processor_adapter: ImageProcessorAdapter | None = None
 _image_cache_adapter: ImageCacheAdapter | None = None
 
 
+def validate_dependencies() -> dict[str, bool]:
+    """Validate that all required dependencies are initialized.
+
+    Checks all global dependency instances to verify they have been
+    properly initialized during lifespan startup. Returns a dictionary
+    mapping dependency names to their initialization status.
+
+    Returns:
+        Dictionary with dependency names as keys and boolean initialization
+        status as values. True means initialized, False means not initialized.
+
+    Example:
+        ```python
+        status = validate_dependencies()
+        if not all(status.values()):
+            missing = [k for k, v in status.items() if not v]
+            raise RuntimeError(f"Missing dependencies: {missing}")
+        ```
+
+    Note:
+        This function does not raise exceptions. Use the returned dictionary
+        to determine which dependencies are missing and handle accordingly.
+    """
+    return {
+        "client_adapter": _client_adapter is not None,
+        "logger_adapter": _logger_adapter is not None,
+        "metrics_adapter": _metrics_adapter is not None,
+        "chat_queue": _chat_queue is not None,
+        "vlm_queue": _vlm_queue is not None,
+        "image_processor_adapter": _image_processor_adapter is not None,
+        "image_cache_adapter": _image_cache_adapter is not None,
+        # Optional adapters (may be None by design)
+        "analytics_adapter": True,  # Optional, always "valid"
+        "performance_adapter": True,  # Optional, always "valid"
+    }
+
+
 def set_dependencies(
     client_adapter: AsyncOllamaClientAdapter,
     logger_adapter: RequestLoggerAdapter,

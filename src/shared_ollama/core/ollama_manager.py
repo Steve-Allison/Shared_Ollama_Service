@@ -412,6 +412,8 @@ class OllamaManager:
         log_file = self.log_dir / "ollama.log"
         error_log_file = self.log_dir / "ollama.error.log"
 
+        log_f = None
+        err_f = None
         try:
             logger.info("Starting Ollama service process...")
             log_f = log_file.open("a")
@@ -439,6 +441,11 @@ class OllamaManager:
         except Exception:
             logger.exception("Failed to start Ollama process")
             self.process = None
+            # Close file handles if subprocess creation failed
+            if log_f is not None:
+                log_f.close()
+            if err_f is not None:
+                err_f.close()
             return False
         else:
             return True

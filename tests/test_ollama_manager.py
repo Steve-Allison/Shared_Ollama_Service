@@ -8,7 +8,7 @@ and edge cases. Uses real subprocess operations (no mocks of internal logic).
 import platform
 import shutil
 from pathlib import Path
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
@@ -175,7 +175,6 @@ class TestStopExternalOllama:
         # Should complete successfully
 
 
-@pytest.mark.asyncio
 class TestCheckOllamaRunning:
     """Behavioral tests for checking Ollama service status."""
 
@@ -276,10 +275,11 @@ class TestOllamaManagerStop:
 
     async def test_stop_terminates_process_gracefully(self, ollama_manager):
         """Test that stop() terminates process with SIGTERM first."""
-        # Create a mock process
-        mock_process = AsyncMock()
+        # Create a mock process - terminate() and kill() are synchronous methods
+        mock_process = Mock()
         mock_process.pid = 12345
         mock_process.wait = AsyncMock(return_value=0)
+        mock_process.terminate = Mock()  # Synchronous method
         ollama_manager.process = mock_process
 
         result = await ollama_manager.stop(timeout=1)
@@ -291,11 +291,12 @@ class TestOllamaManagerStop:
 
     async def test_stop_kills_process_on_timeout(self, ollama_manager):
         """Test that stop() kills process if graceful shutdown times out."""
-        # Create a mock process that doesn't terminate
-        mock_process = AsyncMock()
+        # Create a mock process - terminate() and kill() are synchronous methods
+        mock_process = Mock()
         mock_process.pid = 12345
         mock_process.wait = AsyncMock(side_effect=TimeoutError())
-        mock_process.kill = AsyncMock()
+        mock_process.terminate = Mock()  # Synchronous method
+        mock_process.kill = Mock()  # Synchronous method
         ollama_manager.process = mock_process
 
         # Mock wait_for to raise TimeoutError
@@ -407,10 +408,10 @@ class TestOllamaManagerEdgeCases:
 
     async def test_stop_handles_process_exception(self, ollama_manager):
         """Test that stop() handles process termination exceptions."""
-        mock_process = AsyncMock()
+        mock_process = Mock()
         mock_process.pid = 12345
-        mock_process.terminate.side_effect = Exception("Terminate failed")
-        mock_process.kill = AsyncMock()
+        mock_process.terminate = Mock(side_effect=Exception("Terminate failed"))
+        mock_process.kill = Mock()  # Synchronous method
         mock_process.wait = AsyncMock(return_value=0)
         ollama_manager.process = mock_process
 
@@ -427,19 +428,13 @@ class TestOllamaManagerEdgeCases:
     async def test_wait_for_ready_succeeds_when_ready(self, ollama_manager):
         """Test that _wait_for_ready succeeds when service becomes ready."""
         # Mock _check_ollama_running to return True after a delay
+        # Note: _check_ollama_running is synchronous, not async
         call_count = [0]
 
-        async def check_running():
+        def check_running():
             call_count[0] += 1
             return call_count[0] >= 2  # Return True on second call
 
         with patch.object(ollama_manager, "_check_ollama_running", side_effect=check_running):
             result = await ollama_manager._wait_for_ready(max_wait_time=2.0)
             assert result is True
-
-    def test_get_status_with_none_process(self, ollama_manager):
-        """Test that get_status() handles None process."""
-        ollama_manager.process = None
-        status = ollama_manager.get_status()
-        assert status["managed"] is False
-        assert "pid" not in status

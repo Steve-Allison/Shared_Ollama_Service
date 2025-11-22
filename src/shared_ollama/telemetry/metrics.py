@@ -25,14 +25,15 @@ Memory Management:
     - No external storage dependencies (in-memory only)
 
 Thread Safety:
-    - Not thread-safe by design (single-threaded async application)
-    - If multi-threaded access needed, add locks around _metrics operations
+    - Thread-safe via threading.Lock for all _metrics operations
+    - Safe for concurrent access from multiple threads or async contexts
 """
 
 from __future__ import annotations
 
 import logging
 import statistics
+import threading
 import time
 from collections import Counter, defaultdict
 from contextlib import contextmanager
@@ -127,9 +128,8 @@ class MetricsCollector:
             Oldest metrics are discarded when limit is reached.
 
     Thread Safety:
-        Not thread-safe by design. This collector is intended for use in
-        single-threaded async applications. If multi-threaded access is needed,
-        add locks around _metrics operations.
+        Thread-safe. All operations on _metrics are protected by a threading.Lock.
+        Safe for concurrent access from multiple threads or async contexts.
 
     Memory Management:
         Automatically trims oldest metrics when _max_metrics is exceeded.
@@ -144,6 +144,7 @@ class MetricsCollector:
 
     _metrics: ClassVar[list[RequestMetrics]] = []
     _max_metrics: ClassVar[int] = 10_000
+    _lock: ClassVar[threading.Lock] = threading.Lock()
 
     @classmethod
     def record_request(
@@ -179,10 +180,10 @@ class MetricsCollector:
             error=error,
             timestamp=datetime.now(UTC),
         )
-        cls._metrics.append(metric)
-
-        if len(cls._metrics) > cls._max_metrics:
-            cls._metrics = cls._metrics[-cls._max_metrics :]
+        with cls._lock:
+            cls._metrics.append(metric)
+            if len(cls._metrics) > cls._max_metrics:
+                cls._metrics = cls._metrics[-cls._max_metrics :]
 
         logger.debug("Recorded metric: %s on %s - %.2fms", operation, model, latency_ms)
 
@@ -209,16 +210,20 @@ class MetricsCollector:
             - Sorts latencies for percentile calculation
             - Computes statistics (O(n log n) for sorting)
         """
-        if not cls._metrics:
+        # Copy metrics under lock to avoid race conditions during iteration
+        with cls._lock:
+            metrics_snapshot = list(cls._metrics)
+
+        if not metrics_snapshot:
             return ServiceMetrics()
 
         # Use match/case for window filtering (Python 3.13+)
         match window_minutes:
             case None:
-                metrics = cls._metrics
+                metrics = metrics_snapshot
             case minutes if minutes > 0:
                 cutoff = datetime.now(UTC) - timedelta(minutes=minutes)
-                metrics = [m for m in cls._metrics if m.timestamp >= cutoff]
+                metrics = [m for m in metrics_snapshot if m.timestamp >= cutoff]
             case _:
                 metrics = []
 
@@ -307,12 +312,13 @@ class MetricsCollector:
         periodic resets to prevent unbounded memory growth.
 
         Side effects:
-            Sets _metrics to empty list.
+            Sets _metrics to empty list (thread-safe).
 
         Returns:
             The class itself for method chaining (Python 3.13+ Self type).
         """
-        cls._metrics = []
+        with cls._lock:
+            cls._metrics = []
         return cls
 
 

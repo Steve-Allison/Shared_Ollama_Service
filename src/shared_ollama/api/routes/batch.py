@@ -287,6 +287,7 @@ async def batch_vlm(
             detail=f"An internal error occurred (request_id: {ctx.request_id}). Please try again later or contact support.",
         ) from exc
 
+
 @router.post("/batch/chat/completions", tags=["Batch"], response_model=BatchResponse)
 @limiter.limit("10/minute")
 async def batch_chat_completions(
@@ -330,7 +331,9 @@ async def batch_chat_completions(
 
         # Execute batch processing
         logger.info(
-            "batch_chat_completions_requested: request_id=%s, count=%d", ctx.request_id, len(domain_requests)
+            "batch_chat_completions_requested: request_id=%s, count=%d",
+            ctx.request_id,
+            len(domain_requests),
         )
         batch_result = await use_case.execute(
             requests=domain_requests,
@@ -393,7 +396,9 @@ async def batch_vlm_completions(
 
         # Execute batch processing
         logger.info(
-            "batch_vlm_completions_requested: request_id=%s, count=%d", ctx.request_id, len(domain_requests)
+            "batch_vlm_completions_requested: request_id=%s, count=%d",
+            ctx.request_id,
+            len(domain_requests),
         )
         batch_result = await use_case.execute(
             requests=domain_requests,

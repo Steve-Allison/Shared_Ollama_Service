@@ -421,16 +421,20 @@ def api_to_domain_vlm_request(api_req: Any) -> Any:  # VLMRequest from models
             break
 
     for i, msg in enumerate(api_req.messages):
-        tool_calls = tuple(api_to_domain_tool_call(tc) for tc in msg.tool_calls) if msg.tool_calls else None
+        tool_calls = (
+            tuple(api_to_domain_tool_call(tc) for tc in msg.tool_calls) if msg.tool_calls else None
+        )
         images = tuple(api_req.images) if i == last_user_msg_idx else None
 
-        messages.append(VLMMessage(
-            role=msg.role,
-            content=msg.content,
-            images=images,
-            tool_calls=tool_calls,
-            tool_call_id=msg.tool_call_id,
-        ))
+        messages.append(
+            VLMMessage(
+                role=msg.role,
+                content=msg.content,
+                images=images,
+                tool_calls=tool_calls,
+                tool_call_id=msg.tool_call_id,
+            )
+        )
 
     model = ModelName(value=api_req.model) if api_req.model else None
 
@@ -489,12 +493,20 @@ def _extract_vlm_messages(api_req: Any) -> tuple[VLMMessage, ...]:
                     images.append(part.image_url.url)
 
         # Join text parts, or use default prompt for image-only messages
-        text_content = " ".join(text_parts) if text_parts else ("Describe this image." if images else None)
+        text_content = (
+            " ".join(text_parts) if text_parts else ("Describe this image." if images else None)
+        )
 
         # Normalize role: "developer" -> "system" for Ollama compatibility
         normalized_role = _normalize_openai_role(msg.role)
 
-        messages.append(VLMMessage(role=normalized_role, content=text_content, images=tuple(images) if images else None))
+        messages.append(
+            VLMMessage(
+                role=normalized_role,  # type: ignore[arg-type] - validated by OpenAI API
+                content=text_content,
+                images=tuple(images) if images else None,
+            )
+        )
 
     return tuple(messages)
 
@@ -561,15 +573,21 @@ def api_to_domain_chat_request_openai(api_req: Any) -> ChatRequest:
             ]
             content = " ".join(text_parts) if text_parts else None
 
-        tool_calls = tuple(api_to_domain_tool_call(tc) for tc in api_msg.tool_calls) if api_msg.tool_calls else None
+        tool_calls = (
+            tuple(api_to_domain_tool_call(tc) for tc in api_msg.tool_calls)
+            if api_msg.tool_calls
+            else None
+        )
         normalized_role = _normalize_openai_role(api_msg.role)
 
-        domain_messages.append(ChatMessage(
-            role=normalized_role,  # type: ignore[arg-type]
-            content=content,
-            tool_calls=tool_calls,
-            tool_call_id=api_msg.tool_call_id,
-        ))
+        domain_messages.append(
+            ChatMessage(
+                role=normalized_role,  # type: ignore[arg-type]
+                content=content,
+                tool_calls=tool_calls,
+                tool_call_id=api_msg.tool_call_id,
+            )
+        )
 
     messages = tuple(domain_messages)
     model = ModelName(value=api_req.model) if api_req.model else None

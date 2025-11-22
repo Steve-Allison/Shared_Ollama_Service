@@ -89,7 +89,9 @@ class Tool(BaseModel):
         extra="forbid",
     )
 
-    type: Literal["function"] = Field(default="function", description="Tool type (only 'function' supported)")
+    type: Literal["function"] = Field(
+        default="function", description="Tool type (only 'function' supported)"
+    )
     function: ToolFunction = Field(..., description="Function definition")
 
 
@@ -157,7 +159,7 @@ class ResponseFormat(BaseModel):
         None,
         description=(
             "JSON schema definition required when type='json_schema'. "
-            "Supports both OpenAI's {\"name\": ..., \"schema\": {...}} structure "
+            'Supports both OpenAI\'s {"name": ..., "schema": {...}} structure '
             "and direct JSON Schema objects."
         ),
     )
@@ -218,7 +220,9 @@ class GenerateRequest(BaseModel):
         None,
         description="OpenAI-compatible response_format. Overrides format when provided.",
     )
-    tools: list[Tool] | None = Field(None, description="Tools/functions the model can call (POML compatible)")
+    tools: list[Tool] | None = Field(
+        None, description="Tools/functions the model can call (POML compatible)"
+    )
     temperature: float | None = Field(None, ge=0.0, le=2.0, description="Temperature for sampling")
     top_p: float | None = Field(None, ge=0.0, le=1.0, description="Top-p sampling parameter")
     top_k: int | None = Field(None, ge=1, description="Top-k sampling parameter")
@@ -251,9 +255,13 @@ class ChatMessage(BaseModel):
     role: Literal["user", "assistant", "system", "tool"] = Field(
         ..., description="Message role: 'user', 'assistant', 'system', or 'tool'"
     )
-    content: str | None = Field(None, description="Text content of the message (optional if tool_calls present)")
+    content: str | None = Field(
+        None, description="Text content of the message (optional if tool_calls present)"
+    )
     tool_calls: list[ToolCall] | None = Field(None, description="Tool calls made by the assistant")
-    tool_call_id: str | None = Field(None, description="Tool call ID this message responds to (for role='tool')")
+    tool_call_id: str | None = Field(
+        None, description="Tool call ID this message responds to (for role='tool')"
+    )
 
     @field_validator("content", mode="after")
     @classmethod
@@ -293,9 +301,7 @@ class ChatRequest(BaseModel):
         extra="forbid",
     )
 
-    messages: list[ChatMessage] = Field(
-        ..., min_length=1, description="List of chat messages"
-    )
+    messages: list[ChatMessage] = Field(..., min_length=1, description="List of chat messages")
     model: str | None = Field(None, description="Model to use (defaults to service default)")
     stream: bool = Field(False, description="Whether to stream the response")
     format: str | dict[str, Any] | None = Field(
@@ -306,7 +312,9 @@ class ChatRequest(BaseModel):
         None,
         description="OpenAI-compatible response_format. Overrides format when provided.",
     )
-    tools: list[Tool] | None = Field(None, description="Tools/functions the model can call (POML compatible)")
+    tools: list[Tool] | None = Field(
+        None, description="Tools/functions the model can call (POML compatible)"
+    )
     temperature: float | None = Field(None, ge=0.0, le=2.0, description="Temperature for sampling")
     top_p: float | None = Field(None, ge=0.0, le=1.0, description="Top-p sampling parameter")
     top_k: int | None = Field(None, ge=1, description="Top-k sampling parameter")
@@ -344,7 +352,9 @@ class GenerateResponse(BaseModel):
     latency_ms: float = Field(..., ge=0.0, description="Request latency in milliseconds")
     model_load_ms: float | None = Field(None, ge=0.0, description="Model load time in milliseconds")
     model_warm_start: bool = Field(..., description="Whether model was already loaded")
-    prompt_eval_count: int | None = Field(None, ge=0, description="Number of prompt tokens evaluated")
+    prompt_eval_count: int | None = Field(
+        None, ge=0, description="Number of prompt tokens evaluated"
+    )
     generation_eval_count: int | None = Field(
         None, ge=0, description="Number of generation tokens evaluated"
     )
@@ -382,7 +392,9 @@ class ChatResponse(BaseModel):
     latency_ms: float = Field(..., ge=0.0, description="Request latency in milliseconds")
     model_load_ms: float | None = Field(None, ge=0.0, description="Model load time in milliseconds")
     model_warm_start: bool = Field(..., description="Whether model was already loaded")
-    prompt_eval_count: int | None = Field(None, ge=0, description="Number of prompt tokens evaluated")
+    prompt_eval_count: int | None = Field(
+        None, ge=0, description="Number of prompt tokens evaluated"
+    )
     generation_eval_count: int | None = Field(
         None, ge=0, description="Number of generation tokens evaluated"
     )
@@ -422,7 +434,9 @@ class GenerateStreamChunk(BaseModel):
     latency_ms: float | None = Field(None, ge=0.0, description="Request latency in milliseconds")
     model_load_ms: float | None = Field(None, ge=0.0, description="Model load time in milliseconds")
     model_warm_start: bool | None = Field(None, description="Whether model was already loaded")
-    prompt_eval_count: int | None = Field(None, ge=0, description="Number of prompt tokens evaluated")
+    prompt_eval_count: int | None = Field(
+        None, ge=0, description="Number of prompt tokens evaluated"
+    )
     generation_eval_count: int | None = Field(
         None, ge=0, description="Number of generation tokens evaluated"
     )
@@ -466,7 +480,9 @@ class ChatStreamChunk(BaseModel):
     latency_ms: float | None = Field(None, ge=0.0, description="Request latency in milliseconds")
     model_load_ms: float | None = Field(None, ge=0.0, description="Model load time in milliseconds")
     model_warm_start: bool | None = Field(None, description="Whether model was already loaded")
-    prompt_eval_count: int | None = Field(None, ge=0, description="Number of prompt tokens evaluated")
+    prompt_eval_count: int | None = Field(
+        None, ge=0, description="Number of prompt tokens evaluated"
+    )
     generation_eval_count: int | None = Field(
         None, ge=0, description="Number of generation tokens evaluated"
     )
@@ -587,9 +603,15 @@ class QueueStatsResponse(BaseModel):
     in_progress: int = Field(..., ge=0, description="Number of requests currently being processed")
     completed: int = Field(..., ge=0, description="Total requests completed since startup")
     failed: int = Field(..., ge=0, description="Total requests failed since startup")
-    rejected: int = Field(..., ge=0, description="Total requests rejected (queue full) since startup")
-    timeout: int = Field(..., ge=0, description="Total requests timed out waiting in queue since startup")
-    total_wait_time_ms: float = Field(..., ge=0.0, description="Total time all requests spent waiting (ms)")
+    rejected: int = Field(
+        ..., ge=0, description="Total requests rejected (queue full) since startup"
+    )
+    timeout: int = Field(
+        ..., ge=0, description="Total requests timed out waiting in queue since startup"
+    )
+    total_wait_time_ms: float = Field(
+        ..., ge=0.0, description="Total time all requests spent waiting (ms)"
+    )
     max_wait_time_ms: float = Field(..., ge=0.0, description="Maximum wait time observed (ms)")
     avg_wait_time_ms: float = Field(..., ge=0.0, description="Average wait time per request (ms)")
     max_concurrent: int = Field(..., ge=1, description="Maximum concurrent requests allowed")
@@ -621,9 +643,13 @@ class VLMMessage(BaseModel):
     role: Literal["user", "assistant", "system", "tool"] = Field(
         ..., description="Message role: 'user', 'assistant', 'system', or 'tool'"
     )
-    content: str | None = Field(None, description="Text content of the message (optional if tool_calls present)")
+    content: str | None = Field(
+        None, description="Text content of the message (optional if tool_calls present)"
+    )
     tool_calls: list[ToolCall] | None = Field(None, description="Tool calls made by the assistant")
-    tool_call_id: str | None = Field(None, description="Tool call ID this message responds to (for role='tool')")
+    tool_call_id: str | None = Field(
+        None, description="Tool call ID this message responds to (for role='tool')"
+    )
 
     @field_validator("content", mode="after")
     @classmethod
@@ -690,7 +716,9 @@ class VLMRequest(BaseModel):
         None,
         description="OpenAI-compatible response_format. Overrides format when provided.",
     )
-    tools: list[Tool] | None = Field(None, description="Tools/functions the model can call (POML compatible)")
+    tools: list[Tool] | None = Field(
+        None, description="Tools/functions the model can call (POML compatible)"
+    )
     temperature: float | None = Field(None, ge=0.0, le=2.0, description="Temperature for sampling")
     top_p: float | None = Field(None, ge=0.0, le=1.0, description="Top-p sampling parameter")
     top_k: int | None = Field(None, ge=1, description="Top-k sampling parameter")
@@ -698,7 +726,9 @@ class VLMRequest(BaseModel):
     seed: int | None = Field(None, description="Random seed for reproducibility")
     stop: list[str] | None = Field(None, description="Stop sequences")
     image_compression: bool = Field(True, description="Enable image compression (recommended)")
-    max_dimension: int = Field(2667, ge=256, le=2667, description="Maximum image dimension for resizing")
+    max_dimension: int = Field(
+        2667, ge=256, le=2667, description="Maximum image dimension for resizing"
+    )
     compression_format: Literal["jpeg", "png", "webp"] = Field(
         "jpeg", description="Image compression format (jpeg, png, or webp)"
     )
@@ -897,12 +927,18 @@ class ChatRequestOpenAI(BaseModel):
     )
     seed: int | None = Field(None, description="Random seed for reproducibility")
     stop: list[str] | None = Field(None, description="Stop sequences")
-    tools: list[Tool] | None = Field(None, description="Tools/functions the model can call (POML compatible)")
+    tools: list[Tool] | None = Field(
+        None, description="Tools/functions the model can call (POML compatible)"
+    )
 
     @property
     def effective_max_tokens(self) -> int | None:
         """Get the effective max tokens value, preferring max_completion_tokens."""
-        return self.max_completion_tokens if self.max_completion_tokens is not None else self.max_tokens
+        return (
+            self.max_completion_tokens
+            if self.max_completion_tokens is not None
+            else self.max_tokens
+        )
 
     @field_validator("messages")
     @classmethod
@@ -981,9 +1017,13 @@ class VLMRequestOpenAI(BaseModel):
     )
     seed: int | None = Field(None, description="Random seed for reproducibility")
     stop: list[str] | None = Field(None, description="Stop sequences")
-    tools: list[Tool] | None = Field(None, description="Tools/functions the model can call (POML compatible)")
+    tools: list[Tool] | None = Field(
+        None, description="Tools/functions the model can call (POML compatible)"
+    )
     image_compression: bool = Field(True, description="Enable image compression (recommended)")
-    max_dimension: int = Field(2667, ge=256, le=2667, description="Maximum image dimension for resizing")
+    max_dimension: int = Field(
+        2667, ge=256, le=2667, description="Maximum image dimension for resizing"
+    )
     compression_format: Literal["jpeg", "png", "webp"] = Field(
         "jpeg", description="Image compression format (jpeg, png, or webp)"
     )
@@ -991,7 +1031,11 @@ class VLMRequestOpenAI(BaseModel):
     @property
     def effective_max_tokens(self) -> int | None:
         """Get the effective max tokens value, preferring max_completion_tokens."""
-        return self.max_completion_tokens if self.max_completion_tokens is not None else self.max_tokens
+        return (
+            self.max_completion_tokens
+            if self.max_completion_tokens is not None
+            else self.max_tokens
+        )
 
     @field_validator("messages")
     @classmethod
@@ -1048,9 +1092,15 @@ class VLMResponse(BaseModel):
     model_warm_start: bool = Field(..., description="Whether model was already loaded")
     images_processed: int = Field(..., ge=1, description="Number of images processed")
     compression_savings_bytes: int | None = Field(None, description="Bytes saved by compression")
-    prompt_eval_count: int | None = Field(None, ge=0, description="Number of prompt tokens evaluated")
-    generation_eval_count: int | None = Field(None, ge=0, description="Number of generation tokens evaluated")
-    total_duration_ms: float | None = Field(None, ge=0.0, description="Total generation duration in milliseconds")
+    prompt_eval_count: int | None = Field(
+        None, ge=0, description="Number of prompt tokens evaluated"
+    )
+    generation_eval_count: int | None = Field(
+        None, ge=0, description="Number of generation tokens evaluated"
+    )
+    total_duration_ms: float | None = Field(
+        None, ge=0.0, description="Total generation duration in milliseconds"
+    )
 
 
 class BatchChatRequest(BaseModel):
@@ -1091,7 +1141,10 @@ class BatchChatRequestOpenAI(BaseModel):
     )
 
     requests: list[ChatRequestOpenAI] = Field(
-        ..., min_length=1, max_length=50, description="List of OpenAI-compatible chat requests (max 50)"
+        ...,
+        min_length=1,
+        max_length=50,
+        description="List of OpenAI-compatible chat requests (max 50)",
     )
 
 
@@ -1112,7 +1165,10 @@ class BatchVLMRequestOpenAI(BaseModel):
     )
 
     requests: list[VLMRequestOpenAI] = Field(
-        ..., min_length=1, max_length=20, description="List of OpenAI-compatible VLM requests (max 20)"
+        ...,
+        min_length=1,
+        max_length=20,
+        description="List of OpenAI-compatible VLM requests (max 20)",
     )
 
 
@@ -1214,9 +1270,7 @@ class MetricsResponse(BaseModel):
     errors_by_type: dict[str, int] = Field(
         default_factory=dict, description="Error counts grouped by error type"
     )
-    last_request_time: datetime | None = Field(
-        None, description="Timestamp of most recent request"
-    )
+    last_request_time: datetime | None = Field(None, description="Timestamp of most recent request")
     first_request_time: datetime | None = Field(
         None, description="Timestamp of earliest request included"
     )
@@ -1229,9 +1283,7 @@ class PerformanceModelStats(BaseModel):
 
     avg_tokens_per_second: float = Field(..., ge=0.0, description="Average tokens/sec")
     avg_load_time_ms: float = Field(..., ge=0.0, description="Average load time (ms)")
-    avg_generation_time_ms: float = Field(
-        ..., ge=0.0, description="Average generation time (ms)"
-    )
+    avg_generation_time_ms: float = Field(..., ge=0.0, description="Average generation time (ms)")
     request_count: int = Field(..., ge=0, description="Number of successful requests")
 
 
@@ -1268,12 +1320,8 @@ class ProjectMetricsResponse(BaseModel):
     )
     average_latency_ms: float = Field(..., ge=0.0, description="Average latency (ms)")
     total_latency_ms: float = Field(..., ge=0.0, description="Total latency accumulated (ms)")
-    last_request_time: datetime | None = Field(
-        None, description="Most recent request timestamp"
-    )
-    first_request_time: datetime | None = Field(
-        None, description="Oldest request timestamp"
-    )
+    last_request_time: datetime | None = Field(None, description="Most recent request timestamp")
+    first_request_time: datetime | None = Field(None, description="Oldest request timestamp")
 
 
 class HourlyMetricsEntry(BaseModel):

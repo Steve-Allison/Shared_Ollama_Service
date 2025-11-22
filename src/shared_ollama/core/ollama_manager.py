@@ -576,7 +576,7 @@ class OllamaManager:
                         "Failed to pull model %s. Return code: %s\nStderr: %s",
                         model_name,
                         process.returncode,
-                        stderr.decode('utf-8', errors='ignore'),
+                        stderr.decode("utf-8", errors="ignore"),
                     )
             except TimeoutError:
                 logger.error("Timeout pulling model: %s", model_name)

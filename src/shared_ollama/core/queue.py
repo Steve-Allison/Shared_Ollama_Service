@@ -186,9 +186,7 @@ class RequestQueue:
             if self._queue.full():
                 async with self._stats_lock:
                     self._stats.rejected += 1
-                raise RuntimeError(
-                    f"Queue is full ({self.max_queue_size} requests already queued)"
-                )
+                raise RuntimeError(f"Queue is full ({self.max_queue_size} requests already queued)")
 
             await self._queue.put((request_id, enqueue_time))
             async with self._stats_lock:
@@ -209,16 +207,12 @@ class RequestQueue:
                     self._stats.timeout += 1
                     self._stats.queued = self._queue.qsize()
 
-                logger.warning(
-                    "request_timeout: request_id=%s, timeout=%ss", request_id, timeout
-                )
+                logger.warning("request_timeout: request_id=%s, timeout=%ss", request_id, timeout)
                 raise
 
             # Use match/case for cleaner error handling (Python 3.13+)
             try:
-                _queued_id, queued_time = await asyncio.wait_for(
-                    self._queue.get(), timeout=1.0
-                )
+                _queued_id, queued_time = await asyncio.wait_for(self._queue.get(), timeout=1.0)
                 wait_time_ms = (time.perf_counter() - queued_time) * 1000
 
                 async with self._stats_lock:
@@ -230,9 +224,7 @@ class RequestQueue:
                     # Calculate average wait time using match/case for clarity
                     match total_completed:
                         case count if count > 0:
-                            self._stats.avg_wait_time_ms = (
-                                self._stats.total_wait_time_ms / count
-                            )
+                            self._stats.avg_wait_time_ms = self._stats.total_wait_time_ms / count
                         case 0:
                             # First request - average equals current wait time
                             self._stats.avg_wait_time_ms = wait_time_ms

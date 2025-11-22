@@ -111,9 +111,7 @@ class ImageCache:
         """
         self.max_size = max_size
         self.ttl_seconds = ttl_seconds
-        self._cache: TTLCache[str, CacheEntry] = TTLCache(
-            maxsize=max_size, ttl=ttl_seconds
-        )
+        self._cache: TTLCache[str, CacheEntry] = TTLCache(maxsize=max_size, ttl=ttl_seconds)
         self._lock = threading.Lock()
         self._hits = 0
         self._misses = 0

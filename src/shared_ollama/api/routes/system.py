@@ -143,6 +143,7 @@ async def get_pdl_template(template_name: str, request: Request) -> dict[str, An
 
     return _prepare_pdl_template(filename, request)
 
+
 @router.get("/health", response_model=HealthResponse, tags=["Health"])
 async def health_check() -> HealthResponse:
     """Health check endpoint.

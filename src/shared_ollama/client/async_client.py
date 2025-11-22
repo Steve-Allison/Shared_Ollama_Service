@@ -362,7 +362,7 @@ class AsyncSharedOllamaClient:
             model,
             status_code or "N/A",
         )
-    
+
     async def list_models(self) -> list[dict[str, Any]]:
         """List all available models.
 
@@ -819,7 +819,7 @@ class AsyncSharedOllamaClient:
                     raise ValueError(msg)
 
             latency_ms = (time.perf_counter() - start_time) * 1000
-            
+
             log_request_event(
                 {
                     "event": "ollama_response",
@@ -1010,12 +1010,15 @@ class AsyncSharedOllamaClient:
         start_time = time.perf_counter()
 
         try:
-            async with self._acquire_slot(), self.client.stream(
-                "POST",
-                "/api/generate",
-                json=payload,
-                timeout=self.config.timeout,
-            ) as response:
+            async with (
+                self._acquire_slot(),
+                self.client.stream(
+                    "POST",
+                    "/api/generate",
+                    json=payload,
+                    timeout=self.config.timeout,
+                ) as response,
+            ):
                 response.raise_for_status()
 
                 async for line in response.aiter_lines():
@@ -1101,7 +1104,12 @@ class AsyncSharedOllamaClient:
             raise
         except httpx.RequestError as exc:
             self._log_stream_error(
-                model_str, request_id, start_time, "generate_stream", exc.__class__.__name__, str(exc)
+                model_str,
+                request_id,
+                start_time,
+                "generate_stream",
+                exc.__class__.__name__,
+                str(exc),
             )
             logger.exception("Request error streaming generate with %s", model_str)
             raise
@@ -1190,12 +1198,15 @@ class AsyncSharedOllamaClient:
         start_time = time.perf_counter()
 
         try:
-            async with self._acquire_slot(), self.client.stream(
-                "POST",
-                "/api/chat",
-                json=payload,
-                timeout=self.config.timeout,
-            ) as response:
+            async with (
+                self._acquire_slot(),
+                self.client.stream(
+                    "POST",
+                    "/api/chat",
+                    json=payload,
+                    timeout=self.config.timeout,
+                ) as response,
+            ):
                 response.raise_for_status()
 
                 async for line in response.aiter_lines():

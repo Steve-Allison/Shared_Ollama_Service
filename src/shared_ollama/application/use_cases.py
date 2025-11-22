@@ -32,9 +32,12 @@ from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING, Any
 
 from shared_ollama.domain.entities import (
+    ChatMessage,
     ChatRequest,
+    GenerationOptions,
     GenerationRequest,
     ModelInfo,
+    Tool,
 )
 from shared_ollama.domain.exceptions import InvalidRequestError
 
@@ -211,19 +214,21 @@ class GenerateUseCase:
             model_load_ms = round(load_duration / 1_000_000, 3) if load_duration else None
             model_warm_start = (load_duration == 0) if load_duration is not None else None
 
-            self._logger.log_request({
-                "event": "api_request",
-                "client_type": "rest_api",
-                "operation": "generate",
-                "status": "success",
-                "model": model_used,
-                "request_id": request_id,
-                "client_ip": client_ip,
-                "project_name": project_name,
-                "latency_ms": round(latency_ms, 3),
-                "model_load_ms": model_load_ms,
-                "model_warm_start": model_warm_start,
-            })
+            self._logger.log_request(
+                {
+                    "event": "api_request",
+                    "client_type": "rest_api",
+                    "operation": "generate",
+                    "status": "success",
+                    "model": model_used,
+                    "request_id": request_id,
+                    "client_ip": client_ip,
+                    "project_name": project_name,
+                    "latency_ms": round(latency_ms, 3),
+                    "model_load_ms": model_load_ms,
+                    "model_warm_start": model_warm_start,
+                }
+            )
 
             self._metrics.record_request(
                 model=result_dict.get("model", model_str or "unknown"),
@@ -258,19 +263,21 @@ class GenerateUseCase:
             latency_ms = (time.perf_counter() - start_time) * 1000
             model_str = request.model.value if request.model else "unknown"
 
-            self._logger.log_request({
-                "event": "api_request",
-                "client_type": "rest_api",
-                "operation": "generate",
-                "status": "error",
-                "model": model_str,
-                "request_id": request_id,
-                "client_ip": client_ip,
-                "project_name": project_name,
-                "latency_ms": round(latency_ms, 3),
-                "error_type": "ValueError",
-                "error_message": str(exc),
-            })
+            self._logger.log_request(
+                {
+                    "event": "api_request",
+                    "client_type": "rest_api",
+                    "operation": "generate",
+                    "status": "error",
+                    "model": model_str,
+                    "request_id": request_id,
+                    "client_ip": client_ip,
+                    "project_name": project_name,
+                    "latency_ms": round(latency_ms, 3),
+                    "error_type": "ValueError",
+                    "error_message": str(exc),
+                }
+            )
 
             self._metrics.record_request(
                 model=model_str,
@@ -296,19 +303,21 @@ class GenerateUseCase:
             latency_ms = (time.perf_counter() - start_time) * 1000
             model_str = request.model.value if request.model else "unknown"
 
-            self._logger.log_request({
-                "event": "api_request",
-                "client_type": "rest_api",
-                "operation": "generate",
-                "status": "error",
-                "model": model_str,
-                "request_id": request_id,
-                "client_ip": client_ip,
-                "project_name": project_name,
-                "latency_ms": round(latency_ms, 3),
-                "error_type": type(exc).__name__,
-                "error_message": str(exc),
-            })
+            self._logger.log_request(
+                {
+                    "event": "api_request",
+                    "client_type": "rest_api",
+                    "operation": "generate",
+                    "status": "error",
+                    "model": model_str,
+                    "request_id": request_id,
+                    "client_ip": client_ip,
+                    "project_name": project_name,
+                    "latency_ms": round(latency_ms, 3),
+                    "error_type": type(exc).__name__,
+                    "error_message": str(exc),
+                }
+            )
 
             self._metrics.record_request(
                 model=model_str,
@@ -375,6 +384,145 @@ class ChatUseCase:
         self._analytics = analytics
         self._performance = performance
 
+    def _convert_message_to_dict(self, msg: ChatMessage) -> dict[str, Any]:
+        """Convert a domain ChatMessage to client format dict."""
+        message_dict: dict[str, Any] = {"role": msg.role}
+        if msg.content is not None:
+            message_dict["content"] = msg.content
+        if msg.tool_calls:
+            message_dict["tool_calls"] = [
+                {
+                    "id": tc.id,
+                    "type": tc.type,
+                    "function": {"name": tc.function.name, "arguments": tc.function.arguments},
+                }
+                for tc in msg.tool_calls
+            ]
+        if msg.tool_call_id:
+            message_dict["tool_call_id"] = msg.tool_call_id
+        return message_dict
+
+    def _convert_options_to_dict(self, options: GenerationOptions | None) -> dict[str, Any] | None:
+        """Convert domain GenerationOptions to client format dict."""
+        if not options:
+            return None
+        options_dict = {
+            "temperature": options.temperature,
+            "top_p": options.top_p,
+            "top_k": options.top_k,
+            "repeat_penalty": options.repeat_penalty,
+            "num_predict": options.max_tokens,
+            "seed": options.seed,
+            "stop": options.stop,
+        }
+        return {k: v for k, v in options_dict.items() if v is not None}
+
+    def _convert_tools_to_list(self, tools: tuple[Tool, ...] | None) -> list[dict[str, Any]] | None:
+        """Convert domain Tools to client format list."""
+        if not tools:
+            return None
+        return [
+            {
+                "type": tool.type,
+                "function": {
+                    "name": tool.function.name,
+                    "description": tool.function.description,
+                    "parameters": tool.function.parameters,
+                },
+            }
+            for tool in tools
+        ]
+
+    def _record_success(
+        self,
+        model: str,
+        operation: str,
+        latency_ms: float,
+        request_id: str,
+        client_ip: str | None,
+        project_name: str | None,
+        result_dict: dict[str, Any],
+    ) -> None:
+        """Record success metrics, logs, and analytics."""
+        load_duration = result_dict.get("load_duration", 0)
+        model_load_ms = round(load_duration / 1_000_000, 3) if load_duration else None
+        model_warm_start = (load_duration == 0) if load_duration is not None else None
+
+        self._logger.log_request(
+            {
+                "event": "api_request",
+                "client_type": "rest_api",
+                "operation": operation,
+                "status": "success",
+                "model": model,
+                "request_id": request_id,
+                "client_ip": client_ip,
+                "project_name": project_name,
+                "latency_ms": round(latency_ms, 3),
+                "model_load_ms": model_load_ms,
+                "model_warm_start": model_warm_start,
+            }
+        )
+        self._metrics.record_request(
+            model=model, operation=operation, latency_ms=latency_ms, success=True
+        )
+        if self._analytics:
+            self._analytics.record_request_with_project(
+                model=model,
+                operation=operation,
+                latency_ms=latency_ms,
+                success=True,
+                project=project_name,
+            )
+        if self._performance:
+            self._performance.record_performance(
+                model=model,
+                operation=operation,
+                total_latency_ms=latency_ms,
+                success=True,
+                response=result_dict,
+            )
+
+    def _record_error(
+        self,
+        model: str,
+        operation: str,
+        latency_ms: float,
+        request_id: str,
+        client_ip: str | None,
+        project_name: str | None,
+        error_type: str,
+        error_message: str,
+    ) -> None:
+        """Record error metrics, logs, and analytics."""
+        self._logger.log_request(
+            {
+                "event": "api_request",
+                "client_type": "rest_api",
+                "operation": operation,
+                "status": "error",
+                "model": model,
+                "request_id": request_id,
+                "client_ip": client_ip,
+                "project_name": project_name,
+                "latency_ms": round(latency_ms, 3),
+                "error_type": error_type,
+                "error_message": error_message,
+            }
+        )
+        self._metrics.record_request(
+            model=model, operation=operation, latency_ms=latency_ms, success=False, error=error_type
+        )
+        if self._analytics:
+            self._analytics.record_request_with_project(
+                model=model,
+                operation=operation,
+                latency_ms=latency_ms,
+                success=False,
+                project=project_name,
+                error=error_type,
+            )
+
     async def execute(
         self,
         request: ChatRequest,
@@ -428,70 +576,13 @@ class ChatUseCase:
             - May acquire semaphore/concurrency limits in client adapter
         """
         start_time = time.perf_counter()
+        model_str = request.model.value if request.model else None
 
         try:
-            # Convert domain entities to client format with tool calling support
-            messages: list[dict[str, Any]] = []
-
-            for msg in request.messages:
-                # Build message dict with tool calling support
-                message_dict: dict[str, Any] = {"role": msg.role}
-
-                # Add content if present
-                if msg.content is not None:
-                    message_dict["content"] = msg.content
-
-                # Add tool_calls if present
-                if msg.tool_calls:
-                    message_dict["tool_calls"] = [
-                        {
-                            "id": tc.id,
-                            "type": tc.type,
-                            "function": {
-                                "name": tc.function.name,
-                                "arguments": tc.function.arguments,
-                            },
-                        }
-                        for tc in msg.tool_calls
-                    ]
-
-                # Add tool_call_id if present (for tool response messages)
-                if msg.tool_call_id:
-                    message_dict["tool_call_id"] = msg.tool_call_id
-
-                messages.append(message_dict)
-
-            model_str = request.model.value if request.model else None
-
-            # Convert options to dict format
-            options_dict: dict[str, Any] | None = None
-            if request.options:
-                options_dict = {
-                    "temperature": request.options.temperature,
-                    "top_p": request.options.top_p,
-                    "top_k": request.options.top_k,
-                    "repeat_penalty": request.options.repeat_penalty,
-                    "num_predict": request.options.max_tokens,
-                    "seed": request.options.seed,
-                    "stop": request.options.stop,
-                }
-                # Remove None values
-                options_dict = {k: v for k, v in options_dict.items() if v is not None}
-
-            # Convert tools to dict format (POML compatible)
-            tools_list: list[dict[str, Any]] | None = None
-            if request.tools:
-                tools_list = [
-                    {
-                        "type": tool.type,
-                        "function": {
-                            "name": tool.function.name,
-                            "description": tool.function.description,
-                            "parameters": tool.function.parameters,
-                        },
-                    }
-                    for tool in request.tools
-                ]
+            # Convert domain entities to client format using helper methods
+            messages = [self._convert_message_to_dict(msg) for msg in request.messages]
+            options_dict = self._convert_options_to_dict(request.options)
+            tools_list = self._convert_tools_to_list(request.tools)
 
             # Call client with format and tools support
             result = await self._client.chat(
@@ -505,140 +596,48 @@ class ChatUseCase:
 
             latency_ms = (time.perf_counter() - start_time) * 1000
 
-            # Log and record metrics
+            # Handle streaming response (metrics logged by caller)
             if stream:
-                # For streaming, we'll log after first chunk
                 if not isinstance(result, AsyncIterator):
                     raise TypeError("Expected streaming iterator for chat()")
                 return result
+
+            # Handle non-streaming response
             if not isinstance(result, dict):
                 raise TypeError("Expected dict response for non-streaming chat()")
-            result_dict = result
-            # Non-streaming: log immediately
-            model_used = result_dict.get("model", model_str or "unknown")
-            # Extract performance metrics from Ollama response
-            load_duration = result_dict.get("load_duration", 0)
-            model_load_ms = round(load_duration / 1_000_000, 3) if load_duration else None
-            model_warm_start = (load_duration == 0) if load_duration is not None else None
 
-            self._logger.log_request({
-                "event": "api_request",
-                "client_type": "rest_api",
-                "operation": "chat",
-                "status": "success",
-                "model": model_used,
-                "request_id": request_id,
-                "client_ip": client_ip,
-                "project_name": project_name,
-                "latency_ms": round(latency_ms, 3),
-                "model_load_ms": model_load_ms,
-                "model_warm_start": model_warm_start,
-            })
-
-            self._metrics.record_request(
-                model=model_used,
-                operation="chat",
-                latency_ms=latency_ms,
-                success=True,
+            model_used = result.get("model", model_str or "unknown")
+            self._record_success(
+                model_used, "chat", latency_ms, request_id, client_ip, project_name, result
             )
-
-            # Record project-based analytics (via injected interface)
-            if self._analytics:
-                self._analytics.record_request_with_project(
-                    model=model_used,
-                    operation="chat",
-                    latency_ms=latency_ms,
-                    success=True,
-                    project=project_name,
-                )
-
-            # Record detailed performance metrics (via injected interface)
-            if self._performance:
-                self._performance.record_performance(
-                    model=model_used,
-                    operation="chat",
-                    total_latency_ms=latency_ms,
-                    success=True,
-                    response=result_dict,
-                )
-
-            return result_dict
+            return result
 
         except ValueError as exc:
             latency_ms = (time.perf_counter() - start_time) * 1000
-            model_str = request.model.value if request.model else "unknown"
-
-            self._logger.log_request({
-                "event": "api_request",
-                "client_type": "rest_api",
-                "operation": "chat",
-                "status": "error",
-                "model": model_str,
-                "request_id": request_id,
-                "client_ip": client_ip,
-                "project_name": project_name,
-                "latency_ms": round(latency_ms, 3),
-                "error_type": "ValueError",
-                "error_message": str(exc),
-            })
-
-            self._metrics.record_request(
-                model=model_str,
-                operation="chat",
-                latency_ms=latency_ms,
-                success=False,
-                error="ValueError",
+            self._record_error(
+                model_str or "unknown",
+                "chat",
+                latency_ms,
+                request_id,
+                client_ip,
+                project_name,
+                "ValueError",
+                str(exc),
             )
-
-            # Record project-based analytics for errors too (via injected interface)
-            if self._analytics:
-                self._analytics.record_request_with_project(
-                    model=model_str,
-                    operation="chat",
-                    latency_ms=latency_ms,
-                    success=False,
-                    project=project_name,
-                    error="ValueError",
-                )
-
             raise InvalidRequestError(f"Invalid request: {exc!s}") from exc
+
         except Exception as exc:
             latency_ms = (time.perf_counter() - start_time) * 1000
-            model_str = request.model.value if request.model else "unknown"
-
-            self._logger.log_request({
-                "event": "api_request",
-                "client_type": "rest_api",
-                "operation": "chat",
-                "status": "error",
-                "model": model_str,
-                "request_id": request_id,
-                "client_ip": client_ip,
-                "project_name": project_name,
-                "latency_ms": round(latency_ms, 3),
-                "error_type": type(exc).__name__,
-                "error_message": str(exc),
-            })
-
-            self._metrics.record_request(
-                model=model_str,
-                operation="chat",
-                latency_ms=latency_ms,
-                success=False,
-                error=type(exc).__name__,
+            self._record_error(
+                model_str or "unknown",
+                "chat",
+                latency_ms,
+                request_id,
+                client_ip,
+                project_name,
+                type(exc).__name__,
+                str(exc),
             )
-
-            # Record project-based analytics for errors too (via injected interface)
-            if self._analytics:
-                self._analytics.record_request_with_project(
-                    model=model_str,
-                    operation="chat",
-                    latency_ms=latency_ms,
-                    success=False,
-                    project=project_name,
-                    error=type(exc).__name__,
-                )
-
             raise
 
 
@@ -729,16 +728,18 @@ class ListModelsUseCase:
             ]
 
             # Log and record metrics
-            self._logger.log_request({
-                "event": "api_request",
-                "client_type": "rest_api",
-                "operation": "list_models",
-                "status": "success",
-                "request_id": request_id,
-                "client_ip": client_ip,
-                "project_name": project_name,
-                "latency_ms": round(latency_ms, 3),
-            })
+            self._logger.log_request(
+                {
+                    "event": "api_request",
+                    "client_type": "rest_api",
+                    "operation": "list_models",
+                    "status": "success",
+                    "request_id": request_id,
+                    "client_ip": client_ip,
+                    "project_name": project_name,
+                    "latency_ms": round(latency_ms, 3),
+                }
+            )
 
             self._metrics.record_request(
                 model="system",
@@ -752,18 +753,20 @@ class ListModelsUseCase:
         except Exception as exc:
             latency_ms = (time.perf_counter() - start_time) * 1000
 
-            self._logger.log_request({
-                "event": "api_request",
-                "client_type": "rest_api",
-                "operation": "list_models",
-                "status": "error",
-                "request_id": request_id,
-                "client_ip": client_ip,
-                "project_name": project_name,
-                "latency_ms": round(latency_ms, 3),
-                "error_type": type(exc).__name__,
-                "error_message": str(exc),
-            })
+            self._logger.log_request(
+                {
+                    "event": "api_request",
+                    "client_type": "rest_api",
+                    "operation": "list_models",
+                    "status": "error",
+                    "request_id": request_id,
+                    "client_ip": client_ip,
+                    "project_name": project_name,
+                    "latency_ms": round(latency_ms, 3),
+                    "error_type": type(exc).__name__,
+                    "error_message": str(exc),
+                }
+            )
 
             self._metrics.record_request(
                 model="system",

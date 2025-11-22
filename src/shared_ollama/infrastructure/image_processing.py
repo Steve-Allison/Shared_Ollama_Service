@@ -163,9 +163,7 @@ class ImageProcessor:
         if not data_url.startswith("data:image/"):
             raise ValueError("Image URL must start with 'data:image/'")
         if ";base64," not in data_url:
-            raise ValueError(
-                "Image URL must contain ';base64,' separator"
-            )
+            raise ValueError("Image URL must contain ';base64,' separator")
 
         # Extract format and data
         header, base64_data = data_url.split(";base64,", 1)
@@ -178,8 +176,7 @@ class ImageProcessor:
 
         if len(image_bytes) > self.max_size_bytes:
             raise ValueError(
-                f"Image too large: {len(image_bytes)} bytes "
-                f"(max: {self.max_size_bytes})"
+                f"Image too large: {len(image_bytes)} bytes " f"(max: {self.max_size_bytes})"
             )
 
         return img_format, image_bytes
@@ -264,9 +261,7 @@ class ImageProcessor:
                     new_width = int(width * (self.max_dimension / height))
 
             img = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
-            logger.info(
-                f"Resized image from {width}x{height} to {new_width}x{new_height}"
-            )
+            logger.info(f"Resized image from {width}x{height} to {new_width}x{new_height}")
             width, height = new_width, new_height
 
         # Compress using match/case for format selection (Python 3.13+)
@@ -295,9 +290,7 @@ class ImageProcessor:
                     optimize=True,
                 )
             case _:
-                raise ValueError(
-                    f"Unsupported target format: {target_format}"
-                )
+                raise ValueError(f"Unsupported target format: {target_format}")
 
         compressed_bytes = output.getvalue()
         compressed_size = len(compressed_bytes)

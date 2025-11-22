@@ -140,13 +140,15 @@ def log_request_event(event: dict[str, Any]) -> None:
         by adding a timestamp if missing.
 
     Example:
-        >>> log_request_event({
-        ...     "event": "api_request",
-        ...     "operation": "generate",
-        ...     "status": "success",
-        ...     "model": "qwen3:14b-q4_K_M",
-        ...     "latency_ms": 1234.56
-        ... })
+        >>> log_request_event(
+        ...     {
+        ...         "event": "api_request",
+        ...         "operation": "generate",
+        ...         "status": "success",
+        ...         "model": "qwen3:14b-q4_K_M",
+        ...         "latency_ms": 1234.56,
+        ...     }
+        ... )
     """
     event.setdefault("timestamp", datetime.now(UTC).isoformat())
     REQUEST_LOGGER.info(json.dumps(event, default=_json_default))

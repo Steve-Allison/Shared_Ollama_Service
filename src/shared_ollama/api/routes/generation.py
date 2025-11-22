@@ -50,7 +50,11 @@ from shared_ollama.api.error_handlers import handle_route_errors
 from shared_ollama.api.mappers import api_to_domain_generation_request
 from shared_ollama.api.middleware import limiter
 from shared_ollama.api.models import GenerateRequest
-from shared_ollama.api.response_builders import build_generate_response, json_response, stream_sse_events
+from shared_ollama.api.response_builders import (
+    build_generate_response,
+    json_response,
+    stream_sse_events,
+)
 from shared_ollama.api.type_guards import is_dict_result
 from shared_ollama.application.use_cases import GenerateUseCase
 from shared_ollama.core.queue import RequestQueue

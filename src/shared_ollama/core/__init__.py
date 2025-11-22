@@ -1,4 +1,4 @@
-"\"\"\"Core helpers for the Shared Ollama Service.\"\"\""
+'"""Core helpers for the Shared Ollama Service."""'
 
 from shared_ollama.core.ollama_manager import (
     OllamaManager,

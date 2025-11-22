@@ -412,7 +412,6 @@ class MetricsCollectorAdapter:
         )
 
 
-
 class ImageProcessorAdapter:
     """Adapter that wraps ImageProcessor to implement ImageProcessorInterface.
 
@@ -492,8 +491,6 @@ class ImageProcessorAdapter:
             is preserved during resizing.
         """
         return self._processor.process_image(data_url, target_format=target_format)
-
-
 
 
 class ImageCacheAdapter:
@@ -584,8 +581,6 @@ class ImageCacheAdapter:
             Statistics are cumulative since cache initialization or last clear().
         """
         return self._cache.get_stats()
-
-
 
 
 class AnalyticsCollectorAdapter:

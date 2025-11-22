@@ -145,7 +145,9 @@ async def lifespan_context(app: FastAPI):
             # Don't raise - log the error and allow server to start
             # The server can still run even if Ollama fails to start initially
             # (it will be retried on first request or can be started manually)
-            logger.warning("LIFESPAN: Continuing despite Ollama startup failure - will retry on first request")
+            logger.warning(
+                "LIFESPAN: Continuing despite Ollama startup failure - will retry on first request"
+            )
         else:
             logger.info("LIFESPAN: Ollama service started successfully")
 
@@ -157,7 +159,9 @@ async def lifespan_context(app: FastAPI):
         # Don't raise - log the error and allow server to start
         # The server can still run even if Ollama fails to start initially
         # (it will be retried on first request or can be started manually)
-        logger.warning("LIFESPAN: Continuing despite Ollama startup failure - will retry on first request")
+        logger.warning(
+            "LIFESPAN: Continuing despite Ollama startup failure - will retry on first request"
+        )
 
     # Initialize async client (connects to the managed Ollama service)
     client: AsyncSharedOllamaClient | None = None
@@ -186,7 +190,9 @@ async def lifespan_context(app: FastAPI):
         # Don't raise - allow server to start but client will be None
         # This way we can see the error in logs
         # The client will be retried on first request
-        logger.warning("LIFESPAN: Continuing despite client initialization failure - will retry on first request")
+        logger.warning(
+            "LIFESPAN: Continuing despite client initialization failure - will retry on first request"
+        )
 
     # Initialize infrastructure adapters
     if client:

@@ -422,7 +422,9 @@ class ChatMessage:
                 - content is provided but empty (unless tool_calls present)
         """
         if self.role not in VALID_ROLES:
-            raise ValueError(f"Invalid role '{self.role}'. Must be 'user', 'assistant', 'system', or 'tool'")
+            raise ValueError(
+                f"Invalid role '{self.role}'. Must be 'user', 'assistant', 'system', or 'tool'"
+            )
 
         # Validate that either content or tool_calls is present
         if self.content is None and not self.tool_calls:
@@ -433,7 +435,11 @@ class ChatMessage:
             raise ValueError("Tool messages must have tool_call_id")
 
         # Validate content is not empty if provided (unless tool_calls present)
-        if self.content is not None and (not self.content or not self.content.strip()) and not self.tool_calls:
+        if (
+            self.content is not None
+            and (not self.content or not self.content.strip())
+            and not self.tool_calls
+        ):
             raise ValueError("Message content cannot be empty string")
 
 
@@ -491,11 +497,11 @@ class ChatRequest:
         """
         if not self.messages:
             raise ValueError("Messages list cannot be empty")
-        total_length = sum(
-            len(msg.content) if msg.content else 0 for msg in self.messages
-        )
+        total_length = sum(len(msg.content) if msg.content else 0 for msg in self.messages)
         if total_length > MAX_TOTAL_MESSAGE_CHARS:
-            raise ValueError("Total message content is too long. Maximum length is 1,000,000 characters")
+            raise ValueError(
+                "Total message content is too long. Maximum length is 1,000,000 characters"
+            )
 
 
 @dataclass(slots=True, frozen=True)
@@ -551,7 +557,9 @@ class VLMMessage:
                 - content is provided but empty (unless tool_calls present)
         """
         if self.role not in VALID_ROLES:
-            raise ValueError(f"Invalid role '{self.role}'. Must be 'user', 'assistant', 'system', or 'tool'")
+            raise ValueError(
+                f"Invalid role '{self.role}'. Must be 'user', 'assistant', 'system', or 'tool'"
+            )
 
         # Validate that either content or tool_calls is present
         if self.content is None and not self.tool_calls:
@@ -562,7 +570,11 @@ class VLMMessage:
             raise ValueError("Tool messages must have tool_call_id")
 
         # Validate content is not empty if provided (unless tool_calls present)
-        if self.content is not None and (not self.content or not self.content.strip()) and not self.tool_calls:
+        if (
+            self.content is not None
+            and (not self.content or not self.content.strip())
+            and not self.tool_calls
+        ):
             raise ValueError("Message content cannot be empty string")
 
 
@@ -781,7 +793,9 @@ class ChatMessageOpenAI:
                 is invalid.
         """
         if self.role not in ("user", "assistant", "system"):
-            raise ValueError(f"Invalid role '{self.role}'. Must be 'user', 'assistant', or 'system'")
+            raise ValueError(
+                f"Invalid role '{self.role}'. Must be 'user', 'assistant', or 'system'"
+            )
 
         if isinstance(self.content, str):
             if not self.content or not self.content.strip():

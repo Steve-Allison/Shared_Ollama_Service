@@ -282,7 +282,11 @@ def _load_model_profile_defaults() -> dict[str, str | int | list[str]]:
                     min_ram = match.get("min_ram_gb", 0)
                     max_ram = match.get("max_ram_gb", math.inf)
                     match_arch = match.get("arch")
-                    if ram >= min_ram and ram <= max_ram and (match_arch is None or match_arch == arch):
+                    if (
+                        ram >= min_ram
+                        and ram <= max_ram
+                        and (match_arch is None or match_arch == arch)
+                    ):
                         selected = profile
                         break
 

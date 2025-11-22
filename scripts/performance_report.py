@@ -23,7 +23,10 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-DEFAULT_MODEL = os.getenv("OLLAMA_DEFAULT_TEXT_MODEL", os.getenv("OLLAMA_DEFAULT_VLM_MODEL", "qwen3-vl:8b-instruct-q4_K_M"))
+DEFAULT_MODEL = os.getenv(
+    "OLLAMA_DEFAULT_TEXT_MODEL",
+    os.getenv("OLLAMA_DEFAULT_VLM_MODEL", "qwen3-vl:8b-instruct-q4_K_M"),
+)
 
 
 def parse_performance_log(log_file: Path) -> list[dict]:

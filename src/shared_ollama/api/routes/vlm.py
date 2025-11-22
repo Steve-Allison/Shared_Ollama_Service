@@ -95,6 +95,7 @@ class VLMContext(BaseModel):
     start_time: float
     event_data: dict[str, Any]
 
+
 router = APIRouter()
 
 

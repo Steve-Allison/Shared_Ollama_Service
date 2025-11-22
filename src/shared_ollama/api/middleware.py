@@ -190,7 +190,9 @@ def setup_middleware(app: FastAPI) -> None:
     # Origins can be configured via config.toml [ollama] origins = "http://localhost:3000,http://example.com"
     # or set to "*" for development (default)
     cors_origins = settings.ollama.origins
-    allow_origins = [origin.strip() for origin in cors_origins.split(",")] if cors_origins != "*" else ["*"]
+    allow_origins = (
+        [origin.strip() for origin in cors_origins.split(",")] if cors_origins != "*" else ["*"]
+    )
 
     app.add_middleware(
         CORSMiddleware,

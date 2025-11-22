@@ -196,9 +196,7 @@ class SharedOllamaClient:
 
     __slots__ = ("_model_info_cache", "config", "session")
 
-    def __init__(
-        self, config: OllamaConfig | None = None, verify_on_init: bool = True
-    ) -> None:
+    def __init__(self, config: OllamaConfig | None = None, verify_on_init: bool = True) -> None:
         """Initialize synchronous Ollama client.
 
         Sets up connection pooling and optionally verifies connection to
@@ -860,9 +858,7 @@ class SharedOllamaClient:
             Makes HTTP GET request to /api/tags endpoint.
         """
         try:
-            response = self.session.get(
-                f"{self.config.base_url}/api/tags", timeout=5
-            )
+            response = self.session.get(f"{self.config.base_url}/api/tags", timeout=5)
             match response.status_code:
                 case HTTPStatus.OK:
                     return True

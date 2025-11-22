@@ -11,16 +11,19 @@ with open(image_path, "rb") as f:
 image_base64 = base64.b64encode(image_bytes).decode("utf-8")
 
 payload = {
-  "model": "qwen3-vl:8b-instruct-q4_K_M",
-  "messages": [
-    {
-      "role": "user",
-      "content": [
-        {"type": "text", "text": "What do you see in this picture?"},
-        {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{image_base64}"}}
-      ]
-    }
-  ]
+    "model": "qwen3-vl:8b-instruct-q4_K_M",
+    "messages": [
+        {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": "What do you see in this picture?"},
+                {
+                    "type": "image_url",
+                    "image_url": {"url": f"data:image/png;base64,{image_base64}"},
+                },
+            ],
+        }
+    ],
 }
 
 with open(os.path.join(tmp_dir, "vlm_request.json"), "w") as f:

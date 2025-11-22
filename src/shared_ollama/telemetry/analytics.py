@@ -320,9 +320,7 @@ class AnalyticsCollector:
         ]
 
     @classmethod
-    def _aggregate_project_metrics(
-        cls, metrics: list[RequestMetrics]
-    ) -> dict[str, ProjectMetrics]:
+    def _aggregate_project_metrics(cls, metrics: list[RequestMetrics]) -> dict[str, ProjectMetrics]:
         metric_to_index = cls._build_metric_index_map()
         project_metrics_dict: dict[str, ProjectMetrics] = {}
         for metric in metrics:

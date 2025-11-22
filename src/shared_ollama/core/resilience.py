@@ -213,9 +213,7 @@ class ResilientOllamaClient:
         self.base_url = base_url
         self.retry_config = retry_config or RetryConfig()
         self.circuit_breaker_config = circuit_breaker_config or CircuitBreakerConfig()
-        self.client = SharedOllamaClient(
-            OllamaConfig(base_url=base_url), verify_on_init=False
-        )
+        self.client = SharedOllamaClient(OllamaConfig(base_url=base_url), verify_on_init=False)
 
     def _execute_with_resilience(
         self, operation: Callable[..., _T], *args: Any, **kwargs: Any
@@ -287,9 +285,7 @@ class ResilientOllamaClient:
             # Network-level errors - convert to ConnectionError for consistency
             raise ConnectionError(f"Request failed: {exc!s}") from exc
 
-    def generate(
-        self, prompt: str, model: str | None = None, **kwargs: Any
-    ) -> GenerateResponse:
+    def generate(self, prompt: str, model: str | None = None, **kwargs: Any) -> GenerateResponse:
         """Generate text with resilience patterns.
 
         Args:
@@ -305,9 +301,7 @@ class ResilientOllamaClient:
             ConnectionError: If all retries fail.
             TimeoutError: If operation times out.
         """
-        return self._execute_with_resilience(
-            self.client.generate, prompt, model=model, **kwargs
-        )
+        return self._execute_with_resilience(self.client.generate, prompt, model=model, **kwargs)
 
     def chat(
         self,
@@ -330,9 +324,7 @@ class ResilientOllamaClient:
             ConnectionError: If all retries fail.
             TimeoutError: If operation times out.
         """
-        return self._execute_with_resilience(
-            self.client.chat, messages, model=model, **kwargs
-        )
+        return self._execute_with_resilience(self.client.chat, messages, model=model, **kwargs)
 
     def health_check(self) -> bool:
         """Perform health check with resilience patterns.

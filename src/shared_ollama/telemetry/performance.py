@@ -155,11 +155,17 @@ class DetailedPerformanceMetrics:
             "success": self.success,
             "error": self.error,
             "load_time_ms": round(self.load_time_ms, 2) if self.load_time_ms else None,
-            "prompt_eval_time_ms": round(self.prompt_eval_time_ms, 2) if self.prompt_eval_time_ms else None,
-            "generation_time_ms": round(self.generation_time_ms, 2) if self.generation_time_ms else None,
+            "prompt_eval_time_ms": round(self.prompt_eval_time_ms, 2)
+            if self.prompt_eval_time_ms
+            else None,
+            "generation_time_ms": round(self.generation_time_ms, 2)
+            if self.generation_time_ms
+            else None,
             "prompt_tokens": self.prompt_eval_count,
             "generated_tokens": self.eval_count,
-            "tokens_per_second": round(self.tokens_per_second, 2) if self.tokens_per_second else None,
+            "tokens_per_second": round(self.tokens_per_second, 2)
+            if self.tokens_per_second
+            else None,
             "prompt_tokens_per_second": round(self.prompt_tokens_per_second, 2)
             if self.prompt_tokens_per_second
             else None,
@@ -326,17 +332,25 @@ class PerformanceCollector:
             return {}
 
         tokens_per_second_values = [
-            metric.tokens_per_second for metric in successful if metric.tokens_per_second is not None
+            metric.tokens_per_second
+            for metric in successful
+            if metric.tokens_per_second is not None
         ]
         avg_tokens_per_second = (
-            sum(tokens_per_second_values) / len(tokens_per_second_values) if tokens_per_second_values else 0.0
+            sum(tokens_per_second_values) / len(tokens_per_second_values)
+            if tokens_per_second_values
+            else 0.0
         )
 
-        load_times = [metric.load_time_ms for metric in successful if metric.load_time_ms is not None]
+        load_times = [
+            metric.load_time_ms for metric in successful if metric.load_time_ms is not None
+        ]
         avg_load_time = sum(load_times) / len(load_times) if load_times else 0.0
 
         generation_times = [
-            metric.generation_time_ms for metric in successful if metric.generation_time_ms is not None
+            metric.generation_time_ms
+            for metric in successful
+            if metric.generation_time_ms is not None
         ]
         avg_generation_time = (
             sum(generation_times) / len(generation_times) if generation_times else 0.0
@@ -350,12 +364,16 @@ class PerformanceCollector:
         for model, metrics in by_model.items():
             tokens = [m.tokens_per_second for m in metrics if m.tokens_per_second is not None]
             loads = [m.load_time_ms for m in metrics if m.load_time_ms is not None]
-            generations = [m.generation_time_ms for m in metrics if m.generation_time_ms is not None]
+            generations = [
+                m.generation_time_ms for m in metrics if m.generation_time_ms is not None
+            ]
 
             model_stats[model] = {
                 "avg_tokens_per_second": sum(tokens) / len(tokens) if tokens else 0.0,
                 "avg_load_time_ms": sum(loads) / len(loads) if loads else 0.0,
-                "avg_generation_time_ms": sum(generations) / len(generations) if generations else 0.0,
+                "avg_generation_time_ms": sum(generations) / len(generations)
+                if generations
+                else 0.0,
                 "request_count": len(metrics),
             }
 

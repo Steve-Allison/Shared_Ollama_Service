@@ -188,9 +188,7 @@ class MetricsCollector:
         logger.debug("Recorded metric: %s on %s - %.2fms", operation, model, latency_ms)
 
     @classmethod
-    def get_metrics(
-        cls, window_minutes: int | None = None
-    ) -> ServiceMetrics:
+    def get_metrics(cls, window_minutes: int | None = None) -> ServiceMetrics:
         """Get aggregated metrics for a time window.
 
         Computes comprehensive statistics from collected metrics, optionally
@@ -300,8 +298,12 @@ class MetricsCollector:
             "p95_latency_ms": round(metrics.p95_latency_ms, 2),
             "p99_latency_ms": round(metrics.p99_latency_ms, 2),
             "errors_by_type": metrics.errors_by_type,
-            "last_request_time": metrics.last_request_time.isoformat() if metrics.last_request_time else None,
-            "first_request_time": metrics.first_request_time.isoformat() if metrics.first_request_time else None,
+            "last_request_time": metrics.last_request_time.isoformat()
+            if metrics.last_request_time
+            else None,
+            "first_request_time": metrics.first_request_time.isoformat()
+            if metrics.first_request_time
+            else None,
         }
 
     @classmethod

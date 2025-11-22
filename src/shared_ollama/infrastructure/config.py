@@ -104,9 +104,7 @@ class QueueConfig(BaseModel):
     chat_max_concurrent: int = Field(
         default=6, ge=1, le=100, description="Max concurrent chat requests"
     )
-    chat_max_queue_size: int = Field(
-        default=50, ge=1, le=1000, description="Max chat queue depth"
-    )
+    chat_max_queue_size: int = Field(default=50, ge=1, le=1000, description="Max chat queue depth")
     chat_default_timeout: float = Field(
         default=60.0, ge=1.0, le=600.0, description="Default chat timeout (seconds)"
     )
@@ -115,9 +113,7 @@ class QueueConfig(BaseModel):
     vlm_max_concurrent: int = Field(
         default=3, ge=1, le=50, description="Max concurrent VLM requests"
     )
-    vlm_max_queue_size: int = Field(
-        default=20, ge=1, le=500, description="Max VLM queue depth"
-    )
+    vlm_max_queue_size: int = Field(default=20, ge=1, le=500, description="Max VLM queue depth")
     vlm_default_timeout: float = Field(
         default=120.0, ge=1.0, le=1200.0, description="Default VLM timeout (seconds)"
     )
@@ -146,12 +142,8 @@ class ImageProcessingConfig(BaseModel):
     max_dimension: int = Field(
         default=2667, ge=256, le=2667, description="Max image dimension (pixels)"
     )
-    jpeg_quality: int = Field(
-        default=85, ge=1, le=100, description="JPEG compression quality"
-    )
-    png_compression: int = Field(
-        default=6, ge=0, le=9, description="PNG compression level"
-    )
+    jpeg_quality: int = Field(default=85, ge=1, le=100, description="JPEG compression quality")
+    png_compression: int = Field(default=6, ge=0, le=9, description="PNG compression level")
     max_size_bytes: int = Field(
         default=10 * 1024 * 1024,  # 10MB
         ge=1024 * 1024,  # 1MB minimum
@@ -174,15 +166,11 @@ class ImageCacheConfig(BaseModel):
 class ClientConfig(BaseModel):
     """Async client configuration."""
 
-    timeout: int = Field(
-        default=300, ge=1, le=3600, description="Request timeout (seconds)"
-    )
+    timeout: int = Field(default=300, ge=1, le=3600, description="Request timeout (seconds)")
     health_check_timeout: int = Field(
         default=5, ge=1, le=60, description="Health check timeout (seconds)"
     )
-    max_connections: int = Field(
-        default=50, ge=1, le=1000, description="Max HTTP connections"
-    )
+    max_connections: int = Field(default=50, ge=1, le=1000, description="Max HTTP connections")
     max_keepalive_connections: int = Field(
         default=20, ge=1, le=500, description="Max keep-alive connections"
     )
@@ -190,9 +178,7 @@ class ClientConfig(BaseModel):
         default=None, ge=1, description="Max concurrent requests (None = unlimited)"
     )
     max_retries: int = Field(default=3, ge=0, le=10, description="Max retry attempts")
-    retry_delay: float = Field(
-        default=1.0, ge=0.1, le=10.0, description="Retry delay (seconds)"
-    )
+    retry_delay: float = Field(default=1.0, ge=0.1, le=10.0, description="Retry delay (seconds)")
     verbose: bool = Field(default=False, description="Verbose logging")
 
 
@@ -202,15 +188,11 @@ class OllamaManagerConfig(BaseModel):
     auto_detect_optimizations: bool = Field(
         default=True, description="Auto-detect system optimizations"
     )
-    wait_for_ready: bool = Field(
-        default=True, description="Wait for service to be ready on start"
-    )
+    wait_for_ready: bool = Field(default=True, description="Wait for service to be ready on start")
     max_wait_time: int = Field(
         default=30, ge=1, le=300, description="Max wait time for readiness (seconds)"
     )
-    shutdown_timeout: int = Field(
-        default=10, ge=1, le=60, description="Shutdown timeout (seconds)"
-    )
+    shutdown_timeout: int = Field(default=10, ge=1, le=60, description="Shutdown timeout (seconds)")
     force_manage: bool = Field(
         default=True,
         description="Stop external Ollama instances and manage our own",

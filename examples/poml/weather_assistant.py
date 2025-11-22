@@ -46,9 +46,7 @@ def get_weather(location: str, unit: str = "celsius") -> WeatherData:
         "New York": {"temperature": 25.0, "condition": "partly cloudy", "humidity": 70},
     }
 
-    data = weather_data.get(
-        location, {"temperature": 20.0, "condition": "unknown", "humidity": 50}
-    )
+    data = weather_data.get(location, {"temperature": 20.0, "condition": "unknown", "humidity": 50})
 
     # Convert to Fahrenheit if requested
     if unit == "fahrenheit":
@@ -101,10 +99,7 @@ def main():
 
     # Send initial request to Shared Ollama Service
     print("🚀 Sending request to Shared Ollama Service...")
-    response = requests.post(
-        f"{API_BASE}/chat",
-        json=params
-    ).json()
+    response = requests.post(f"{API_BASE}/chat", json=params).json()
 
     print(f"✓ Response received (latency: {response['latency_ms']:.1f}ms)")
     print()
@@ -150,10 +145,7 @@ def main():
 
         # Send follow-up request
         print("🚀 Sending follow-up request...")
-        final_response = requests.post(
-            f"{API_BASE}/chat",
-            json=params
-        ).json()
+        final_response = requests.post(f"{API_BASE}/chat", json=params).json()
 
         print(f"✓ Response received (latency: {final_response['latency_ms']:.1f}ms)")
         print()
@@ -178,7 +170,9 @@ def main():
     print("📊 Metrics:")
     print(f"   Model: {response['model']}")
     print(f"   Request ID: {response['request_id']}")
-    print(f"   Total tokens: {response.get('prompt_eval_count', 0) + response.get('generation_eval_count', 0)}")
+    print(
+        f"   Total tokens: {response.get('prompt_eval_count', 0) + response.get('generation_eval_count', 0)}"
+    )
     print()
 
 

@@ -45,7 +45,7 @@ def percentile(values: list[float], pct: float) -> float:
         return max(values)
 
     # Use statistics.quantiles with method='inclusive' for consistent behavior
-    quantiles = statistics.quantiles(values, n=100, method='inclusive')
+    quantiles = statistics.quantiles(values, n=100, method="inclusive")
     index = min(int(pct * 100), len(quantiles) - 1)
     return quantiles[index]
 
@@ -102,7 +102,9 @@ async def run_load_test(args: argparse.Namespace) -> dict[str, Any]:
     start_time = time.perf_counter()
     end_time = start_time + duration_seconds if duration_seconds else None
 
-    async with AsyncSharedOllamaClient(config=config, verify_on_init=not args.skip_verify) as client:
+    async with AsyncSharedOllamaClient(
+        config=config, verify_on_init=not args.skip_verify
+    ) as client:
         await warmup(client, args.prompt, args.model, args.warmup)
 
         async def worker(worker_id: int) -> None:
@@ -230,14 +232,20 @@ async def run_load_test(args: argparse.Namespace) -> dict[str, Any]:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Async load tester for the Shared Ollama Service.")
-    parser.add_argument("--base-url", default="http://localhost:11434", help="Ollama service base URL.")
-    parser.add_argument("--model", default=DEFAULT_VLM_MODEL, help="Model to exercise during the test.")
+    parser.add_argument(
+        "--base-url", default="http://localhost:11434", help="Ollama service base URL."
+    )
+    parser.add_argument(
+        "--model", default=DEFAULT_VLM_MODEL, help="Model to exercise during the test."
+    )
     parser.add_argument(
         "--prompt",
         default="Summarize the concept of vector databases in one short paragraph.",
         help="Prompt to send with each request.",
     )
-    parser.add_argument("--workers", type=int, default=10, help="Number of asyncio workers issuing requests.")
+    parser.add_argument(
+        "--workers", type=int, default=10, help="Number of asyncio workers issuing requests."
+    )
     parser.add_argument(
         "--concurrency",
         type=int,
@@ -262,7 +270,9 @@ def parse_args() -> argparse.Namespace:
         default=0.0,
         help="Optional delay (seconds) between successive requests per worker.",
     )
-    parser.add_argument("--warmup", type=int, default=3, help="Number of warm-up requests before the test.")
+    parser.add_argument(
+        "--warmup", type=int, default=3, help="Number of warm-up requests before the test."
+    )
     parser.add_argument(
         "--max-connections",
         type=int,
@@ -339,7 +349,10 @@ def main() -> None:
     output_path = (
         args.output
         if args.output is not None
-        else PROJECT_ROOT / "logs" / "perf_reports" / f"async_load_test_{datetime.utcnow():%Y%m%d_%H%M%S}.json"
+        else PROJECT_ROOT
+        / "logs"
+        / "perf_reports"
+        / f"async_load_test_{datetime.utcnow():%Y%m%d_%H%M%S}.json"
     )
 
     print_summary(report)
@@ -348,4 +361,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

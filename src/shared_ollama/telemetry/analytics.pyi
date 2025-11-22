@@ -79,7 +79,6 @@ def track_request_with_project(
     operation: str = ...,
     project: str | None = ...,
 ) -> AbstractContextManager[None]: ...
-
 def get_analytics_json(
     window_minutes: int | None = ...,
     project: str | None = ...,

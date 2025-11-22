@@ -1,4 +1,4 @@
-"\"\"\"Shared Ollama Service Python SDK.\"\"\""
+'"""Shared Ollama Service Python SDK."""'
 
 from shared_ollama.client import (
     AsyncOllamaConfig,

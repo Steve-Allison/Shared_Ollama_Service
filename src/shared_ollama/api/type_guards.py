@@ -25,7 +25,9 @@ if TYPE_CHECKING:
     from typing import Any
 
 
-def is_dict_result(result: dict[str, Any] | AsyncIterator[dict[str, Any]]) -> TypeGuard[dict[str, Any]]:
+def is_dict_result(
+    result: dict[str, Any] | AsyncIterator[dict[str, Any]],
+) -> TypeGuard[dict[str, Any]]:
     """Type guard to check if result is a dict (non-streaming).
 
     Args:
@@ -37,7 +39,9 @@ def is_dict_result(result: dict[str, Any] | AsyncIterator[dict[str, Any]]) -> Ty
     return isinstance(result, dict)
 
 
-def is_streaming_result(result: dict[str, Any] | AsyncIterator[dict[str, Any]]) -> TypeGuard[AsyncIterator[dict[str, Any]]]:
+def is_streaming_result(
+    result: dict[str, Any] | AsyncIterator[dict[str, Any]],
+) -> TypeGuard[AsyncIterator[dict[str, Any]]]:
     """Type guard to check if result is an AsyncIterator (streaming).
 
     Args:

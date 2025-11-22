@@ -7,7 +7,7 @@ compression, format conversion) when the same images are used multiple times.
 Key Features:
     - LRU eviction: Least recently used entries evicted when cache is full
     - TTL expiration: Entries automatically expire after TTL period
-    - Thread-safe: Safe for concurrent access from multiple coroutines
+    - Async-safe: Safe for concurrent access from multiple coroutines (single event loop)
     - Statistics tracking: Hit/miss rates for monitoring
     - SHA-256 keys: Deterministic cache keys from data URL + format
 
@@ -89,9 +89,11 @@ class ImageCache:
         _hits: Total number of cache hits since initialization.
         _misses: Total number of cache misses since initialization.
 
-    Thread Safety:
-        TTLCache is thread-safe for concurrent access. Statistics updates
-        are not atomic but acceptable for monitoring purposes.
+    Concurrency:
+        This cache is designed for single-threaded async use (one event loop).
+        TTLCache is NOT inherently thread-safe for multi-threaded access.
+        Statistics updates are not atomic but acceptable for monitoring purposes.
+        For thread-safe access from multiple threads, external locking is required.
 
     Note:
         Cache keys are SHA-256 hashes of "{data_url}:{target_format}" to

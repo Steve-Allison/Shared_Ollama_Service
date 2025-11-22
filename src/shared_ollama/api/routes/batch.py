@@ -69,6 +69,7 @@ from shared_ollama.application.batch_use_cases import (
     BatchChatUseCase,
     BatchVLMUseCase,
 )
+from shared_ollama.core.utils import get_allowed_models, is_model_allowed
 from shared_ollama.domain.exceptions import InvalidRequestError
 from shared_ollama.infrastructure.config import settings
 
@@ -143,8 +144,6 @@ async def batch_chat(
             )
 
         # Validate all models are allowed for current hardware profile
-        from shared_ollama.core.utils import get_allowed_models, is_model_allowed
-
         allowed = get_allowed_models()
         invalid_models = []
         for req in api_req.requests:
@@ -262,8 +261,6 @@ async def batch_vlm(
             )
 
         # Validate all models are allowed for current hardware profile
-        from shared_ollama.core.utils import get_allowed_models, is_model_allowed
-
         allowed = get_allowed_models()
         invalid_models = []
         for req in api_req.requests:

@@ -107,6 +107,6 @@ def check_ollama_health_simple(
     """
     try:
         response = requests.get(f"{base_url}/api/tags", timeout=timeout)
-    except Exception:
+    except requests.RequestException:
         return False
     return response.status_code == HTTPStatus.OK

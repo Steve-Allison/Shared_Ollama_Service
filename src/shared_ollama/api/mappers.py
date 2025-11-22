@@ -413,10 +413,10 @@ def api_to_domain_vlm_request(api_req: Any) -> Any:  # VLMRequest from models
 
     # Convert API messages to domain messages with tool calling support
     messages: list[VLMMessage] = []
-    # Find the last user message to attach images to
+    # Find the last user message to attach images to (iterate backwards efficiently)
     last_user_msg_idx = -1
-    for i, msg in reversed(list(enumerate(api_req.messages))):
-        if msg.role == "user":
+    for i in range(len(api_req.messages) - 1, -1, -1):
+        if api_req.messages[i].role == "user":
             last_user_msg_idx = i
             break
 

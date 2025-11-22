@@ -30,7 +30,7 @@ from __future__ import annotations
 
 import logging
 import uuid
-from typing import TYPE_CHECKING, Annotated, TypeVar
+from typing import Annotated, TypeVar
 
 from fastapi import Depends, HTTPException, Request, status
 from pydantic import BaseModel
@@ -43,31 +43,18 @@ from shared_ollama.application.use_cases import (
     ListModelsUseCase,
 )
 from shared_ollama.application.vlm_use_cases import VLMUseCase
+from shared_ollama.core.queue import RequestQueue
 from shared_ollama.core.utils import get_allowed_models, is_model_allowed
+from shared_ollama.infrastructure.adapters import (
+    AnalyticsCollectorAdapter,
+    AsyncOllamaClientAdapter,
+    ImageCacheAdapter,
+    ImageProcessorAdapter,
+    MetricsCollectorAdapter,
+    PerformanceCollectorAdapter,
+    RequestLoggerAdapter,
+)
 from shared_ollama.infrastructure.config import settings
-
-if TYPE_CHECKING:
-    from shared_ollama.core.queue import RequestQueue
-    from shared_ollama.infrastructure.adapters import (
-        AnalyticsCollectorAdapter,
-        AsyncOllamaClientAdapter,
-        ImageCacheAdapter,
-        ImageProcessorAdapter,
-        MetricsCollectorAdapter,
-        PerformanceCollectorAdapter,
-        RequestLoggerAdapter,
-    )
-else:
-    from shared_ollama.core.queue import RequestQueue
-    from shared_ollama.infrastructure.adapters import (
-        AnalyticsCollectorAdapter,
-        AsyncOllamaClientAdapter,
-        ImageCacheAdapter,
-        ImageProcessorAdapter,
-        MetricsCollectorAdapter,
-        PerformanceCollectorAdapter,
-        RequestLoggerAdapter,
-    )
 
 logger = logging.getLogger(__name__)
 

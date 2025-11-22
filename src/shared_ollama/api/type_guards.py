@@ -45,5 +45,9 @@ def is_streaming_result(result: dict[str, Any] | AsyncIterator[dict[str, Any]]) 
 
     Returns:
         True if result is an AsyncIterator, False if it's a dict.
+
+    Note:
+        Uses `not isinstance(result, dict)` because isinstance() checks against
+        AsyncIterator (an ABC) are unreliable for actual async generator objects.
     """
-    return isinstance(result, AsyncIterator)
+    return not isinstance(result, dict)

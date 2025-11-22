@@ -35,7 +35,6 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import Response, StreamingResponse
@@ -59,9 +58,6 @@ from shared_ollama.core.queue import RequestQueue
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
-
-UseCaseDep = Annotated[GenerateUseCase, Depends(get_generate_use_case)]
-QueueDep = Annotated[RequestQueue, Depends(get_chat_queue)]
 
 
 @router.post("/generate", tags=["Generation"], response_model=None)

@@ -90,7 +90,7 @@ def handle_route_errors(
             try:
                 additional = event_builder() or {}
             except Exception as builder_exc:  # pragma: no cover - defensive
-                logger.debug(
+                logger.warning(
                     "event_builder_failed: request_id=%s, error=%s",
                     ctx.request_id,
                     builder_exc,

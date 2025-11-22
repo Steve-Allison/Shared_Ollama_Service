@@ -50,6 +50,7 @@ from shared_ollama.api.dependencies import (
     get_batch_chat_use_case,
     get_batch_vlm_use_case,
     get_request_context,
+    parse_request_json,
 )
 from shared_ollama.api.mappers import (
     api_to_domain_chat_request,
@@ -119,21 +120,7 @@ async def batch_chat(
         - Records batch-level metrics
     """
     ctx = get_request_context(request)
-
-    # Parse request body
-    try:
-        body = await request.json()
-        api_req = BatchChatRequest(**body)
-    except ValueError as e:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=f"Invalid JSON in request body: {e!s}",
-        ) from e
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=f"Request validation failed: {e!s}",
-        ) from e
+    api_req = await parse_request_json(request, BatchChatRequest)
 
     try:
         # Validate batch size
@@ -236,21 +223,7 @@ async def batch_vlm(
         - Records batch-level metrics
     """
     ctx = get_request_context(request)
-
-    # Parse request body
-    try:
-        body = await request.json()
-        api_req = BatchVLMRequest(**body)
-    except ValueError as e:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=f"Invalid JSON in request body: {e!s}",
-        ) from e
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=f"Request validation failed: {e!s}",
-        ) from e
+    api_req = await parse_request_json(request, BatchVLMRequest)
 
     try:
         # Validate batch size
@@ -340,21 +313,7 @@ async def batch_chat_completions(
             - 500: Internal server error
     """
     ctx = get_request_context(request)
-
-    # Parse request body (OpenAI-compatible format)
-    try:
-        body = await request.json()
-        api_req = BatchChatRequestOpenAI(**body)
-    except ValueError as e:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=f"Invalid JSON in request body: {e!s}",
-        ) from e
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=f"Request validation failed: {e!s}",
-        ) from e
+    api_req = await parse_request_json(request, BatchChatRequestOpenAI)
 
     try:
         # Validate batch size
@@ -417,21 +376,7 @@ async def batch_vlm_completions(
             - 500: Internal server error
     """
     ctx = get_request_context(request)
-
-    # Parse request body (OpenAI-compatible format)
-    try:
-        body = await request.json()
-        api_req = BatchVLMRequestOpenAI(**body)
-    except ValueError as e:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=f"Invalid JSON in request body: {e!s}",
-        ) from e
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=f"Request validation failed: {e!s}",
-        ) from e
+    api_req = await parse_request_json(request, BatchVLMRequestOpenAI)
 
     try:
         # Validate batch size

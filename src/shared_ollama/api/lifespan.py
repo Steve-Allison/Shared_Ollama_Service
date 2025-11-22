@@ -162,7 +162,7 @@ async def lifespan_context(app: FastAPI):
     # Initialize async client (connects to the managed Ollama service)
     client: AsyncSharedOllamaClient | None = None
     try:
-        # AsyncOllamaConfig is a dataclass, so keyword arguments work correctly
+        # type: ignore needed because pyright doesn't recognize dataclass field defaults
         config = AsyncOllamaConfig(  # type: ignore[call-arg]
             base_url=settings.ollama.url,
             timeout=settings.client.timeout,

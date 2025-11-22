@@ -28,10 +28,12 @@ Dependency Flow:
 
 from __future__ import annotations
 
+import logging
 import uuid
-from typing import TYPE_CHECKING, Annotated
+from typing import TYPE_CHECKING, Annotated, TypeVar
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
+from pydantic import BaseModel
 
 from shared_ollama.api.models import RequestContext
 from shared_ollama.application.batch_use_cases import BatchChatUseCase, BatchVLMUseCase
@@ -41,11 +43,10 @@ from shared_ollama.application.use_cases import (
     ListModelsUseCase,
 )
 from shared_ollama.application.vlm_use_cases import VLMUseCase
+from shared_ollama.core.utils import get_allowed_models, is_model_allowed
 from shared_ollama.infrastructure.config import settings
 
 if TYPE_CHECKING:
-    from fastapi import Request
-
     from shared_ollama.core.queue import RequestQueue
     from shared_ollama.infrastructure.adapters import (
         AnalyticsCollectorAdapter,
@@ -67,6 +68,11 @@ else:
         PerformanceCollectorAdapter,
         RequestLoggerAdapter,
     )
+
+logger = logging.getLogger(__name__)
+
+# Generic type for request models
+T = TypeVar("T", bound=BaseModel)
 
 # Global instances (initialized in lifespan)
 _client_adapter: AsyncOllamaClientAdapter | None = None
@@ -422,3 +428,75 @@ def get_batch_vlm_use_case(
         vlm_use_case=vlm_use_case,
         max_concurrent=settings.batch.vlm_max_concurrent,
     )
+
+
+# ============================================================================
+# Request Parsing & Validation Helpers
+# ============================================================================
+
+
+async def parse_request_json(request: Request, model_cls: type[T]) -> T:
+    """Parse and validate request JSON into a Pydantic model.
+
+    Generic helper that handles JSON parsing and Pydantic validation with
+    consistent error handling across all route handlers.
+
+    Args:
+        request: FastAPI Request object containing JSON body.
+        model_cls: Pydantic model class to validate against.
+
+    Returns:
+        Validated Pydantic model instance.
+
+    Raises:
+        HTTPException: 422 Unprocessable Entity if JSON is invalid or
+            validation fails. Error detail includes specific validation message.
+
+    Example:
+        ```python
+        api_req = await parse_request_json(request, ChatRequest)
+        ```
+    """
+    try:
+        body = await request.json()
+        return model_cls(**body)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Invalid JSON in request body: {e!s}",
+        ) from e
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Request validation failed: {e!s}",
+        ) from e
+
+
+def validate_model_allowed(model_name: str | None) -> None:
+    """Validate that the requested model is allowed for the current hardware profile.
+
+    Checks the model name against the allowed models list configured for
+    the current hardware tier. Raises HTTPException if the model is not allowed.
+
+    Args:
+        model_name: Model name to validate. If None, validation passes (uses default).
+
+    Raises:
+        HTTPException: 400 Bad Request if model is not in the allowed list.
+            Error detail includes the list of allowed models.
+
+    Example:
+        ```python
+        validate_model_allowed(api_req.model)
+        # Raises HTTPException if model not allowed
+        ```
+    """
+    if model_name and not is_model_allowed(model_name):
+        allowed = get_allowed_models()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                f"Model '{model_name}' is not supported on this hardware profile. "
+                f"Allowed models: {', '.join(sorted(allowed))}"
+            ),
+        )

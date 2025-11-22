@@ -202,6 +202,75 @@ def _resolve_response_format(
 
 
 # ============================================================================
+# Generation Options Helper
+# ============================================================================
+
+
+def _build_generation_options(
+    temperature: float | None,
+    top_p: float | None,
+    top_k: int | None,
+    max_tokens: int | None,
+    seed: int | None,
+    stop: list[str] | None,
+    *,
+    use_defaults: bool = True,
+) -> GenerationOptions | None:
+    """Build GenerationOptions from API fields with optional defaults.
+
+    Centralizes options building logic for all request mappers. Handles both
+    native Ollama format (with defaults) and OpenAI format (without defaults).
+
+    Args:
+        temperature: Sampling temperature (0.0-2.0).
+        top_p: Top-p (nucleus) sampling parameter (0.0-1.0).
+        top_k: Top-k sampling parameter.
+        max_tokens: Maximum tokens to generate.
+        seed: Random seed for reproducibility.
+        stop: Stop sequences to halt generation.
+        use_defaults: Whether to apply defaults for temperature/top_p/top_k.
+            True for native Ollama format, False for OpenAI format.
+
+    Returns:
+        GenerationOptions entity if any option is provided, None otherwise.
+
+    Note:
+        When use_defaults=True: temperature=0.2, top_p=0.9, top_k=40
+        When use_defaults=False: Only explicitly provided values are set
+    """
+    # Early return if no options provided
+    if not any((temperature, top_p, top_k, max_tokens, seed, stop)):
+        return None
+
+    if use_defaults:
+        return GenerationOptions(
+            temperature=temperature or 0.2,
+            top_p=top_p or 0.9,
+            top_k=top_k or 40,
+            max_tokens=max_tokens,
+            seed=seed,
+            stop=stop,
+        )
+
+    # Build options dict with only provided values (OpenAI format)
+    kwargs: dict[str, Any] = {}
+    if temperature is not None:
+        kwargs["temperature"] = temperature
+    if top_p is not None:
+        kwargs["top_p"] = top_p
+    if top_k is not None:
+        kwargs["top_k"] = top_k
+    if max_tokens is not None:
+        kwargs["max_tokens"] = max_tokens
+    if seed is not None:
+        kwargs["seed"] = seed
+    if stop is not None:
+        kwargs["stop"] = stop
+
+    return GenerationOptions(**kwargs) if kwargs else None
+
+
+# ============================================================================
 # Generation Request Mappers
 # ============================================================================
 
@@ -236,30 +305,16 @@ def api_to_domain_generation_request(api_req: APIGenerateRequest) -> GenerationR
     model = ModelName(value=api_req.model) if api_req.model else None
     system = SystemMessage(value=api_req.system) if api_req.system else None
 
-    options: GenerationOptions | None = None
-    # Build options only if any option is provided (performance: use generator)
-    if any((
-        api_req.temperature is not None,
-        api_req.top_p is not None,
-        api_req.top_k is not None,
-        api_req.max_tokens is not None,
-        api_req.seed is not None,
-        api_req.stop is not None,
-    )):
-        options = GenerationOptions(
-            temperature=api_req.temperature or 0.2,
-            top_p=api_req.top_p or 0.9,
-            top_k=api_req.top_k or 40,
-            max_tokens=api_req.max_tokens,
-            seed=api_req.seed,
-            stop=api_req.stop,
-        )
+    options = _build_generation_options(
+        temperature=api_req.temperature,
+        top_p=api_req.top_p,
+        top_k=api_req.top_k,
+        max_tokens=api_req.max_tokens,
+        seed=api_req.seed,
+        stop=api_req.stop,
+    )
 
-    # Convert tools if present
-    tools = None
-    if api_req.tools:
-        tools = tuple(api_to_domain_tool(t) for t in api_req.tools)
-
+    tools = tuple(api_to_domain_tool(t) for t in api_req.tools) if api_req.tools else None
     resolved_format = _resolve_response_format(api_req.format, api_req.response_format)
 
     return GenerationRequest(
@@ -317,30 +372,16 @@ def api_to_domain_chat_request(api_req: APIChatRequest) -> ChatRequest:
     messages = tuple(domain_messages)
     model = ModelName(value=api_req.model) if api_req.model else None
 
-    options: GenerationOptions | None = None
-    # Build options only if any option is provided (performance: use generator)
-    if any((
-        api_req.temperature is not None,
-        api_req.top_p is not None,
-        api_req.top_k is not None,
-        api_req.max_tokens is not None,
-        api_req.seed is not None,
-        api_req.stop is not None,
-    )):
-        options = GenerationOptions(
-            temperature=api_req.temperature or 0.2,
-            top_p=api_req.top_p or 0.9,
-            top_k=api_req.top_k or 40,
-            max_tokens=api_req.max_tokens,
-            seed=api_req.seed,
-            stop=api_req.stop,
-        )
+    options = _build_generation_options(
+        temperature=api_req.temperature,
+        top_p=api_req.top_p,
+        top_k=api_req.top_k,
+        max_tokens=api_req.max_tokens,
+        seed=api_req.seed,
+        stop=api_req.stop,
+    )
 
-    # Convert tools if present
-    tools = None
-    if api_req.tools:
-        tools = tuple(api_to_domain_tool(t) for t in api_req.tools)
-
+    tools = tuple(api_to_domain_tool(t) for t in api_req.tools) if api_req.tools else None
     resolved_format = _resolve_response_format(api_req.format, api_req.response_format)
 
     return ChatRequest(
@@ -365,7 +406,6 @@ def api_to_domain_vlm_request(api_req: Any) -> Any:  # VLMRequest from models
         ValueError: If conversion fails.
     """
     from shared_ollama.domain.entities import (
-        GenerationOptions,
         ModelName,
         VLMMessage,
         VLMRequest,
@@ -381,54 +421,29 @@ def api_to_domain_vlm_request(api_req: Any) -> Any:  # VLMRequest from models
             break
 
     for i, msg in enumerate(api_req.messages):
-        # Convert tool calls if present
-        tool_calls = None
-        if msg.tool_calls:
-            tool_calls = tuple(api_to_domain_tool_call(tc) for tc in msg.tool_calls)
-
-        # Attach images to the last user message
+        tool_calls = tuple(api_to_domain_tool_call(tc) for tc in msg.tool_calls) if msg.tool_calls else None
         images = tuple(api_req.images) if i == last_user_msg_idx else None
 
-        domain_msg = VLMMessage(
+        messages.append(VLMMessage(
             role=msg.role,
             content=msg.content,
             images=images,
             tool_calls=tool_calls,
             tool_call_id=msg.tool_call_id,
-        )
-        messages.append(domain_msg)
+        ))
 
-
-    # Convert model name
     model = ModelName(value=api_req.model) if api_req.model else None
 
-    # Convert options
-    options = None
-    # Convert options (performance: use generator instead of list)
-    if any((
-        api_req.temperature is not None,
-        api_req.top_p is not None,
-        api_req.top_k is not None,
-        api_req.max_tokens is not None,
-        api_req.seed is not None,
-        api_req.stop is not None,
-    )):
-        option_kwargs: dict[str, Any] = {}
-        if api_req.temperature is not None:
-            option_kwargs["temperature"] = api_req.temperature
-        if api_req.top_p is not None:
-            option_kwargs["top_p"] = api_req.top_p
-        if api_req.top_k is not None:
-            option_kwargs["top_k"] = api_req.top_k
-        if api_req.max_tokens is not None:
-            option_kwargs["max_tokens"] = api_req.max_tokens
-        if api_req.seed is not None:
-            option_kwargs["seed"] = api_req.seed
-        if api_req.stop is not None:
-            option_kwargs["stop"] = api_req.stop
-        options = GenerationOptions(**option_kwargs)
+    options = _build_generation_options(
+        temperature=api_req.temperature,
+        top_p=api_req.top_p,
+        top_k=api_req.top_k,
+        max_tokens=api_req.max_tokens,
+        seed=api_req.seed,
+        stop=api_req.stop,
+        use_defaults=False,
+    )
 
-    # Convert tools if present
     tools = None
     if api_req.tools:
         tools = tuple(api_to_domain_tool(t) for t in api_req.tools)
@@ -530,7 +545,6 @@ def api_to_domain_chat_request_openai(api_req: Any) -> ChatRequest:
     from shared_ollama.domain.entities import (
         ChatMessage,
         ChatRequest,
-        GenerationOptions,
         ModelName,
     )
 
@@ -542,56 +556,35 @@ def api_to_domain_chat_request_openai(api_req: Any) -> ChatRequest:
         if isinstance(api_msg.content, str):
             content = api_msg.content
         elif isinstance(api_msg.content, list):
-            # Extract text from content parts (should only be text parts for chat)
             text_parts = [
                 part.text for part in api_msg.content if hasattr(part, "text") and part.text
             ]
             content = " ".join(text_parts) if text_parts else None
 
-        # Convert tool calls if present
-        tool_calls = None
-        if api_msg.tool_calls:
-            tool_calls = tuple(api_to_domain_tool_call(tc) for tc in api_msg.tool_calls)
-
-        # Normalize role: "developer" -> "system" for Ollama compatibility
+        tool_calls = tuple(api_to_domain_tool_call(tc) for tc in api_msg.tool_calls) if api_msg.tool_calls else None
         normalized_role = _normalize_openai_role(api_msg.role)
 
-        domain_messages.append(
-            ChatMessage(
-                role=normalized_role,  # type: ignore[arg-type]
-                content=content,
-                tool_calls=tool_calls,
-                tool_call_id=api_msg.tool_call_id,  # OpenAI format supports tool_call_id
-            )
-        )
+        domain_messages.append(ChatMessage(
+            role=normalized_role,  # type: ignore[arg-type]
+            content=content,
+            tool_calls=tool_calls,
+            tool_call_id=api_msg.tool_call_id,
+        ))
 
     messages = tuple(domain_messages)
     model = ModelName(value=api_req.model) if api_req.model else None
 
-    # Convert options (use effective_max_tokens for OpenAI compatibility)
-    effective_max = api_req.effective_max_tokens
-    options: GenerationOptions | None = None
-    if any((
-        api_req.temperature is not None,
-        api_req.top_p is not None,
-        api_req.top_k is not None,
-        effective_max is not None,
-        api_req.seed is not None,
-        api_req.stop is not None,
-    )):
-        options = GenerationOptions(
-            temperature=api_req.temperature or 0.2,
-            top_p=api_req.top_p or 0.9,
-            top_k=api_req.top_k or 40,
-            max_tokens=effective_max,
-            seed=api_req.seed,
-            stop=api_req.stop,
-        )
+    # Use effective_max_tokens for OpenAI compatibility (prefers max_completion_tokens)
+    options = _build_generation_options(
+        temperature=api_req.temperature,
+        top_p=api_req.top_p,
+        top_k=api_req.top_k,
+        max_tokens=api_req.effective_max_tokens,
+        seed=api_req.seed,
+        stop=api_req.stop,
+    )
 
-    # Convert tools if present
-    tools = None
-    if api_req.tools:
-        tools = tuple(api_to_domain_tool(t) for t in api_req.tools)
+    tools = tuple(api_to_domain_tool(t) for t in api_req.tools) if api_req.tools else None
 
     resolved_format = _resolve_response_format(api_req.format, api_req.response_format)
 
@@ -607,50 +600,27 @@ def api_to_domain_chat_request_openai(api_req: Any) -> ChatRequest:
 def api_to_domain_vlm_request_openai(api_req: Any) -> Any:
     """Convert OpenAI-compatible API VLMRequest to native Ollama domain VLMRequest."""
     from shared_ollama.domain.entities import (
-        GenerationOptions,
         ModelName,
         VLMRequest,
     )
 
     messages = _extract_vlm_messages(api_req)
-
-    # Convert model name
     model = ModelName(value=api_req.model) if api_req.model else None
 
-    # Convert options (use effective_max_tokens for OpenAI compatibility)
-    effective_max = api_req.effective_max_tokens
-    options = None
-    if any((
-        api_req.temperature is not None,
-        api_req.top_p is not None,
-        api_req.top_k is not None,
-        effective_max is not None,
-        api_req.seed is not None,
-        api_req.stop is not None,
-    )):
-        option_kwargs: dict[str, Any] = {}
-        if api_req.temperature is not None:
-            option_kwargs["temperature"] = api_req.temperature
-        if api_req.top_p is not None:
-            option_kwargs["top_p"] = api_req.top_p
-        if api_req.top_k is not None:
-            option_kwargs["top_k"] = api_req.top_k
-        if effective_max is not None:
-            option_kwargs["max_tokens"] = effective_max
-        if api_req.seed is not None:
-            option_kwargs["seed"] = api_req.seed
-        if api_req.stop is not None:
-            option_kwargs["stop"] = api_req.stop
-        options = GenerationOptions(**option_kwargs)
+    # Use effective_max_tokens for OpenAI compatibility (prefers max_completion_tokens)
+    options = _build_generation_options(
+        temperature=api_req.temperature,
+        top_p=api_req.top_p,
+        top_k=api_req.top_k,
+        max_tokens=api_req.effective_max_tokens,
+        seed=api_req.seed,
+        stop=api_req.stop,
+        use_defaults=False,
+    )
 
-    # Convert tools if present
-    tools = None
-    if api_req.tools:
-        tools = tuple(api_to_domain_tool(t) for t in api_req.tools)
-
+    tools = tuple(api_to_domain_tool(t) for t in api_req.tools) if api_req.tools else None
     resolved_format = _resolve_response_format(api_req.format, api_req.response_format)
 
-    # Return native Ollama format (text-only messages + separate images)
     return VLMRequest(
         messages=messages,
         model=model,

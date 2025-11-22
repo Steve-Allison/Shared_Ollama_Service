@@ -25,8 +25,11 @@ Data Transformations:
 
 from __future__ import annotations
 
+import json
+import logging
 import time
 import uuid
+from collections.abc import AsyncIterator
 from datetime import datetime
 from typing import Any
 
@@ -39,6 +42,90 @@ from shared_ollama.api.models import (
     RequestContext,
     VLMResponse,
 )
+
+logger = logging.getLogger(__name__)
+
+
+# ============================================================================
+# Duration Conversion Helper
+# ============================================================================
+
+
+def _convert_nanos_to_ms(nanoseconds: int | None) -> float | None:
+    """Convert nanoseconds to milliseconds with rounding.
+
+    Ollama returns durations in nanoseconds; API responses use milliseconds.
+    Returns None for zero/None values to indicate "not applicable".
+
+    Args:
+        nanoseconds: Duration in nanoseconds from Ollama response.
+
+    Returns:
+        Duration in milliseconds rounded to 3 decimal places, or None if
+        input is None or 0.
+
+    Example:
+        >>> _convert_nanos_to_ms(1_500_000_000)
+        1500.0
+        >>> _convert_nanos_to_ms(0)
+        None
+    """
+    if not nanoseconds:
+        return None
+    return round(nanoseconds / 1_000_000, 3)
+
+
+# ============================================================================
+# SSE Streaming Helper
+# ============================================================================
+
+
+async def stream_sse_events(
+    stream_iter: AsyncIterator[dict[str, Any]],
+    ctx: RequestContext,
+    event_type: str = "stream",
+    *,
+    include_role_in_error: bool = True,
+) -> AsyncIterator[str]:
+    """Stream data as Server-Sent Events (SSE) format.
+
+    Generic SSE streaming wrapper that handles async iteration, JSON encoding,
+    and error handling. Used by all streaming endpoints (chat, generate, VLM).
+
+    Args:
+        stream_iter: Async iterator yielding dictionaries to stream.
+        ctx: Request context for error tracking.
+        event_type: Event type name for logging (e.g., "chat", "generate", "vlm").
+        include_role_in_error: Whether to include "role": "assistant" in error chunk.
+            True for chat/VLM endpoints, False for generate endpoint.
+
+    Yields:
+        SSE-formatted strings. Each chunk is prefixed with "data: " and
+        suffixed with "\\n\\n". Final chunk on error includes error details.
+
+    Example:
+        ```python
+        return StreamingResponse(
+            stream_sse_events(result_stream, ctx, "chat"),
+            media_type="text/event-stream",
+        )
+        ```
+    """
+    try:
+        async for chunk_data in stream_iter:
+            yield f"data: {json.dumps(chunk_data)}\n\n"
+    except Exception as exc:
+        error_chunk: dict[str, Any] = {
+            "chunk": "",
+            "done": True,
+            "error": str(exc),
+            "error_type": type(exc).__name__,
+            "request_id": ctx.request_id,
+        }
+        if include_role_in_error:
+            error_chunk["role"] = "assistant"
+        yield f"data: {json.dumps(error_chunk)}\n\n"
+        logger.exception("Error during %s streaming: %s", event_type, exc)
 
 
 def build_chat_response(
@@ -58,11 +145,9 @@ def build_chat_response(
     model_used = result_dict.get("model", "unknown")
     prompt_eval_count = result_dict.get("prompt_eval_count", 0)
     eval_count = result_dict.get("eval_count", 0)
-    total_duration = result_dict.get("total_duration", 0)
-    load_duration = result_dict.get("load_duration", 0)
 
-    load_ms = load_duration / 1_000_000 if load_duration else 0.0
-    total_ms = total_duration / 1_000_000 if total_duration else 0.0
+    load_ms = _convert_nanos_to_ms(result_dict.get("load_duration"))
+    total_ms = _convert_nanos_to_ms(result_dict.get("total_duration"))
 
     return ChatResponse(
         message=ChatMessage(
@@ -74,11 +159,11 @@ def build_chat_response(
         model=model_used,
         request_id=ctx.request_id,
         latency_ms=0.0,  # Use case handles latency tracking internally
-        model_load_ms=round(load_ms, 3) if load_ms else None,
-        model_warm_start=load_ms == 0.0,
+        model_load_ms=load_ms,
+        model_warm_start=load_ms is None,
         prompt_eval_count=prompt_eval_count,
         generation_eval_count=eval_count,
-        total_duration_ms=round(total_ms, 3) if total_ms else None,
+        total_duration_ms=total_ms,
     )
 
 
@@ -99,22 +184,20 @@ def build_generate_response(
     model_used = result_dict.get("model", "unknown")
     prompt_eval_count = result_dict.get("prompt_eval_count", 0)
     eval_count = result_dict.get("eval_count", 0)
-    total_duration = result_dict.get("total_duration", 0)
-    load_duration = result_dict.get("load_duration", 0)
 
-    load_ms = load_duration / 1_000_000 if load_duration else 0.0
-    total_ms = total_duration / 1_000_000 if total_duration else 0.0
+    load_ms = _convert_nanos_to_ms(result_dict.get("load_duration"))
+    total_ms = _convert_nanos_to_ms(result_dict.get("total_duration"))
 
     return GenerateResponse(
         text=text,
         model=model_used,
         request_id=ctx.request_id,
         latency_ms=0.0,  # Use case handles latency tracking internally
-        model_load_ms=round(load_ms, 3) if load_ms else None,
-        model_warm_start=load_ms == 0.0,
+        model_load_ms=load_ms,
+        model_warm_start=load_ms is None,
         prompt_eval_count=prompt_eval_count,
         generation_eval_count=eval_count,
-        total_duration_ms=round(total_ms, 3) if total_ms else None,
+        total_duration_ms=total_ms,
     )
 
 
@@ -137,12 +220,10 @@ def build_vlm_response(
     model_used = result_dict.get("model", "unknown")
     prompt_eval_count = result_dict.get("prompt_eval_count", 0)
     eval_count = result_dict.get("eval_count", 0)
-    total_duration = result_dict.get("total_duration", 0)
-    load_duration = result_dict.get("load_duration", 0)
     compression_savings = result_dict.get("compression_savings_bytes")
 
-    load_ms = load_duration / 1_000_000 if load_duration else 0.0
-    total_ms = total_duration / 1_000_000 if total_duration else 0.0
+    load_ms = _convert_nanos_to_ms(result_dict.get("load_duration"))
+    total_ms = _convert_nanos_to_ms(result_dict.get("total_duration"))
 
     return VLMResponse(
         message=ChatMessage(
@@ -154,13 +235,13 @@ def build_vlm_response(
         model=model_used,
         request_id=ctx.request_id,
         latency_ms=0.0,  # Use case handles latency tracking internally
-        model_load_ms=round(load_ms, 3) if load_ms else None,
-        model_warm_start=load_ms == 0.0,
+        model_load_ms=load_ms,
+        model_warm_start=load_ms is None,
         images_processed=images_processed,
         compression_savings_bytes=compression_savings,
         prompt_eval_count=prompt_eval_count,
         generation_eval_count=eval_count,
-        total_duration_ms=round(total_ms, 3) if total_ms else None,
+        total_duration_ms=total_ms,
     )
 
 

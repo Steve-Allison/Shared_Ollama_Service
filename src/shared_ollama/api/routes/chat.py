@@ -42,26 +42,28 @@ from __future__ import annotations
 import json
 import logging
 import time
-from collections.abc import AsyncIterator
-from typing import Annotated, Any
+from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import Response, StreamingResponse
 
 from shared_ollama.api.dependencies import (
     get_chat_queue,
     get_chat_use_case,
     get_request_context,
+    parse_request_json,
+    validate_model_allowed,
 )
 from shared_ollama.api.error_handlers import handle_route_errors
 from shared_ollama.api.mappers import api_to_domain_chat_request, api_to_domain_chat_request_openai
 from shared_ollama.api.middleware import limiter
-from shared_ollama.api.models import ChatRequest, ChatRequestOpenAI, RequestContext
+from shared_ollama.api.models import ChatRequest, ChatRequestOpenAI
 from shared_ollama.api.response_builders import (
     build_chat_response,
     build_openai_chat_response,
     build_openai_stream_chunk,
     json_response,
+    stream_sse_events,
 )
 from shared_ollama.api.type_guards import is_dict_result
 from shared_ollama.application.use_cases import ChatUseCase
@@ -73,39 +75,6 @@ router = APIRouter()
 
 UseCaseDep = Annotated[ChatUseCase, Depends(get_chat_use_case)]
 QueueDep = Annotated[RequestQueue, Depends(get_chat_queue)]
-
-
-async def _stream_chat_sse(
-    stream_iter: AsyncIterator[dict[str, Any]],
-    ctx: RequestContext,
-) -> AsyncIterator[str]:
-    """Stream chat responses in Server-Sent Events (SSE) format.
-
-    Converts async generator chunks from use case into SSE-formatted strings.
-
-    Args:
-        stream_iter: AsyncIterator from use case.
-        ctx: Request context for tracking.
-
-    Yields:
-        SSE-formatted strings. Each chunk is prefixed with "data: " and
-        suffixed with "\\n\\n". Final chunk on error includes error details.
-    """
-    try:
-        async for chunk_data in stream_iter:
-            chunk_json = json.dumps(chunk_data)
-            yield f"data: {chunk_json}\n\n"
-    except Exception as exc:
-        error_chunk = {
-            "chunk": "",
-            "role": "assistant",
-            "done": True,
-            "error": str(exc),
-            "error_type": type(exc).__name__,
-            "request_id": ctx.request_id,
-        }
-        yield f"data: {json.dumps(error_chunk)}\n\n"
-        logger.exception("Error during chat streaming: %s", exc)
 
 
 @router.post("/chat", tags=["Chat"], response_model=None)
@@ -162,35 +131,12 @@ async def chat(
         },
     )
 
-    # Parse request body
-    try:
-        body = await request.json()
-        api_req = ChatRequest(**body)
-    except ValueError as e:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=f"Invalid JSON in request body: {e!s}",
-        ) from e
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=f"Request validation failed: {e!s}",
-        ) from e
+    # Parse and validate request
+    api_req = await parse_request_json(request, ChatRequest)
 
     try:
         # Validate model is allowed for current hardware profile
-        from shared_ollama.core.utils import get_allowed_models, is_model_allowed
-
-        requested_model = api_req.model
-        if requested_model and not is_model_allowed(requested_model):
-            allowed = get_allowed_models()
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=(
-                    f"Model '{requested_model}' is not supported on this hardware profile. "
-                    f"Allowed models: {', '.join(sorted(allowed))}"
-                ),
-            )
+        validate_model_allowed(api_req.model)
 
         # Convert API model to domain entity (validation happens here)
         domain_req = api_to_domain_chat_request(api_req)
@@ -211,9 +157,10 @@ async def chat(
                     stream=True,
                 )
                 # Type narrowing: stream=True returns AsyncIterator
-                assert not isinstance(result, dict)
+                if isinstance(result, dict):
+                    raise RuntimeError("Expected AsyncIterator for streaming request")
                 return StreamingResponse(
-                    _stream_chat_sse(result, ctx),
+                    stream_sse_events(result, ctx, "chat"),
                     media_type="text/event-stream",
                 )
 
@@ -296,35 +243,12 @@ async def chat_completions(
         },
     )
 
-    # Parse request body (OpenAI-compatible format)
-    try:
-        body = await request.json()
-        api_req = ChatRequestOpenAI(**body)
-    except ValueError as e:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=f"Invalid JSON in request body: {e!s}",
-        ) from e
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=f"Request validation failed: {e!s}",
-        ) from e
+    # Parse and validate request (OpenAI-compatible format)
+    api_req = await parse_request_json(request, ChatRequestOpenAI)
 
     try:
         # Validate model is allowed for current hardware profile
-        from shared_ollama.core.utils import get_allowed_models, is_model_allowed
-
-        requested_model = api_req.model
-        if requested_model and not is_model_allowed(requested_model):
-            allowed = get_allowed_models()
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=(
-                    f"Model '{requested_model}' is not supported on this hardware profile. "
-                    f"Allowed models: {', '.join(sorted(allowed))}"
-                ),
-            )
+        validate_model_allowed(api_req.model)
 
         # Convert OpenAI-compatible API model to native Ollama domain entity
         domain_req = api_to_domain_chat_request_openai(api_req)
@@ -344,7 +268,8 @@ async def chat_completions(
                     project_name=ctx.project_name,
                     stream=True,
                 )
-                assert not isinstance(result_stream, dict)
+                if isinstance(result_stream, dict):
+                    raise RuntimeError("Expected AsyncIterator for streaming request")
 
                 created_ts = int(time.time())
                 role_emitted = False

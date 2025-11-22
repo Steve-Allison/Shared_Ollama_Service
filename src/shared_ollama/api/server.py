@@ -37,12 +37,11 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI
 
 # Import modular components
 from shared_ollama.api.lifespan import lifespan_context
 from shared_ollama.api.middleware import setup_exception_handlers, setup_middleware
-from shared_ollama.api.models import RequestContext
 from shared_ollama.api.routes import (
     batch_router,
     chat_router,
@@ -74,24 +73,6 @@ app.include_router(generation_router, prefix="/api/v1")
 app.include_router(chat_router, prefix="/api/v1")
 app.include_router(vlm_router, prefix="/api/v1")
 app.include_router(batch_router, prefix="/api/v1")
-
-
-# Request context extraction (moved to dependencies.py, kept here for backward compatibility)
-def get_request_context(request: Request) -> RequestContext:
-    """Extract request context from FastAPI request.
-
-    Creates a RequestContext object with unique request ID and extracted
-    headers. Used throughout request lifecycle for logging and tracking.
-
-    Args:
-        request: FastAPI Request object.
-
-    Returns:
-        RequestContext with request_id, client_ip, user_agent, and project_name.
-    """
-    from shared_ollama.api.dependencies import get_request_context as _get_request_context
-
-    return _get_request_context(request)
 
 
 # All endpoints (generate, chat, vlm, batch) are now in modular route files:

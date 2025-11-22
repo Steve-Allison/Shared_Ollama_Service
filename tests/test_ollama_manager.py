@@ -307,7 +307,6 @@ class TestOllamaManagerStop:
         assert result is True
 
 
-@pytest.mark.asyncio
 class TestOllamaManagerIsRunning:
     """Behavioral tests for is_running() method."""
 
@@ -342,7 +341,6 @@ class TestOllamaManagerIsRunning:
         assert result is False or isinstance(result, bool)
 
 
-@pytest.mark.asyncio
 class TestOllamaManagerGetStatus:
     """Behavioral tests for get_status() method."""
 

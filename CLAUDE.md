@@ -99,8 +99,8 @@ pip install -e ".[dev]" -c constraints.txt
 
 # Start service
 ./scripts/start.sh                    # Manages Ollama + REST API
-# Service runs at: http://localhost:8000
-# API docs at: http://localhost:8000/api/docs
+# Service runs at: http://0.0.0.0:8000
+# API docs at: http://0.0.0.0:8000/api/docs
 
 # Stop service
 ./scripts/shutdown.sh                 # Graceful shutdown
@@ -338,7 +338,7 @@ git push
 
 ## Resources
 
-- **API Docs:** http://localhost:8000/api/docs (when service running)
+- **API Docs:** http://0.0.0.0:8000/api/docs (when service running)
 - **Architecture Diagram:** `docs/ARCHITECTURE.md`
 - **Clean Architecture Details:** `docs/CLEAN_ARCHITECTURE_REFACTORING.md`
 - **Testing Plan:** `docs/TESTING_PLAN.md`

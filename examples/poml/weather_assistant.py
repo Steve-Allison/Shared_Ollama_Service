@@ -25,7 +25,7 @@ PomlRender = Callable[..., dict[str, Any]]
 POML_RENDER: PomlRender = cast(Any, poml).poml
 
 # API endpoint
-API_BASE = "http://localhost:8000/api/v1"
+API_BASE = "http://0.0.0.0:8000/api/v1"
 
 
 class WeatherData(TypedDict):

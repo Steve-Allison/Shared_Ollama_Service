@@ -5,7 +5,7 @@ The Shared Ollama Service provides a RESTful API for language-agnostic access to
 ## Base URL
 
 ```
-http://localhost:8000/api/v1
+http://0.0.0.0:8000/api/v1
 ```
 
 ## Authentication
@@ -49,7 +49,7 @@ Check the health status of the API and underlying Ollama service.
 
 **Example:**
 ```bash
-curl http://localhost:8000/api/v1/health
+curl http://0.0.0.0:8000/api/v1/health
 ```
 
 ---
@@ -75,7 +75,7 @@ List all available models in the Ollama service.
 
 **Example:**
 ```bash
-curl http://localhost:8000/api/v1/models
+curl http://0.0.0.0:8000/api/v1/models
 ```
 
 ---
@@ -131,7 +131,7 @@ Generate text from a prompt.
 
 **Example:**
 ```bash
-curl -X POST http://localhost:8000/api/v1/generate \
+curl -X POST http://0.0.0.0:8000/api/v1/generate \
   -H "Content-Type: application/json" \
   -H "X-Project-Name: MyProject" \
   -d '{
@@ -145,7 +145,7 @@ curl -X POST http://localhost:8000/api/v1/generate \
 import requests
 
 response = requests.post(
-    "http://localhost:8000/api/v1/generate",
+    "http://0.0.0.0:8000/api/v1/generate",
     json={
         "prompt": "Explain quantum computing",
         "model": "qwen3-vl:8b-instruct-q4_K_M",
@@ -159,7 +159,7 @@ print(data["text"])
 
 **TypeScript Example:**
 ```typescript
-const response = await fetch("http://localhost:8000/api/v1/generate", {
+const response = await fetch("http://0.0.0.0:8000/api/v1/generate", {
   method: "POST",
   headers: {
     "Content-Type": "application/json",
@@ -236,7 +236,7 @@ Process a conversation with multiple messages.
 
 **Example:**
 ```bash
-curl -X POST http://localhost:8000/api/v1/chat \
+curl -X POST http://0.0.0.0:8000/api/v1/chat \
   -H "Content-Type: application/json" \
   -H "X-Project-Name: MyProject" \
   -d '{
@@ -252,7 +252,7 @@ curl -X POST http://localhost:8000/api/v1/chat \
 import requests
 
 response = requests.post(
-    "http://localhost:8000/api/v1/chat",
+    "http://0.0.0.0:8000/api/v1/chat",
     json={
         "messages": [
             {"role": "system", "content": "You are a helpful assistant."},
@@ -302,7 +302,7 @@ All errors follow this format:
 
 ## Interactive API Documentation
 
-Visit `http://localhost:8000/api/docs` for interactive Swagger UI documentation where you can:
+Visit `http://0.0.0.0:8000/api/docs` for interactive Swagger UI documentation where you can:
 - Explore all endpoints
 - Test API calls directly in the browser
 - View request/response schemas
@@ -380,7 +380,7 @@ response = requests.post(
 **After:**
 ```python
 response = requests.post(
-    "http://localhost:8000/api/v1/generate",
+    "http://0.0.0.0:8000/api/v1/generate",
     json={"model": "qwen3-vl:8b-instruct-q4_K_M", "prompt": "Hello"},
     headers={"X-Project-Name": "MyProject"}
 )

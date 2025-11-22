@@ -55,7 +55,7 @@ context = {
 params = poml.poml("extract_event.poml", context=context, format="openai_chat")
 
 response = requests.post(
-    "http://localhost:8000/api/v1/chat",
+    "http://0.0.0.0:8000/api/v1/chat",
     json=params
 ).json()
 
@@ -86,7 +86,7 @@ request_data = {
 }
 
 response = requests.post(
-    "http://localhost:8000/api/v1/vlm",
+    "http://0.0.0.0:8000/api/v1/vlm",
     json=request_data
 ).json()
 
@@ -154,7 +154,7 @@ print(analysis)
 
 - **POML Documentation**: https://github.com/microsoft/poml
 - **Shared Ollama Service Docs**: See main README.md
-- **API Reference**: http://localhost:8000/api/docs (when service is running)
+- **API Reference**: http://0.0.0.0:8000/api/docs (when service is running)
 
 ## Troubleshooting
 

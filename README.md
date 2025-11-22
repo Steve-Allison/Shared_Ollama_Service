@@ -59,10 +59,23 @@ Expected response:
 
 ### 3. Send Your First Request
 
-**Text Chat:**
+**Text Chat (Native Ollama Format):**
 
 ```bash
 curl -X POST http://0.0.0.0:8000/api/v1/chat \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "qwen3:14b-q4_K_M",
+    "messages": [
+      {"role": "user", "content": "Explain quantum computing in one sentence"}
+    ]
+  }'
+```
+
+**Text Chat (OpenAI-Compatible Format):**
+
+```bash
+curl -X POST http://0.0.0.0:8000/api/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
     "model": "qwen3:14b-q4_K_M",
@@ -148,10 +161,13 @@ Both endpoints are optimized for `qwen3-vl:8b-instruct-q4_K_M` and share the sam
 | Endpoint | Format | Purpose | Max Concurrent | Timeout | Rate Limit |
 |----------|--------|---------|----------------|---------|------------|
 | `/api/v1/chat` | Native Ollama | Text-only chat | 6 | 60s | 60/min |
+| `/api/v1/chat/completions` | OpenAI-compatible | Text-only chat (OpenAI format) | 6 | 60s | 60/min |
 | `/api/v1/vlm` | Native Ollama | VLM with images | 3 | 120s | 30/min |
-| `/api/v1/vlm/openai` | OpenAI-compatible | VLM with images | 3 | 120s | 30/min |
+| `/api/v1/vlm/openai` | OpenAI-compatible | VLM with images (OpenAI format) | 3 | 120s | 30/min |
 | `/api/v1/batch/chat` | Native Ollama | Batch text chat | 5 | 60s | 10/min |
+| `/api/v1/batch/chat/completions` | OpenAI-compatible | Batch text chat (OpenAI format) | 5 | 60s | 10/min |
 | `/api/v1/batch/vlm` | Native Ollama | Batch VLM | 3 | 120s | 5/min |
+| `/api/v1/batch/vlm/completions` | OpenAI-compatible | Batch VLM (OpenAI format) | 3 | 120s | 5/min |
 
 ### Native Ollama Format
 
@@ -454,12 +470,14 @@ for idx, image in enumerate(doc_images):
 | Use Case | Recommended Format | Endpoint |
 |----------|-------------------|----------|
 | **Docling integration** | OpenAI-compatible | `/api/v1/vlm/openai` |
-| **OpenAI-compatible clients** | OpenAI-compatible | `/api/v1/vlm/openai` |
-| **Direct Ollama integration** | Native Ollama | `/api/v1/vlm` |
-| **Simple use cases** | Native Ollama | `/api/v1/vlm` |
-| **Batch processing** | Native Ollama | `/api/v1/batch/vlm` |
+| **OpenAI-compatible clients** | OpenAI-compatible | `/api/v1/chat/completions` or `/api/v1/vlm/openai` |
+| **OpenAI SDK/libraries** | OpenAI-compatible | `/api/v1/chat/completions` or `/api/v1/vlm/openai` |
+| **Direct Ollama integration** | Native Ollama | `/api/v1/chat` or `/api/v1/vlm` |
+| **Simple use cases** | Native Ollama | `/api/v1/chat` or `/api/v1/vlm` |
+| **Batch processing (native)** | Native Ollama | `/api/v1/batch/chat` or `/api/v1/batch/vlm` |
+| **Batch processing (OpenAI)** | OpenAI-compatible | `/api/v1/batch/chat/completions` or `/api/v1/batch/vlm/completions` |
 
-**Batch VLM Processing:**
+**Batch VLM Processing (Native Ollama Format):**
 
 ```python
 import requests
@@ -495,6 +513,48 @@ for idx, result in enumerate(batch_result['results']):
         print(f"Image {idx}: {result['data']['message']['content'][:100]}...")
 ```
 
+**Batch VLM Processing (OpenAI-Compatible Format):**
+
+```python
+import requests
+import base64
+
+# Encode multiple images
+images = []
+for path in ["photo1.jpg", "photo2.jpg", "photo3.jpg"]:
+    with open(path, "rb") as f:
+        data = base64.b64encode(f.read()).decode()
+        images.append(f"data:image/jpeg;base64,{data}")
+
+# Batch OpenAI-compatible VLM request (max 20 requests)
+response = requests.post(
+    "http://0.0.0.0:8000/api/v1/batch/vlm/completions",
+    json={
+        "requests": [
+            {
+                "model": "qwen3-vl:8b-instruct-q4_K_M",
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": "Describe this"},
+                            {"type": "image_url", "image_url": {"url": img}}
+                        ]
+                    }
+                ]
+            }
+            for img in images
+        ]
+    }
+)
+
+batch_result = response.json()
+print(f"Processed: {batch_result['successful']}/{batch_result['total_requests']}")
+for idx, result in enumerate(batch_result['results']):
+    if result['success']:
+        print(f"Image {idx}: {result['data']['choices'][0]['message']['content'][:100]}...")
+```
+
 **TypeScript/JavaScript (Native Ollama):**
 
 ```typescript
@@ -521,7 +581,7 @@ const data = await response.json();
 console.log(data.message.content);
 ```
 
-**Batch Text Chat:**
+**Batch Text Chat (Native Ollama Format):**
 
 ```python
 import requests
@@ -534,6 +594,30 @@ response = requests.post(
             {
                 "messages": [{"role": "user", "content": f"Question {i}?"}],
                 "model": "qwen3:14b-q4_K_M"
+            }
+            for i in range(10)
+        ]
+    }
+)
+
+batch_result = response.json()
+print(f"Completed: {batch_result['successful']}/{batch_result['total_requests']}")
+print(f"Total time: {batch_result['total_time_ms']:.0f}ms")
+```
+
+**Batch Text Chat (OpenAI-Compatible Format):**
+
+```python
+import requests
+
+# Batch OpenAI-compatible chat request (max 50 requests)
+response = requests.post(
+    "http://0.0.0.0:8000/api/v1/batch/chat/completions",
+    json={
+        "requests": [
+            {
+                "model": "qwen3:14b-q4_K_M",
+                "messages": [{"role": "user", "content": f"Question {i}?"}]
             }
             for i in range(10)
         ]
@@ -647,15 +731,19 @@ Example error response:
 This guide provides `curl` examples for quickly interacting with the Shared Ollama Service API. For Python, TypeScript, and Go examples, refer to the "Using VLM with REST API" and "Usage in Projects" sections.
 
 Before you begin, ensure the API service is running:
+
 ```bash
 ./scripts/start.sh
 ```
 
-### 1. Text-Only Chat (`/api/v1/chat`)
+### 1. Text-Only Chat
 
-Send a text-only message to a language model.
+#### Native Ollama Format (`/api/v1/chat`)
+
+Send a text-only message to a language model using native Ollama format.
 
 **Request:**
+
 ```bash
 curl -X POST http://0.0.0.0:8000/api/v1/chat \
      -H "Content-Type: application/json" \
@@ -668,6 +756,7 @@ curl -X POST http://0.0.0.0:8000/api/v1/chat \
 ```
 
 **Example Response (JSON):**
+
 ```json
 {
   "message": {
@@ -686,11 +775,56 @@ curl -X POST http://0.0.0.0:8000/api/v1/chat \
 }
 ```
 
+#### OpenAI-Compatible Format (`/api/v1/chat/completions`)
+
+Send a text-only message using OpenAI-compatible format. Perfect for OpenAI clients and libraries.
+
+**Request:**
+
+```bash
+curl -X POST http://0.0.0.0:8000/api/v1/chat/completions \
+     -H "Content-Type: application/json" \
+     -d '{
+           "model": "qwen3:14b-q4_K_M",
+           "messages": [
+             {"role": "user", "content": "Tell me a short story about a brave knight."}
+           ]
+         }'
+```
+
+**Example Response (OpenAI-Compatible JSON):**
+
+```json
+{
+  "id": "chatcmpl-...",
+  "object": "chat.completion",
+  "created": ...,
+  "model": "qwen3:14b-q4_K_M",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "Sir Reginald, a knight known for his polka-dotted shield..."
+      },
+      "logprobs": null,
+      "finish_reason": "stop"
+    }
+  ],
+  "usage": {
+    "prompt_tokens": ...,
+    "completion_tokens": ...,
+    "total_tokens": ...
+  }
+}
+```
+
 ### 2. VLM with Images (Native Ollama Format - `/api/v1/vlm`)
 
 Send a multimodal request with text and an image using Ollama's native format. The image data is passed as a top-level `images` array (though internally it will be associated with the last user message).
 
 **Request:**
+
 ```bash
 # First, convert your image to a base64 data URL
 # Example using Python:
@@ -710,6 +844,7 @@ curl -X POST http://0.0.0.0:8000/api/v1/vlm \
 ```
 
 **Example Response (JSON):**
+
 ```json
 {
   "message": {
@@ -735,6 +870,7 @@ curl -X POST http://0.0.0.0:8000/api/v1/vlm \
 Send a multimodal request with text and an image using an OpenAI-compatible message format. Images are embedded directly within the message content.
 
 **Request:**
+
 ```bash
 # First, convert your image to a base64 data URL
 # Example using Python:
@@ -759,6 +895,7 @@ curl -X POST http://0.0.0.0:8000/api/v1/vlm/openai \
 ```
 
 **Example Response (JSON, OpenAI-like):**
+
 ```json
 {
   "id": "chatcmpl-...",
@@ -1047,10 +1184,13 @@ All generation, chat, and VLM endpoints support POML-generated requests:
 |----------|------------------------|----------|
 | `/api/v1/generate` | Tools, JSON schema, runtime params | Text generation with function calling |
 | `/api/v1/chat` | Tools, JSON schema, runtime params | Text chat with function calling |
+| `/api/v1/chat/completions` | Tools, JSON schema, runtime params | OpenAI-compatible text chat with function calling |
 | `/api/v1/vlm` | Tools, JSON schema, runtime params, images | Vision + text with tools |
 | `/api/v1/vlm/openai` | Tools, JSON schema, runtime params, images | OpenAI-compatible VLM |
 | `/api/v1/batch/chat` | All chat features | Batch text processing |
+| `/api/v1/batch/chat/completions` | All chat features (OpenAI format) | Batch OpenAI-compatible text processing |
 | `/api/v1/batch/vlm` | All VLM features | Batch vision processing |
+| `/api/v1/batch/vlm/completions` | All VLM features (OpenAI format) | Batch OpenAI-compatible vision processing |
 
 ### Request Format with Tools
 
@@ -1303,6 +1443,7 @@ curl http://0.0.0.0:8000/api/v1/health  # Health check
 # Core Endpoints
 curl http://0.0.0.0:8000/api/v1/models  # List available models
 curl http://0.0.0.0:8000/api/v1/chat    # Text-only chat (native Ollama)
+curl http://0.0.0.0:8000/api/v1/chat/completions  # Text-only chat (OpenAI-compatible)
 curl http://0.0.0.0:8000/api/v1/vlm     # VLM with images (native Ollama)
 curl http://0.0.0.0:8000/api/v1/vlm/openai  # VLM with images (OpenAI-compatible, for Docling)
 

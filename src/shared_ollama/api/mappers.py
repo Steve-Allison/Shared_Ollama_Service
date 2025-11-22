@@ -400,7 +400,7 @@ def api_to_domain_vlm_request(api_req: Any) -> Any:  # VLMRequest from models
 
 
     # Convert model name
-    model = ModelName(api_req.model) if api_req.model else None
+    model = ModelName(value=api_req.model) if api_req.model else None
 
     # Convert options
     options = None
@@ -469,6 +469,104 @@ def _extract_vlm_messages(api_req: Any) -> tuple[VLMMessage, ...]:
     return tuple(messages)
 
 
+def api_to_domain_chat_request_openai(api_req: Any) -> ChatRequest:
+    """Convert OpenAI-compatible API ChatRequest to native Ollama domain ChatRequest.
+
+    Transforms an OpenAI-compatible chat request (ChatRequestOpenAI) to a domain
+    entity. Handles text-only messages from OpenAI format (string content) and
+    converts them to native Ollama ChatMessage format.
+
+    Args:
+        api_req: OpenAI-compatible ChatRequestOpenAI model. Contains messages
+            with string content (text-only), optional model, options, format, and tools.
+
+    Returns:
+        Domain ChatRequest entity with validated ChatMessage entities.
+        Domain entity validates itself during construction.
+
+    Raises:
+        ValueError: If request validation fails. Validation is performed by:
+            - ChatMessage entities (role validation, content requirement)
+            - ChatRequest (non-empty messages, total length limit)
+
+    Note:
+        OpenAI format uses string content for text-only messages, which is
+        directly converted to native ChatMessage format. Tool calls and
+        other features are preserved.
+    """
+    from shared_ollama.domain.entities import (
+        ChatMessage,
+        ChatRequest,
+        GenerationOptions,
+        ModelName,
+    )
+
+    # Convert messages from OpenAI format (string content) to native format
+    domain_messages: list[ChatMessage] = []
+    for api_msg in api_req.messages:
+        # OpenAI format: content is string for text-only messages
+        content: str | None = None
+        if isinstance(api_msg.content, str):
+            content = api_msg.content
+        elif isinstance(api_msg.content, list):
+            # Extract text from content parts (should only be text parts for chat)
+            text_parts = [
+                part.text for part in api_msg.content if hasattr(part, "text") and part.text
+            ]
+            content = " ".join(text_parts) if text_parts else None
+
+        # Convert tool calls if present
+        tool_calls = None
+        if api_msg.tool_calls:
+            tool_calls = tuple(api_to_domain_tool_call(tc) for tc in api_msg.tool_calls)
+
+        domain_messages.append(
+            ChatMessage(
+                role=api_msg.role,  # type: ignore[arg-type]  # OpenAI roles compatible
+                content=content,
+                tool_calls=tool_calls,
+                tool_call_id=api_msg.tool_call_id,  # OpenAI format supports tool_call_id
+            )
+        )
+
+    messages = tuple(domain_messages)
+    model = ModelName(value=api_req.model) if api_req.model else None
+
+    # Convert options
+    options: GenerationOptions | None = None
+    if any((
+        api_req.temperature is not None,
+        api_req.top_p is not None,
+        api_req.top_k is not None,
+        api_req.max_tokens is not None,
+        api_req.seed is not None,
+        api_req.stop is not None,
+    )):
+        options = GenerationOptions(
+            temperature=api_req.temperature or 0.2,
+            top_p=api_req.top_p or 0.9,
+            top_k=api_req.top_k or 40,
+            max_tokens=api_req.max_tokens,
+            seed=api_req.seed,
+            stop=api_req.stop,
+        )
+
+    # Convert tools if present
+    tools = None
+    if api_req.tools:
+        tools = tuple(api_to_domain_tool(t) for t in api_req.tools)
+
+    resolved_format = _resolve_response_format(api_req.format, api_req.response_format)
+
+    return ChatRequest(
+        messages=messages,
+        model=model,
+        options=options,
+        format=resolved_format,
+        tools=tools,
+    )
+
+
 def api_to_domain_vlm_request_openai(api_req: Any) -> Any:
     """Convert OpenAI-compatible API VLMRequest to native Ollama domain VLMRequest."""
     from shared_ollama.domain.entities import (
@@ -480,7 +578,7 @@ def api_to_domain_vlm_request_openai(api_req: Any) -> Any:
     messages = _extract_vlm_messages(api_req)
 
     # Convert model name
-    model = ModelName(api_req.model) if api_req.model else None
+    model = ModelName(value=api_req.model) if api_req.model else None
 
     # Convert options
     options = None

@@ -41,7 +41,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator
 
-from shared_ollama.core.utils import get_default_vlm_model
+from shared_ollama.core.utils import get_default_text_model, get_default_vlm_model
 
 # ============================================================================
 # Tool/Function Calling Models (for POML and OpenAI compatibility)
@@ -789,11 +789,15 @@ class ChatMessageOpenAI(BaseModel):
     """OpenAI-compatible chat message with multimodal content support.
 
     Supports both simple string content and multimodal content (text + images).
-    Used for OpenAI-compatible VLM endpoint.
+    Used for OpenAI-compatible VLM and chat endpoints. Supports tool calling
+    for function calling workflows.
 
     Attributes:
-        role: Message role. Must be "user", "assistant", or "system".
+        role: Message role. Must be "user", "assistant", "system", or "tool".
         content: Either a string (text-only) or list of content parts (multimodal).
+            Optional when tool_calls present (for assistant messages).
+        tool_calls: List of tool calls made by the assistant. Optional.
+        tool_call_id: ID of the tool call this message is responding to (for role="tool"). Optional.
     """
 
     model_config = ConfigDict(
@@ -802,21 +806,100 @@ class ChatMessageOpenAI(BaseModel):
         extra="forbid",
     )
 
-    role: Literal["user", "assistant", "system"] = Field(
-        ..., description="Message role: 'user', 'assistant', or 'system'"
+    role: Literal["user", "assistant", "system", "tool"] = Field(
+        ..., description="Message role: 'user', 'assistant', 'system', or 'tool'"
     )
-    content: str | list[ContentPart] = Field(
-        ..., description="Message content: string (text-only) or list of content parts (multimodal)"
+    content: str | list[ContentPart] | None = Field(
+        None,
+        description="Message content: string (text-only) or list of content parts (multimodal). Optional if tool_calls present.",
+    )
+    tool_calls: list[ToolCall] | None = Field(
+        None, description="Tool calls made by the assistant (for role='assistant')"
+    )
+    tool_call_id: str | None = Field(
+        None, description="Tool call ID this message responds to (for role='tool')"
     )
 
-    @field_validator("content")
+    @field_validator("content", mode="after")
     @classmethod
-    def validate_content(cls, v: str | list[ContentPart]) -> str | list[ContentPart]:
-        """Validate content is not empty."""
-        if isinstance(v, str) and not v.strip():
+    def validate_content_or_tool_calls(
+        cls, v: str | list[ContentPart] | None, info: ValidationInfo
+    ) -> str | list[ContentPart] | None:
+        """Validate that either content or tool_calls is present."""
+        tool_calls = info.data.get("tool_calls")
+        if v is None and not tool_calls:
+            raise ValueError("Message must have either content or tool_calls")
+        if isinstance(v, str) and not v.strip() and not tool_calls:
             raise ValueError("Text content cannot be empty")
         if isinstance(v, list) and not v:
             raise ValueError("Content parts list cannot be empty")
+        return v
+
+
+class ChatRequestOpenAI(BaseModel):
+    """OpenAI-compatible text-only chat request model.
+
+    Uses OpenAI-compatible message format for text-only chat completions.
+    Converted internally to native Ollama format for processing.
+
+    For OpenAI-compatible clients that expect /chat/completions endpoint.
+
+    Attributes:
+        messages: List of OpenAI-compatible chat messages (text-only).
+        model: Model name (defaults to configured profile based on system hardware).
+        stream: Whether to stream the response. Defaults to False.
+        temperature: Sampling temperature (0.0-2.0). Optional.
+        top_p: Nucleus sampling parameter (0.0-1.0). Optional.
+        top_k: Top-k sampling parameter (>=1). Optional.
+        max_tokens: Maximum tokens to generate (>=1). Optional.
+        seed: Random seed for reproducibility. Optional.
+        stop: List of stop sequences. Optional.
+        tools: Tools/functions the model can call (POML compatible). Optional.
+        response_format: OpenAI-compatible response format. Optional.
+    """
+
+    model_config = ConfigDict(
+        str_strip_whitespace=True,
+        validate_assignment=True,
+        extra="forbid",
+    )
+
+    messages: list[ChatMessageOpenAI] = Field(
+        ..., min_length=1, description="List of OpenAI-compatible chat messages"
+    )
+    model: str | None = Field(
+        default_factory=get_default_text_model,
+        description="Model name (defaults to configured profile based on system hardware)",
+    )
+    stream: bool = Field(False, description="Whether to stream the response")
+    format: str | dict[str, Any] | None = Field(
+        None,
+        description="(Deprecated) Native Ollama format field. Prefer response_format for OpenAI compatibility.",
+    )
+    response_format: ResponseFormat | None = Field(
+        None,
+        description="OpenAI-compatible response_format. Overrides format when provided.",
+    )
+    temperature: float | None = Field(None, ge=0.0, le=2.0, description="Temperature for sampling")
+    top_p: float | None = Field(None, ge=0.0, le=1.0, description="Top-p sampling parameter")
+    top_k: int | None = Field(None, ge=1, description="Top-k sampling parameter")
+    max_tokens: int | None = Field(None, ge=1, description="Maximum tokens to generate")
+    seed: int | None = Field(None, description="Random seed for reproducibility")
+    stop: list[str] | None = Field(None, description="Stop sequences")
+    tools: list[Tool] | None = Field(None, description="Tools/functions the model can call (POML compatible)")
+
+    @field_validator("messages")
+    @classmethod
+    def validate_text_only(cls, v: list[ChatMessageOpenAI]) -> list[ChatMessageOpenAI]:
+        """Validate that messages are text-only (no images)."""
+        for msg in v:
+            if isinstance(msg.content, list):
+                for part in msg.content:
+                    if isinstance(part, ImageContentPart):
+                        raise ValueError(
+                            "ChatRequestOpenAI does not support images. "
+                            "For multimodal requests with images, use /api/v1/vlm/openai endpoint instead."
+                        )
         return v
 
 
@@ -897,7 +980,7 @@ class VLMRequestOpenAI(BaseModel):
         if not has_image:
             raise ValueError(
                 "VLM requests must contain at least one image. "
-                "For text-only requests, use /api/v1/chat endpoint instead."
+                "For text-only requests, use /api/v1/chat/completions endpoint instead."
             )
         return v
 
@@ -958,6 +1041,48 @@ class BatchChatRequest(BaseModel):
 
     requests: list[ChatRequest] = Field(
         ..., min_length=1, max_length=50, description="List of chat requests (max 50)"
+    )
+
+
+class BatchChatRequestOpenAI(BaseModel):
+    """OpenAI-compatible batch text-only chat processing request.
+
+    Process multiple OpenAI-compatible chat requests concurrently.
+    Maximum 50 requests per batch for fairness.
+
+    Attributes:
+        requests: List of OpenAI-compatible chat requests to process (1-50).
+    """
+
+    model_config = ConfigDict(
+        str_strip_whitespace=True,
+        validate_assignment=True,
+        extra="forbid",
+    )
+
+    requests: list[ChatRequestOpenAI] = Field(
+        ..., min_length=1, max_length=50, description="List of OpenAI-compatible chat requests (max 50)"
+    )
+
+
+class BatchVLMRequestOpenAI(BaseModel):
+    """OpenAI-compatible batch VLM processing request.
+
+    Process multiple OpenAI-compatible VLM requests concurrently.
+    Maximum 20 requests per batch due to image processing overhead.
+
+    Attributes:
+        requests: List of OpenAI-compatible VLM requests to process (1-20).
+    """
+
+    model_config = ConfigDict(
+        str_strip_whitespace=True,
+        validate_assignment=True,
+        extra="forbid",
+    )
+
+    requests: list[VLMRequestOpenAI] = Field(
+        ..., min_length=1, max_length=20, description="List of OpenAI-compatible VLM requests (max 20)"
     )
 
 

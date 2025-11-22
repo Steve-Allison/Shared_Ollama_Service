@@ -140,9 +140,9 @@ async def main():
     
     # Use the default model from settings, or a dummy if settings are not loaded
     try:
-        default_model = ModelName(settings.ollama.default_model)
+        default_model = ModelName(value=settings.ollama.default_model)
     except Exception:
-        default_model = ModelName("dummy-vlm-model")
+        default_model = ModelName(value="dummy-vlm-model")
 
     vlm_request = VLMRequest(
         messages=(message,),

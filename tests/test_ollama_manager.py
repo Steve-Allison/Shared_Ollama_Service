@@ -5,6 +5,7 @@ Tests focus on real process lifecycle, async subprocess management, error handli
 and edge cases. Uses real subprocess operations (no mocks of internal logic).
 """
 
+import contextlib
 import platform
 import shutil
 from pathlib import Path
@@ -12,7 +13,7 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
-from shared_ollama.core.ollama_manager import OllamaManager
+from shared_ollama.core.ollama_manager import OllamaManager, ProcessStatus
 
 
 @pytest.fixture
@@ -72,6 +73,7 @@ class TestOllamaManagerInitialization:
         manager = OllamaManager(log_dir=log_dir)
         assert log_dir.exists()
         assert log_dir.is_dir()
+        assert manager.log_dir == log_dir
 
 
 @pytest.mark.asyncio
@@ -202,19 +204,23 @@ class TestOllamaManagerStart:
 
     async def test_start_returns_false_when_executable_not_found(self, ollama_manager):
         """Test that start() returns False when ollama executable not found."""
-        # Mock ollama_executable to return None
-        with patch.object(ollama_manager, "ollama_executable", None):
+        original = ollama_manager.ollama_executable
+        try:
+            ollama_manager.ollama_executable = None
             result = await ollama_manager.start(wait_for_ready=False)
             assert result is False
+        finally:
+            ollama_manager.ollama_executable = original
 
     async def test_start_handles_already_running_service(self, ollama_manager):
         """Test that start() handles already running service."""
         # Mock _check_ollama_running to return True
-        with patch.object(ollama_manager, "_check_ollama_running", return_value=True):
-            with patch.object(ollama_manager, "force_manage", False):
-                result = await ollama_manager.start(wait_for_ready=False)
-                # Should return True if service already running and force_manage=False
-                assert result is True
+        with patch.object(OllamaManager, "_check_ollama_running", return_value=True), patch.object(
+            ollama_manager, "force_manage", False
+        ):
+            result = await ollama_manager.start(wait_for_ready=False)
+            # Should return True if service already running and force_manage=False
+            assert result is True
 
     async def test_start_creates_log_files(self, ollama_manager, temp_log_dir):
         """Test that start() creates log files."""
@@ -222,10 +228,8 @@ class TestOllamaManagerStart:
             pytest.skip("Ollama executable not found")
 
         # Try to start (may fail if Ollama not actually available, but should create logs)
-        try:
+        with contextlib.suppress(Exception):
             await ollama_manager.start(wait_for_ready=False, max_wait_time=1)
-        except Exception:
-            pass  # Expected if Ollama not running
 
         # Check if log files were created (or at least log directory exists)
         assert temp_log_dir.exists()
@@ -243,16 +247,13 @@ class TestOllamaManagerStart:
             mock_process.pid = 12345
             mock_subprocess.return_value = mock_process
 
-            with patch.object(ollama_manager, "_check_ollama_running", return_value=False):
+            with patch.object(OllamaManager, "_check_ollama_running", return_value=False):
                 result = await ollama_manager.start(wait_for_ready=False)
 
-            # Should have called _detect_system_optimizations
-            # (tested by checking subprocess was called with env)
+            assert isinstance(result, bool)
             if mock_subprocess.called:
                 call_kwargs = mock_subprocess.call_args.kwargs
-                assert "env" in call_kwargs
-                env = call_kwargs["env"]
-                # Should have optimization env vars
+                env = call_kwargs.get("env", {})
                 assert "OLLAMA_HOST" in env or "OLLAMA_KEEP_ALIVE" in env
 
 
@@ -262,14 +263,14 @@ class TestOllamaManagerStop:
 
     async def test_stop_returns_true_when_not_running(self, ollama_manager):
         """Test that stop() returns True when service not running."""
-        with patch.object(ollama_manager, "_check_ollama_running", return_value=False):
+        with patch.object(OllamaManager, "_check_ollama_running", return_value=False):
             result = await ollama_manager.stop()
             assert result is True
 
     async def test_stop_handles_none_process(self, ollama_manager):
         """Test that stop() handles None process gracefully."""
         ollama_manager.process = None
-        with patch.object(ollama_manager, "_check_ollama_running", return_value=False):
+        with patch.object(OllamaManager, "_check_ollama_running", return_value=False):
             result = await ollama_manager.stop()
             assert result is True
 
@@ -314,7 +315,7 @@ class TestOllamaManagerIsRunning:
     def test_is_running_returns_false_when_no_process(self, ollama_manager):
         """Test that is_running() returns False when no process."""
         ollama_manager.process = None
-        with patch.object(ollama_manager, "_check_ollama_running", return_value=False):
+        with patch.object(OllamaManager, "_check_ollama_running", return_value=False):
             result = ollama_manager.is_running()
             assert result is False
 
@@ -345,13 +346,12 @@ class TestOllamaManagerIsRunning:
 class TestOllamaManagerGetStatus:
     """Behavioral tests for get_status() method."""
 
-    def test_get_status_returns_dict(self, ollama_manager):
-        """Test that get_status() returns status dictionary."""
+    def test_get_status_returns_dataclass(self, ollama_manager):
+        """Test that get_status() returns strongly typed ProcessStatus."""
         status = ollama_manager.get_status()
-        assert isinstance(status, dict)
-        assert "running" in status
-        assert "base_url" in status
-        assert "managed" in status
+        assert isinstance(status, ProcessStatus)
+        assert status.base_url == ollama_manager.base_url
+        assert isinstance(status.running, bool)
 
     def test_get_status_includes_process_info_when_managed(self, ollama_manager):
         """Test that get_status() includes process info when process is managed."""
@@ -362,20 +362,19 @@ class TestOllamaManagerGetStatus:
         ollama_manager.process = mock_process
 
         # Mock psutil
-        with patch("psutil.pid_exists", return_value=True):
-            with patch("psutil.Process") as mock_psutil_process:
-                mock_proc = mock_psutil_process.return_value
-                mock_proc.cpu_percent.return_value = 10.5
-                mock_proc.memory_info.return_value.rss = 100 * 1024 * 1024  # 100MB
-                mock_proc.status.return_value = "running"
+        with patch("psutil.pid_exists", return_value=True), patch("psutil.Process") as mock_psutil_process:
+            mock_proc = mock_psutil_process.return_value
+            mock_proc.cpu_percent.return_value = 10.5
+            mock_proc.memory_info.return_value.rss = 100 * 1024 * 1024  # 100MB
+            mock_proc.status.return_value = "running"
 
-                status = ollama_manager.get_status()
+            status = ollama_manager.get_status()
 
-                assert status["managed"] is True
-                assert status["pid"] == 12345
-                assert "cpu_percent" in status
-                assert "memory_mb" in status
-                assert "status" in status
+            assert status.managed is True
+            assert status.pid == 12345
+            assert status.cpu_percent == 10.5
+            assert status.memory_mb == pytest.approx(100.0)
+            assert status.status == "running"
 
     def test_get_status_handles_psutil_errors(self, ollama_manager):
         """Test that get_status() handles psutil errors gracefully."""
@@ -385,9 +384,8 @@ class TestOllamaManagerGetStatus:
 
         with patch("psutil.pid_exists", return_value=False):
             status = ollama_manager.get_status()
-            # Should still return status dict
-            assert isinstance(status, dict)
-            assert status["pid"] == 12345
+            assert isinstance(status, ProcessStatus)
+            assert status.pid == 12345
 
 
 @pytest.mark.asyncio
@@ -400,11 +398,12 @@ class TestOllamaManagerEdgeCases:
             pytest.skip("Ollama executable not found")
 
         # Mock subprocess creation to raise exception
-        with patch("asyncio.create_subprocess_exec", side_effect=OSError("Cannot execute")):
-            with patch.object(ollama_manager, "_check_ollama_running", return_value=False):
-                result = await ollama_manager.start(wait_for_ready=False)
-                assert result is False
-                assert ollama_manager.process is None
+        with patch("asyncio.create_subprocess_exec", side_effect=OSError("Cannot execute")), patch.object(
+            OllamaManager, "_check_ollama_running", return_value=False
+        ):
+            result = await ollama_manager.start(wait_for_ready=False)
+            assert result is False
+            assert ollama_manager.process is None
 
     async def test_stop_handles_process_exception(self, ollama_manager):
         """Test that stop() handles process termination exceptions."""
@@ -416,12 +415,12 @@ class TestOllamaManagerEdgeCases:
         ollama_manager.process = mock_process
 
         result = await ollama_manager.stop()
-        # Should still clean up
+        assert result is False or result is True  # ensure boolean
         assert ollama_manager.process is None
 
     async def test_wait_for_ready_times_out(self, ollama_manager):
         """Test that _wait_for_ready times out correctly."""
-        with patch.object(ollama_manager, "_check_ollama_running", return_value=False):
+        with patch.object(OllamaManager, "_check_ollama_running", return_value=False):
             result = await ollama_manager._wait_for_ready(max_wait_time=0.1)
             assert result is False
 
@@ -431,10 +430,10 @@ class TestOllamaManagerEdgeCases:
         # Note: _check_ollama_running is synchronous, not async
         call_count = [0]
 
-        def check_running():
+        def check_running(*, timeout: int | None = None):
             call_count[0] += 1
             return call_count[0] >= 2  # Return True on second call
 
-        with patch.object(ollama_manager, "_check_ollama_running", side_effect=check_running):
+        with patch.object(OllamaManager, "_check_ollama_running", side_effect=check_running):
             result = await ollama_manager._wait_for_ready(max_wait_time=2.0)
             assert result is True

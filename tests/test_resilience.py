@@ -5,6 +5,7 @@ Tests focus on real retry behavior, circuit breaker behavior through ResilientOl
 timeout scenarios, and edge cases. Uses real HTTP requests with test server.
 """
 
+import contextlib
 import time
 
 import pytest
@@ -221,14 +222,10 @@ class TestResilientOllamaClient:
         )
 
         # Trigger failures to open circuit
-        try:
+        with contextlib.suppress(Exception):
             client.generate("fail 1")
-        except Exception:
-            pass
-        try:
+        with contextlib.suppress(Exception):
             client.generate("fail 2")
-        except Exception:
-            pass
 
         # Wait for recovery timeout
         time.sleep(0.25)

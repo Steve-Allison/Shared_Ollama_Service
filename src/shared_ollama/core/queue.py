@@ -1,36 +1,11 @@
-"""Request queue management for graceful handling of concurrent requests.
-
-This module provides an async request queue that prevents immediate failures
-when capacity is reached, allowing requests to wait for available slots rather
-than failing with 503 errors. The queue manages concurrency limits and tracks
-comprehensive statistics for monitoring.
-
-Design Principles:
-    - Graceful degradation: Requests wait instead of failing immediately
-    - Concurrency control: Semaphore limits simultaneous processing
-    - Statistics tracking: Comprehensive metrics for observability
-    - Timeout handling: Prevents indefinite waiting
-    - Thread safety: All operations are async and safe for concurrent use
-
-Key Behaviors:
-    - Uses asyncio.Semaphore for concurrency control
-    - Tracks comprehensive statistics (wait times, rejections, timeouts)
-    - Implements timeout handling for queue waits
-    - Thread-safe statistics updates via asyncio.Lock
-    - Automatic cleanup via async context managers
-
-Concurrency:
-    - All operations are async and safe for concurrent use from multiple
-      coroutines
-    - Statistics updates are protected by asyncio.Lock
-    - Queue operations use asyncio.Queue for thread safety
-"""
+"""Bounded async request queue with instrumentation."""
 
 from __future__ import annotations
 
 import asyncio
 import logging
 import time
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from typing import Any
@@ -40,22 +15,7 @@ logger = logging.getLogger(__name__)
 
 @dataclass(slots=True)
 class QueueStats:
-    """Statistics for the request queue.
-
-    Immutable snapshot of queue metrics at a point in time. All time values
-    are in milliseconds.
-
-    Attributes:
-        queued: Number of requests currently waiting in queue.
-        in_progress: Number of requests currently being processed.
-        completed: Total requests successfully completed since startup.
-        failed: Total requests that failed since startup.
-        rejected: Total requests rejected due to full queue since startup.
-        timeout: Total requests that timed out waiting in queue since startup.
-        total_wait_time_ms: Cumulative time all requests spent waiting (ms).
-        max_wait_time_ms: Maximum wait time observed for any request (ms).
-        avg_wait_time_ms: Average wait time per request (ms).
-    """
+    """Immutable snapshot of queue metrics (timings in milliseconds)."""
 
     queued: int = 0
     in_progress: int = 0
@@ -69,39 +29,17 @@ class QueueStats:
 
 
 class RequestQueue:
-    """Async request queue with configurable concurrency and queue limits.
-
-    Manages request flow using a semaphore for concurrency control and an
-    asyncio.Queue for waiting requests. Tracks comprehensive statistics for
-    monitoring and observability.
-
-    Attributes:
-        max_concurrent: Maximum number of requests that can be processed
-            simultaneously.
-        max_queue_size: Maximum number of requests that can wait in queue.
-            When full, new requests are rejected immediately.
-        default_timeout: Default timeout in seconds for waiting in queue.
-            Individual requests can override this.
-
-    Thread safety:
-        All operations are async and safe for concurrent use from multiple
-        coroutines. Statistics updates are protected by asyncio.Lock.
-
-    Lifecycle:
-        - Initialize with __init__()
-        - Use acquire() as async context manager for each request
-        - Query stats with get_stats() for monitoring
-    """
+    """Async queue that enforces concurrency limits and tracks telemetry."""
 
     __slots__ = (
+        "max_concurrent",
+        "max_queue_size",
+        "default_timeout",
         "_active_requests",
         "_queue",
         "_semaphore",
         "_stats",
         "_stats_lock",
-        "default_timeout",
-        "max_concurrent",
-        "max_queue_size",
     )
 
     def __init__(
@@ -110,189 +48,86 @@ class RequestQueue:
         max_queue_size: int = 50,
         default_timeout: float = 60.0,
     ) -> None:
-        """Initialize request queue.
-
-        Creates a new request queue with specified concurrency and queue limits.
-        The queue uses a semaphore for concurrency control and an asyncio.Queue
-        for waiting requests.
-
-        Args:
-            max_concurrent: Maximum number of requests that can be processed
-                simultaneously. Must be positive. Default: 3.
-            max_queue_size: Maximum number of requests that can wait in queue.
-                When full, new requests are rejected immediately. Must be positive.
-                Default: 50.
-            default_timeout: Default timeout in seconds for waiting in queue.
-                Individual requests can override this via acquire() timeout parameter.
-                Must be positive. Default: 60.0 seconds.
-
-        Note:
-            The queue starts with zero active requests and empty statistics.
-            Statistics accumulate over the queue's lifetime.
-        """
         self.max_concurrent = max_concurrent
         self.max_queue_size = max_queue_size
         self.default_timeout = default_timeout
 
         self._semaphore = asyncio.Semaphore(max_concurrent)
         self._queue: asyncio.Queue[tuple[str, float]] = asyncio.Queue(maxsize=max_queue_size)
-
         self._stats_lock = asyncio.Lock()
         self._stats = QueueStats()
         self._active_requests: set[str] = set()
 
     @asynccontextmanager
-    async def acquire(
-        self,
-        request_id: str,
-        timeout: float | None = None,
-    ):
-        """Acquire a slot for request processing.
+    async def acquire(self, request_id: str, timeout: float | None = None) -> AsyncIterator[None]:
+        """Reserve a processing slot for *request_id*.
 
-        Async context manager that handles the complete request lifecycle:
-        queuing, waiting for slot, processing, and cleanup. Automatically
-        updates statistics and handles timeouts.
-
-        Args:
-            request_id: Unique identifier for the request. Used for tracking
-                and logging.
-            timeout: Queue wait timeout in seconds. If None, uses default_timeout.
-                If exceeded, raises asyncio.TimeoutError.
-
-        Yields:
-            None. The context manager guarantees a processing slot is acquired
-            while the context is active.
-
-        Raises:
-            RuntimeError: If queue is full (max_queue_size reached).
-            asyncio.TimeoutError: If timeout exceeded while waiting for slot.
-
-        Side effects:
-            - Updates queue statistics (queued, rejected, timeout, etc.)
-            - Adds request_id to active_requests set
-            - Releases semaphore slot on context exit
-            - Logs request lifecycle events
-
-        Example:
-            >>> queue = RequestQueue(max_concurrent=3)
-            >>> async with queue.acquire(request_id="req-123"):
-            ...     result = await process_request()
+        Example
+        -------
+        >>> queue = RequestQueue(max_concurrent=2)
+        >>> async with queue.acquire("req-1"):
+        ...     ...
         """
+
         timeout = timeout or self.default_timeout
-        enqueue_time = time.perf_counter()
+        queued_at = time.perf_counter()
         acquired = False
 
+        if self._queue.full():
+            await self._register_rejection()
+            raise RuntimeError(f"Queue is full ({self.max_queue_size} requests already queued)")
+
+        await self._queue.put((request_id, queued_at))
+        await self._refresh_queue_size()
+        logger.debug("request_queued id=%s queued=%d", request_id, self._queue.qsize())
+
         try:
-            if self._queue.full():
-                async with self._stats_lock:
-                    self._stats.rejected += 1
-                raise RuntimeError(f"Queue is full ({self.max_queue_size} requests already queued)")
+            try:
+                async with asyncio.timeout(timeout):
+                    await self._semaphore.acquire()
+            except TimeoutError:
+                await self._register_timeout()
+                logger.warning("request_timeout id=%s timeout=%ss", request_id, timeout)
+                raise
 
-            await self._queue.put((request_id, enqueue_time))
-            async with self._stats_lock:
-                self._stats.queued = self._queue.qsize()
+            acquired = True
+            wait_time_ms = await self._drain_queue_entry(request_id)
+            self._active_requests.add(request_id)
+            await self._register_wait(wait_time_ms)
 
-            logger.debug(
-                "request_queued: request_id=%s, queue_size=%d, in_progress=%d",
+            logger.info(
+                "request_processing id=%s wait_ms=%.2f in_progress=%d",
                 request_id,
-                self._queue.qsize(),
+                wait_time_ms,
                 len(self._active_requests),
             )
 
-            try:
-                await asyncio.wait_for(self._semaphore.acquire(), timeout=timeout)
-                acquired = True
-            except TimeoutError:
-                async with self._stats_lock:
-                    self._stats.timeout += 1
-                    self._stats.queued = self._queue.qsize()
-
-                logger.warning("request_timeout: request_id=%s, timeout=%ss", request_id, timeout)
-                raise
-
-            # Use match/case for cleaner error handling (Python 3.13+)
-            try:
-                _queued_id, queued_time = await asyncio.wait_for(self._queue.get(), timeout=1.0)
-                wait_time_ms = (time.perf_counter() - queued_time) * 1000
-
-                async with self._stats_lock:
-                    total_completed = self._stats.completed + self._stats.failed
-                    self._stats.total_wait_time_ms += wait_time_ms
-                    self._stats.max_wait_time_ms = max(self._stats.max_wait_time_ms, wait_time_ms)
-                    self._stats.queued = self._queue.qsize()
-                    self._stats.in_progress = len(self._active_requests) + 1
-                    # Calculate average wait time using match/case for clarity
-                    match total_completed:
-                        case count if count > 0:
-                            self._stats.avg_wait_time_ms = self._stats.total_wait_time_ms / count
-                        case 0:
-                            # First request - average equals current wait time
-                            self._stats.avg_wait_time_ms = wait_time_ms
-
-                self._active_requests.add(request_id)
-
-                logger.info(
-                    "request_processing: request_id=%s, wait_time_ms=%.2f, in_progress=%d",
-                    request_id,
-                    wait_time_ms,
-                    len(self._active_requests),
-                )
-
-            except TimeoutError:
-                logger.exception("timeout_getting_from_queue: request_id=%s", request_id)
-                async with self._stats_lock:
-                    self._stats.queued = self._queue.qsize()
-                    self._stats.in_progress = len(self._active_requests) + 1
-                self._active_requests.add(request_id)
-
             yield
 
-            async with self._stats_lock:
-                self._stats.completed += 1
-                self._stats.in_progress = len(self._active_requests) - 1
-
-            logger.debug("request_completed: request_id=%s", request_id)
+            await self._register_completion()
+            logger.debug("request_completed id=%s", request_id)
 
         except Exception as exc:
-            async with self._stats_lock:
-                if request_id in self._active_requests:
-                    self._stats.failed += 1
-                    self._stats.in_progress = len(self._active_requests) - 1
-
-            # Log differently for exception groups vs regular exceptions
+            await self._register_failure(request_id)
             if isinstance(exc, ExceptionGroup):
                 logger.exception(
-                    "request_failed_exception_group: request_id=%s, exceptions=%s",
+                    "request_failed_exception_group id=%s exceptions=%s",
                     request_id,
                     [str(e) for e in exc.exceptions],
                 )
             else:
-                logger.exception("request_failed: request_id=%s", request_id)
+                logger.exception("request_failed id=%s", request_id)
             raise
 
         finally:
             self._active_requests.discard(request_id)
-
             if acquired:
                 self._semaphore.release()
-
-            async with self._stats_lock:
-                self._stats.in_progress = len(self._active_requests)
-                self._stats.queued = self._queue.qsize()
+            await self._refresh_usage_counters()
 
     async def get_stats(self) -> QueueStats:
-        """Get current queue statistics.
+        """Return a snapshot of queue metrics."""
 
-        Returns a snapshot of queue metrics. The returned object is a copy,
-        so modifications won't affect internal state.
-
-        Returns:
-            QueueStats object with current metrics. All counters reflect
-            state since queue initialization.
-
-        Side effects:
-            Acquires asyncio.Lock briefly to read statistics atomically.
-        """
         async with self._stats_lock:
             return QueueStats(
                 queued=self._stats.queued,
@@ -307,19 +142,58 @@ class RequestQueue:
             )
 
     def get_config(self) -> dict[str, Any]:
-        """Get queue configuration.
+        """Return queue configuration for diagnostics endpoints."""
 
-        Returns:
-            Dictionary with keys:
-                - max_concurrent: int
-                - max_queue_size: int
-                - default_timeout: float
-        """
         return {
             "max_concurrent": self.max_concurrent,
             "max_queue_size": self.max_queue_size,
             "default_timeout": self.default_timeout,
         }
+
+    async def _drain_queue_entry(self, request_id: str) -> float:
+        try:
+            async with asyncio.timeout(1):
+                _, enqueued = await self._queue.get()
+        except TimeoutError:  # pragma: no cover - defensive
+            logger.warning("queue_get_timeout id=%s", request_id)
+            enqueued = time.perf_counter()
+        return (time.perf_counter() - enqueued) * 1000
+
+    async def _register_wait(self, wait_time_ms: float) -> None:
+        async with self._stats_lock:
+            completed_or_failed = self._stats.completed + self._stats.failed or 1
+            self._stats.total_wait_time_ms += wait_time_ms
+            self._stats.max_wait_time_ms = max(self._stats.max_wait_time_ms, wait_time_ms)
+            self._stats.avg_wait_time_ms = self._stats.total_wait_time_ms / completed_or_failed
+            self._stats.in_progress = len(self._active_requests)
+            self._stats.queued = self._queue.qsize()
+
+    async def _register_completion(self) -> None:
+        async with self._stats_lock:
+            self._stats.completed += 1
+
+    async def _register_failure(self, request_id: str) -> None:
+        async with self._stats_lock:
+            if request_id in self._active_requests:
+                self._stats.failed += 1
+
+    async def _register_rejection(self) -> None:
+        async with self._stats_lock:
+            self._stats.rejected += 1
+
+    async def _register_timeout(self) -> None:
+        async with self._stats_lock:
+            self._stats.timeout += 1
+            self._stats.queued = self._queue.qsize()
+
+    async def _refresh_queue_size(self) -> None:
+        async with self._stats_lock:
+            self._stats.queued = self._queue.qsize()
+
+    async def _refresh_usage_counters(self) -> None:
+        async with self._stats_lock:
+            self._stats.in_progress = len(self._active_requests)
+            self._stats.queued = self._queue.qsize()
 
 
 __all__ = ["QueueStats", "RequestQueue"]

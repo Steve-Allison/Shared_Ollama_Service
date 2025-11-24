@@ -755,6 +755,181 @@ class TestChatEndpoint:
         assert forwarded_format == schema
 
 
+class TestLiteLLMCompatibility:
+    """Tests for LiteLLM compatibility features."""
+
+    def test_guided_json_converts_to_response_format(self, api_client, mock_async_client):
+        """Ensure LiteLLM guided_json parameter is converted to response_format."""
+        schema = {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string"},
+                "age": {"type": "number"}
+            },
+            "required": ["name", "age"]
+        }
+        mock_response = {
+            "message": {"role": "assistant", "content": '{"name": "Alice", "age": 30}'},
+            "model": "qwen3:14b-q4_K_M",
+            "prompt_eval_count": 1,
+            "eval_count": 1,
+            "total_duration": 100_000_000,
+            "load_duration": 0,
+        }
+        mock_async_client.chat = AsyncMock(return_value=mock_response)
+
+        # LiteLLM sends guided_json (direct JSON schema)
+        response = api_client.post(
+            "/api/v1/chat/completions",
+            json={
+                "messages": [{"role": "user", "content": "Extract structured data"}],
+                "guided_json": schema,
+            },
+        )
+        assert response.status_code == 200
+        data = response.json()
+        # OpenAI-compatible response has "choices" array
+        assert "choices" in data
+        assert len(data["choices"]) > 0
+        assert data["choices"][0]["message"]["content"] == '{"name": "Alice", "age": 30}'
+        
+        # Verify guided_json was converted to response_format internally
+        forwarded_format = mock_async_client.chat.await_args.kwargs["format"]
+        assert forwarded_format == schema
+
+    def test_guided_json_ignored_when_response_format_present(self, api_client, mock_async_client):
+        """Ensure response_format takes precedence over guided_json."""
+        guided_schema = {"type": "object", "properties": {"x": {"type": "string"}}}
+        response_schema = {"type": "object", "properties": {"y": {"type": "string"}}}
+        
+        mock_response = {
+            "message": {"role": "assistant", "content": '{"y": "value"}'},
+            "model": "qwen3:14b-q4_K_M",
+            "prompt_eval_count": 1,
+            "eval_count": 1,
+            "total_duration": 100_000_000,
+            "load_duration": 0,
+        }
+        mock_async_client.chat = AsyncMock(return_value=mock_response)
+
+        response = api_client.post(
+            "/api/v1/chat/completions",
+            json={
+                "messages": [{"role": "user", "content": "Extract data"}],
+                "guided_json": guided_schema,
+                "response_format": {
+                    "type": "json_schema",
+                    "json_schema": response_schema
+                },
+            },
+        )
+        assert response.status_code == 200
+        
+        # response_format should take precedence
+        forwarded_format = mock_async_client.chat.await_args.kwargs["format"]
+        assert forwarded_format == response_schema
+
+    def test_extra_body_parameter_accepted(self, api_client, mock_async_client):
+        """Ensure LiteLLM extra_body parameter is accepted."""
+        mock_response = {
+            "message": {"role": "assistant", "content": "Hello!"},
+            "model": "qwen3:14b-q4_K_M",
+            "prompt_eval_count": 1,
+            "eval_count": 1,
+            "total_duration": 100_000_000,
+            "load_duration": 0,
+        }
+        mock_async_client.chat = AsyncMock(return_value=mock_response)
+
+        response = api_client.post(
+            "/api/v1/chat/completions",
+            json={
+                "messages": [{"role": "user", "content": "Hello"}],
+                "extra_body": {
+                    "custom_option": "value",
+                    "provider_specific": True
+                }
+            },
+        )
+        # Should not return 422 (validation error)
+        assert response.status_code == 200
+        data = response.json()
+        # OpenAI-compatible response has "choices" array
+        assert "choices" in data
+        assert len(data["choices"]) > 0
+        assert data["choices"][0]["message"]["content"] == "Hello!"
+
+    def test_metadata_parameter_accepted(self, api_client, mock_async_client):
+        """Ensure LiteLLM metadata parameter is accepted."""
+        mock_response = {
+            "message": {"role": "assistant", "content": "Hello!"},
+            "model": "qwen3:14b-q4_K_M",
+            "prompt_eval_count": 1,
+            "eval_count": 1,
+            "total_duration": 100_000_000,
+            "load_duration": 0,
+        }
+        mock_async_client.chat = AsyncMock(return_value=mock_response)
+
+        response = api_client.post(
+            "/api/v1/chat/completions",
+            json={
+                "messages": [{"role": "user", "content": "Hello"}],
+                "metadata": {
+                    "user_id": "user123",
+                    "project": "my_project",
+                    "session_id": "session456"
+                }
+            },
+        )
+        # Should not return 422 (validation error)
+        assert response.status_code == 200
+        data = response.json()
+        # OpenAI-compatible response has "choices" array
+        assert "choices" in data
+        assert len(data["choices"]) > 0
+        assert data["choices"][0]["message"]["content"] == "Hello!"
+
+    def test_litellm_full_request_with_all_parameters(self, api_client, mock_async_client):
+        """Test full LiteLLM request with all supported parameters."""
+        schema = {
+            "type": "object",
+            "properties": {"result": {"type": "string"}},
+            "required": ["result"]
+        }
+        mock_response = {
+            "message": {"role": "assistant", "content": '{"result": "success"}'},
+            "model": "qwen3:14b-q4_K_M",
+            "prompt_eval_count": 1,
+            "eval_count": 1,
+            "total_duration": 100_000_000,
+            "load_duration": 0,
+        }
+        mock_async_client.chat = AsyncMock(return_value=mock_response)
+
+        response = api_client.post(
+            "/api/v1/chat/completions",
+            json={
+                "messages": [{"role": "user", "content": "Process this"}],
+                "guided_json": schema,
+                "extra_body": {"custom": "option"},
+                "metadata": {"project": "test"},
+                "temperature": 0.7,
+                "max_tokens": 100,
+            },
+        )
+        assert response.status_code == 200
+        data = response.json()
+        # OpenAI-compatible response has "choices" array
+        assert "choices" in data
+        assert len(data["choices"]) > 0
+        assert data["choices"][0]["message"]["content"] == '{"result": "success"}'
+        
+        # Verify guided_json was converted
+        forwarded_format = mock_async_client.chat.await_args.kwargs["format"]
+        assert forwarded_format == schema
+
+
 class TestVLMOpenAIEndpoint:
     """Behavioral tests for the OpenAI-compatible VLM endpoint."""
 

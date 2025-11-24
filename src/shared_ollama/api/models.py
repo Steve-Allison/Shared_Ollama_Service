@@ -39,7 +39,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator, model_validator
 
 from shared_ollama.core.utils import get_default_text_model, get_default_vlm_model
 
@@ -930,6 +930,30 @@ class ChatRequestOpenAI(BaseModel):
     tools: list[Tool] | None = Field(
         None, description="Tools/functions the model can call (POML compatible)"
     )
+    guided_json: dict[str, Any] | None = Field(
+        None,
+        description=(
+            "LiteLLM-compatible guided_json parameter. "
+            "JSON schema dict for structured output. "
+            "Automatically converted to response_format if response_format is not provided."
+        ),
+    )
+    extra_body: dict[str, Any] | None = Field(
+        None,
+        description=(
+            "LiteLLM-compatible extra_body parameter. "
+            "Provider-specific options passed through to the backend. "
+            "Currently logged but not processed by the service."
+        ),
+    )
+    metadata: dict[str, Any] | None = Field(
+        None,
+        description=(
+            "LiteLLM-compatible metadata parameter. "
+            "Request metadata for tracking and observability. "
+            "Currently logged but not processed by the service."
+        ),
+    )
 
     @property
     def effective_max_tokens(self) -> int | None:
@@ -939,6 +963,18 @@ class ChatRequestOpenAI(BaseModel):
             if self.max_completion_tokens is not None
             else self.max_tokens
         )
+
+    @model_validator(mode="after")
+    def convert_guided_json_to_response_format(self) -> "ChatRequestOpenAI":
+        """Convert LiteLLM guided_json to response_format if needed."""
+        # Only convert if response_format is not already set and guided_json is provided
+        if self.guided_json is not None and self.response_format is None:
+            # Convert guided_json (direct JSON schema) to response_format
+            self.response_format = ResponseFormat(
+                type="json_schema",
+                json_schema=self.guided_json,
+            )
+        return self
 
     @field_validator("messages")
     @classmethod
@@ -1020,6 +1056,30 @@ class VLMRequestOpenAI(BaseModel):
     tools: list[Tool] | None = Field(
         None, description="Tools/functions the model can call (POML compatible)"
     )
+    guided_json: dict[str, Any] | None = Field(
+        None,
+        description=(
+            "LiteLLM-compatible guided_json parameter. "
+            "JSON schema dict for structured output. "
+            "Automatically converted to response_format if response_format is not provided."
+        ),
+    )
+    extra_body: dict[str, Any] | None = Field(
+        None,
+        description=(
+            "LiteLLM-compatible extra_body parameter. "
+            "Provider-specific options passed through to the backend. "
+            "Currently logged but not processed by the service."
+        ),
+    )
+    metadata: dict[str, Any] | None = Field(
+        None,
+        description=(
+            "LiteLLM-compatible metadata parameter. "
+            "Request metadata for tracking and observability. "
+            "Currently logged but not processed by the service."
+        ),
+    )
     image_compression: bool = Field(True, description="Enable image compression (recommended)")
     max_dimension: int = Field(
         2667, ge=256, le=2667, description="Maximum image dimension for resizing"
@@ -1036,6 +1096,18 @@ class VLMRequestOpenAI(BaseModel):
             if self.max_completion_tokens is not None
             else self.max_tokens
         )
+
+    @model_validator(mode="after")
+    def convert_guided_json_to_response_format(self) -> "VLMRequestOpenAI":
+        """Convert LiteLLM guided_json to response_format if needed."""
+        # Only convert if response_format is not already set and guided_json is provided
+        if self.guided_json is not None and self.response_format is None:
+            # Convert guided_json (direct JSON schema) to response_format
+            self.response_format = ResponseFormat(
+                type="json_schema",
+                json_schema=self.guided_json,
+            )
+        return self
 
     @field_validator("messages")
     @classmethod

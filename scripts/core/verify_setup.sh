@@ -29,10 +29,8 @@ echo ""
 # Get project root directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-DETECT_SCRIPT="$SCRIPT_DIR/detect_system.sh"
 MEMORY_SCRIPT="$SCRIPT_DIR/calculate_memory_limit.sh"
 source "$SCRIPT_DIR/lib/model_config.sh"
-load_model_config
 
 # Function to print status
 print_status() {
@@ -56,15 +54,14 @@ print_warning() {
 # ============================================================================
 # Step 0: Detect Hardware Profile
 # ============================================================================
-echo -e "${BLUE}[0/7]${NC} Loading hardware profile from config/model_profiles.yaml..."
-if [ -f "$SCRIPT_DIR/generate_optimal_config.sh" ]; then
-    if bash "$SCRIPT_DIR/generate_optimal_config.sh" > /dev/null 2>&1; then
-        print_status 0 "Hardware profile detected and defaults loaded"
-    else
-        print_status 1 "Failed to detect hardware profile (continuing with defaults)"
-    fi
+echo -e "${BLUE}[0/7]${NC} Loading model configuration from config/models.yaml..."
+if load_model_config 2>/dev/null; then
+    print_status 0 "Model configuration loaded successfully"
+    echo "  - Text model: $DEFAULT_TEXT_MODEL"
+    echo "  - VLM model: $DEFAULT_VLM_MODEL"
 else
-    print_warning "generate_optimal_config.sh not found - using baked-in defaults"
+    print_status 1 "Failed to load config/models.yaml"
+    exit 1
 fi
 
 echo ""

@@ -12,7 +12,7 @@
 ## Code References Removed
 
 ### 1. ✅ Watchdog PID file reference
-- **File**: `scripts/shutdown.sh`
+- **File**: `scripts/core/shutdown.sh`
 - **Change**: Removed `.watchdog.pid` cleanup
 - **Reason**: No longer needed (watchdog.sh deleted)
 
@@ -43,13 +43,13 @@
 - **Change**: Added `psutil` for process monitoring
 - **Benefit**: Better cross-platform process checking
 
-### 2. ✅ `scripts/start.sh`
+### 2. ✅ `scripts/core/start.sh`
 - **Change**: Replaced uvicorn with gunicorn
 - **Benefit**: Built-in worker management and auto-restart
 - **Change**: Removed watchdog script integration
 - **Benefit**: Simpler, more reliable
 
-### 3. ✅ `scripts/shutdown.sh`
+### 3. ✅ `scripts/core/shutdown.sh`
 - **Change**: Updated to handle gunicorn master and workers
 - **Change**: Removed watchdog PID cleanup
 - **Benefit**: Proper graceful shutdown of gunicorn processes

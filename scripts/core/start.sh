@@ -130,7 +130,7 @@ if curl -f -s "http://localhost:$API_PORT/api/v1/health" > /dev/null 2>&1; then
     else
         echo -e "${YELLOW}⚠ REST API is already running on port $API_PORT${NC}"
         echo "To restart, run: $0 --restart"
-        echo "Or stop it first: ./scripts/shutdown.sh"
+        echo "Or stop it first: ./scripts/core/shutdown.sh"
         exit 0
     fi
 fi
@@ -293,7 +293,7 @@ echo "$GUNICORN_PID" > "$PROJECT_ROOT/.api.pid"
 
 echo -e "${CYAN}Service is running with gunicorn.${NC}"
 echo -e "${CYAN}Gunicorn provides built-in process management and auto-restart.${NC}"
-echo -e "${CYAN}To stop the service, run: ./scripts/shutdown.sh${NC}"
+echo -e "${CYAN}To stop the service, run: ./scripts/core/shutdown.sh${NC}"
 echo -e "${CYAN}To view logs: tail -f $API_LOG${NC}"
 echo ""
 

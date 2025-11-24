@@ -30,7 +30,7 @@ pip install -e ".[dev]" -c constraints.txt
 
 ### Configuration
 
-- Model defaults are auto-selected from `config/model_profiles.yaml`
+- Model defaults are auto-selected from `config/models.yaml`
 - No `.env` file is required; overrides can be exported directly in your shell
 - See [CONFIGURATION.md](CONFIGURATION.md) for all available options
 
@@ -203,7 +203,7 @@ pytest
 
 ```bash
 # Start API server with auto-reload
-API_RELOAD=true ./scripts/start.sh
+API_RELOAD=true ./scripts/core/start.sh
 
 # Or use uvicorn directly
 uvicorn shared_ollama.api.server:app --reload --host 0.0.0.0 --port 8000
@@ -282,7 +282,7 @@ Follow conventional commits:
 - **Solution**: Ensure using `async_api_client` fixture for async endpoints
 
 **Issue**: Configuration not loading
-- **Solution**: Re-run `./scripts/generate_optimal_config.sh` to confirm the detected profile or export overrides in your shell
+- **Solution**: Review `config/models.yaml` to ensure the correct models are mapped for your machine, or export overrides in your shell
 
 **Issue**: Type checking errors
 - **Solution**: Some false positives may require `# type: ignore` comments

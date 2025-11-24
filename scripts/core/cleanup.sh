@@ -51,9 +51,9 @@ format_size() {
 }
 
 # ============================================================================
-# Step 1: Clean Log Files
+# Step 1: Clean Log & Runtime Files
 # ============================================================================
-echo -e "${BLUE}[1/5]${NC} Cleaning log files..."
+echo -e "${BLUE}[1/5]${NC} Cleaning log and runtime files..."
 
 LOG_DIR="$PROJECT_ROOT/logs"
 OLD_LOG_DIR="$HOME/.ollama"
@@ -94,6 +94,8 @@ fi
 JSONL_FILES=(
     "$LOG_DIR/requests.jsonl"
     "$LOG_DIR/performance.jsonl"
+    "$LOG_DIR/runtime.jsonl"
+    "$LOG_DIR/metrics.jsonl"
 )
 
 JSONL_SIZE=0
@@ -375,10 +377,35 @@ else
 fi
 
 # ============================================================================
-# Step 5: Clean Coverage/Test Artifacts
+# Step 5: Clean PID/Socket/Test Artifacts
 # ============================================================================
 echo ""
-echo -e "${BLUE}[5/5]${NC} Cleaning test artifacts..."
+echo -e "${BLUE}[5/5]${NC} Cleaning runtime/test artifacts..."
+
+# Runtime artifacts (PID files, sockets)
+RUNTIME_FILES=(
+    "$PROJECT_ROOT/.api.pid"
+    "$PROJECT_ROOT/gunicorn.pid"
+    "$PROJECT_ROOT/gunicorn.sock"
+    "$PROJECT_ROOT/uvicorn.sock"
+    "$PROJECT_ROOT/run/gunicorn.sock"
+    "$PROJECT_ROOT/run/uvicorn.sock"
+)
+
+for runtime_file in "${RUNTIME_FILES[@]}"; do
+    if [ -e "$runtime_file" ]; then
+        rm -f "$runtime_file" 2>/dev/null || true
+        print_info "Removed runtime artifact: $runtime_file"
+    fi
+done
+
+if [ -d "$PROJECT_ROOT/run" ]; then
+    RUN_CONTENTS=$(find "$PROJECT_ROOT/run" -mindepth 1 2>/dev/null | wc -l | tr -d ' ' || echo "0")
+    if [ "$RUN_CONTENTS" -eq 0 ]; then
+        rm -rf "$PROJECT_ROOT/run" 2>/dev/null || true
+        print_info "Removed empty run/ directory"
+    fi
+fi
 
 TEST_CLEANED=0
 TEST_SIZE=0

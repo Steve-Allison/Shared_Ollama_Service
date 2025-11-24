@@ -32,8 +32,8 @@ Welcome to the Shared Ollama Service documentation. This directory contains comp
 ## 🚀 Quick Start
 
 1. **Install**: See main [README.md](../README.md)
-2. **Configure**: Run `./scripts/generate_optimal_config.sh` (auto-detects hardware profile)
-3. **Start**: Run `./scripts/start.sh`
+2. **Configure**: Edit `config/models.yaml` if you need to change which models load for each hardware tier
+3. **Start**: Run `./scripts/core/start.sh`
 4. **Integrate**: See [Integration Guide](INTEGRATION_GUIDE.md)
 
 ## 📖 Documentation Structure

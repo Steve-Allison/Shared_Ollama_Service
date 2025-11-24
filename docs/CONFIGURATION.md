@@ -7,17 +7,14 @@ This document describes the comprehensive configuration system for the Shared Ol
 The Shared Ollama Service uses a centralized configuration system built on `pydantic-settings` that:
 
 - Loads configuration from environment variables and detected hardware profiles
-- Auto-selects sensible defaults from `config/model_profiles.yaml`
+- Auto-selects sensible defaults from `config/models.yaml`
 - Provides type-safe configuration access
 - Validates all configuration values
 - Offers sensible defaults for all settings
 
 ## Quick Start
 
-1. Run the detection script to view your hardware profile and recommended settings:
-   ```bash
-   ./scripts/generate_optimal_config.sh
-   ```
+1. Review `config/models.yaml` to confirm the model mappings for your hardware tier
 2. Export any overrides directly in your shell (all variables are optional)
 3. Start the service - configuration is automatically applied
 
@@ -237,7 +234,7 @@ Invalid values will raise `ValidationError` at startup.
 Configuration is loaded in this order (later overrides earlier):
 
 1. Default values (in code)
-2. Auto-selected hardware profile (`config/model_profiles.yaml`)
+2. Auto-selected hardware profile (`config/models.yaml`)
 3. Environment variables (system/process)
 
 ## Examples
@@ -282,7 +279,7 @@ export BATCH_CHAT_MAX_REQUESTS=100
 
 ## Best Practices
 
-1. **Rely on auto-detected profiles**: Let `config/model_profiles.yaml` handle defaults whenever possible
+1. **Rely on auto-detected profiles**: Let `config/models.yaml` handle defaults whenever possible
 
 2. **Use environment variables for overrides**: Export variables in your shell or deployment system (Docker, Kubernetes, etc.)
 
@@ -298,7 +295,7 @@ export BATCH_CHAT_MAX_REQUESTS=100
 
 ### Configuration Not Loading
 
-- Re-run `./scripts/generate_optimal_config.sh` to confirm the detected profile
+- Review `config/models.yaml` to confirm the active profile for your hardware
 - Verify environment variable names match exactly (case-insensitive but prefix matters)
 - Check for typos in variable names
 

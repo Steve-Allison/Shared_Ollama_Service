@@ -107,7 +107,7 @@ def example_error_handling():
     is_healthy, error = check_service_health()
     if not is_healthy:
         print(f"Service is not available: {error}")
-        print("Start the service with: ./scripts/start.sh")
+        print("Start the service with: ./scripts/core/start.sh")
         return
 
     try:

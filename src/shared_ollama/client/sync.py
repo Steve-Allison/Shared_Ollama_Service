@@ -262,7 +262,7 @@ class SharedOllamaClient:
                     msg = (
                         f"Cannot connect to Ollama at {self.config.base_url}. "
                         "Make sure the service is running.\n"
-                        "Start with: ./scripts/start.sh (REST API manages Ollama internally)"
+                        "Start with: ./scripts/core/start.sh (REST API manages Ollama internally)"
                     )
                     raise ConnectionError(msg) from exc
 

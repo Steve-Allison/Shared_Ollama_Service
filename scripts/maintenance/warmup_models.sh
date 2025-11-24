@@ -3,7 +3,7 @@
 # Warm-up script to preload models into memory
 # This reduces first-request latency by loading models before they're needed
 
-set -e
+set -euo pipefail
 
 # Colors for output
 RED='\033[0;31m'
@@ -39,13 +39,42 @@ fi
 echo -e "${GREEN}✓ Ollama service is running${NC}"
 echo ""
 
-# Warm up each model
+# Fall back to defaults if no warmup models were provided
+if [ ${#MODELS[@]} -eq 0 ]; then
+    echo -e "${RED}✗ No warm-up models configured. load_model_config must define WARMUP_MODELS.${NC}"
+    exit 1
+fi
+
+# Deduplicate models while preserving order
+declare -A SEEN_MODELS=()
+UNIQUE_MODELS=()
 for model in "${MODELS[@]}"; do
+    [[ -z "$model" ]] && continue
+    if [[ -z "${SEEN_MODELS[$model]:-}" ]]; then
+        SEEN_MODELS[$model]=1
+        UNIQUE_MODELS+=("$model")
+    fi
+done
+
+if [ ${#UNIQUE_MODELS[@]} -eq 0 ]; then
+    echo -e "${RED}✗ Warm-up model list is empty after validation. Check configuration.${NC}"
+    exit 1
+fi
+
+# Cache available models to avoid unnecessary errors
+AVAILABLE_MODELS=$(curl -s "${API_ENDPOINT}/tags" | jq -r '.models[].name' 2>/dev/null || true)
+
+warm_model() {
+    local model=$1
     echo -e "${BLUE}Warming up ${model}...${NC}"
-    
-    # Send a minimal request to load the model into memory
-    # Using keep_alive to keep it loaded for the specified duration
-    RESPONSE=$(curl -s -X POST "${API_ENDPOINT}/generate" \
+
+    if [ -n "$AVAILABLE_MODELS" ] && ! echo "$AVAILABLE_MODELS" | grep -qx "$model"; then
+        echo -e "${YELLOW}  ⚠ Model ${model} not available on this system. Skipping.${NC}"
+        echo ""
+        return
+    fi
+
+    if ! RESPONSE=$(curl -s -X POST "${API_ENDPOINT}/generate" \
         -H "Content-Type: application/json" \
         -d "{
             \"model\": \"${model}\",
@@ -55,17 +84,28 @@ for model in "${MODELS[@]}"; do
                 \"num_predict\": 1
             },
             \"keep_alive\": \"${KEEP_ALIVE}\"
-        }" 2>/dev/null)
-    
-    if echo "$RESPONSE" | grep -q "response"; then
+        }" 2>/dev/null); then
+        echo -e "${YELLOW}  ⚠ ${model} warm-up request failed${NC}"
+        echo "    Verify the model is installed: ollama list"
+        echo ""
+        return
+    fi
+
+    if echo "$RESPONSE" | grep -q "\"response\""; then
         echo -e "${GREEN}  ✓ ${model} warmed up and loaded into memory${NC}"
         echo -e "    Keep-alive: ${KEEP_ALIVE}"
     else
         echo -e "${YELLOW}  ⚠ ${model} warm-up may have failed${NC}"
-        echo "    Check if model is available: ollama list"
+        echo "    Response:"
+        echo "$RESPONSE" | sed 's/^/      /'
     fi
-    
+
     echo ""
+}
+
+# Warm up each model
+for model in "${UNIQUE_MODELS[@]}"; do
+    warm_model "$model"
 done
 
 echo "======================================"

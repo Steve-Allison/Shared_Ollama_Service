@@ -13,7 +13,7 @@ This guide shows you how to integrate the Shared Ollama Service into your projec
 
 Or check status:
 ```bash
-./scripts/status.sh
+./scripts/core/status.sh
 ```
 
 ### Step 2: Add Service URL to Your Project
@@ -294,10 +294,10 @@ See `examples/quick_start.py` for complete working examples.
 
 ```bash
 # Check if service is running
-./scripts/status.sh
+./scripts/core/status.sh
 
 # Start service
-./scripts/start.sh  # REST API manages Ollama internally
+./scripts/core/start.sh  # REST API manages Ollama internally
 ```
 
 ### Import Errors
@@ -312,10 +312,10 @@ client = SharedOllamaClient()
 
 ### Connection Refused
 
-1. Check service is running: `./scripts/status.sh`
+1. Check service is running: `./scripts/core/status.sh`
 2. Verify URL is correct: `echo $OLLAMA_BASE_URL`
 3. Check firewall/network settings
-4. Restart service: `./scripts/shutdown.sh && ./scripts/start.sh`
+4. Restart service: `./scripts/core/shutdown.sh && ./scripts/core/start.sh`
 
 ## Next Steps
 

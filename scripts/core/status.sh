@@ -38,7 +38,7 @@ else
     echo -e "${RED}✗ Service is not running${NC}"
     echo ""
     echo "To start the service:"
-    echo "  - ./scripts/start.sh (REST API manages Ollama)"
+    echo "  - ./scripts/core/start.sh (REST API manages Ollama)"
     echo "  - brew services start ollama (if using Homebrew)"
     echo "  - ollama serve (manual start)"
     exit 1

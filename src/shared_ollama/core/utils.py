@@ -32,12 +32,10 @@ from __future__ import annotations
 
 import functools
 import importlib
-import math
-import os
 import platform
 from itertools import takewhile
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 if TYPE_CHECKING:
     from shared_ollama.client.sync import SharedOllamaClient
@@ -159,7 +157,7 @@ def ensure_service_running(
         case (False, True):
             msg = (
                 f"Ollama service is not available. {error}\n"
-                "Start the service with: ./scripts/start.sh\n"
+                "Start the service with: ./scripts/core/start.sh\n"
                 "Or manually: ollama serve"
             )
             raise ConnectionError(msg)
@@ -234,83 +232,80 @@ def _detect_system_info() -> tuple[str, int]:
     return arch, total_ram_gb
 
 
+def _coerce_int(value: Any, default: int) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
 @functools.cache
-def _load_model_profile_defaults() -> dict[str, str | int | list[str]]:
-    """Load model defaults from config/model_profiles.yaml based on system hardware.
+def _load_model_profile_defaults() -> dict[str, Any]:
+    """Load model defaults from config/models.yaml based on system RAM."""
+    project_root = get_project_root()
+    config_path = project_root / "config" / "models.yaml"
 
-    Selects the appropriate profile based on architecture and RAM, matching the
-    logic in scripts/lib/model_config.sh. Falls back to safe defaults if profile
-    loading fails.
+    if not config_path.exists():
+        raise RuntimeError(f"Model configuration file not found: {config_path}")
+    if yaml is None:
+        raise RuntimeError("PyYAML is required to read config/models.yaml")
 
-    Returns:
-        Dictionary with model defaults:
-            - vlm_model: Default VLM model name
-            - text_model: Default text model name
-            - required_models: List of required model names
-            - warmup_models: List of warmup model names
-    """
-    # First check environment variables (highest priority)
-    env_vlm = os.getenv("OLLAMA_DEFAULT_VLM_MODEL")
-    env_text = os.getenv("OLLAMA_DEFAULT_TEXT_MODEL")
+    with config_path.open("r", encoding="utf-8") as fh:
+        data = yaml.safe_load(fh) or {}
 
-    if env_vlm and env_text:
-        return {
-            "vlm_model": env_vlm,
-            "text_model": env_text,
-            "required_models": [env_vlm, env_text],
-            "warmup_models": [env_vlm, env_text],
-        }
+    profiles = data.get("profiles") or []
+    if not isinstance(profiles, list) or not profiles:
+        raise RuntimeError("config/models.yaml must define at least one profile")
 
-    # Try to load from profile file
-    defaults: dict[str, str | int | list[str]] = {}
-    if yaml:
-        try:
-            project_root = get_project_root()
-            profile_path = project_root / "config" / "model_profiles.yaml"
-            if profile_path.exists():
-                with profile_path.open(encoding="utf-8") as fh:
-                    data = yaml.safe_load(fh) or {}
-                profiles = data.get("profiles") or {}
-                arch, ram = _detect_system_info()
+    _, ram = _detect_system_info()
+    ram = ram or 32
 
-                # Select matching profile
-                selected = profiles.get("default", {}) if isinstance(profiles, dict) else {}
-                for profile in profiles.values():
-                    if not isinstance(profile, dict):
-                        continue
-                    match = profile.get("match") or {}
-                    min_ram = match.get("min_ram_gb", 0)
-                    max_ram = match.get("max_ram_gb", math.inf)
-                    match_arch = match.get("arch")
-                    if (
-                        ram >= min_ram
-                        and ram <= max_ram
-                        and (match_arch is None or match_arch == arch)
-                    ):
-                        selected = profile
-                        break
+    def matches(profile: dict[str, object]) -> bool:
+        min_ram = int(profile.get("min_ram_gb", 0) or 0)
+        max_ram = profile.get("max_ram_gb")
+        if max_ram is None:
+            return ram >= min_ram
+        return ram >= min_ram and ram <= int(max_ram)
 
-                profile_defaults = selected.get("defaults") or {}
-                if profile_defaults:
-                    defaults = {
-                        "vlm_model": profile_defaults.get("vlm_model", ""),
-                        "text_model": profile_defaults.get("text_model", ""),
-                        "required_models": profile_defaults.get("required_models", []),
-                        "warmup_models": profile_defaults.get("warmup_models", []),
-                    }
-        except Exception:
-            pass  # Fall through to safe defaults
+    selected: dict[str, object] | None = None
+    for profile in profiles:
+        if isinstance(profile, dict) and matches(profile):
+            selected = profile
+            break
 
-    # Fallback to safe defaults (mac_32gb profile - works on more systems)
-    if not defaults.get("vlm_model") or not defaults.get("text_model"):
-        defaults = {
-            "vlm_model": "qwen3-vl:8b-instruct-q4_K_M",
-            "text_model": "qwen3:14b-q4_K_M",
-            "required_models": ["qwen3-vl:8b-instruct-q4_K_M", "qwen3:14b-q4_K_M"],
-            "warmup_models": ["qwen3-vl:8b-instruct-q4_K_M", "qwen3:14b-q4_K_M"],
-        }
+    if selected is None:
+        selected = profiles[-1]  # Fall back to last profile defined
 
-    return defaults
+    defaults_section = data.get("defaults") or {}
+
+    def normalize_list(value: object) -> list[str]:
+        if isinstance(value, list):
+            return [str(item) for item in value if item]
+        if value:
+            return [str(value)]
+        return []
+
+    result: dict[str, Any] = {
+        "vlm_model": str(selected.get("vlm_model") or ""),
+        "text_model": str(selected.get("text_model") or ""),
+        "required_models": normalize_list(selected.get("required_models")),
+        "warmup_models": normalize_list(selected.get("warmup_models")),
+        "memory_hints": selected.get("memory_hints") or {},
+        "largest_model_gb": _coerce_int(selected.get("largest_model_gb"), 8),
+        "inference_buffer_gb": _coerce_int(
+            selected.get("inference_buffer_gb", defaults_section.get("inference_buffer_gb", 4)),
+            4,
+        ),
+        "service_overhead_gb": _coerce_int(
+            selected.get("service_overhead_gb", defaults_section.get("service_overhead_gb", 2)),
+            2,
+        ),
+    }
+
+    if not result["vlm_model"] or not result["text_model"]:
+        raise RuntimeError("Invalid model profile configuration: missing model names")
+
+    return result
 
 
 @functools.cache

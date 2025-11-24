@@ -24,7 +24,7 @@ pip install poml
 pip install requests
 
 # Ensure Shared Ollama Service is running
-./scripts/start.sh
+./scripts/core/start.sh
 ```
 
 ## Running the Examples
@@ -161,8 +161,8 @@ print(analysis)
 ### "Connection refused"
 Make sure the Shared Ollama Service is running:
 ```bash
-./scripts/start.sh
-./scripts/status.sh
+./scripts/core/start.sh
+./scripts/core/status.sh
 ```
 
 ### "Tool not found" errors

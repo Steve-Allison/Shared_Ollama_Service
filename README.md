@@ -32,7 +32,7 @@ Get up and running with the Shared Ollama Service in 5 minutes:
 
 ```bash
 # Start REST API (automatically manages Ollama)
-./scripts/start.sh
+./scripts/core/start.sh
 ```
 
 The service will:
@@ -130,8 +130,8 @@ http://0.0.0.0:8000/api/docs
   - **128K context window**: Handles long chat histories and RAG prompts
   - **High-quality responses**: 14B dense backbone with 36T-token training run
   - **Fits comfortably**: ~8 GB RAM when loaded—ideal default text model for this hardware
-- **High-memory profile (≥ 64 GB)**: `qwen3-vl:32b` (VLM) + `qwen3:30b` (text)
-  - Automatically selected when `generate_optimal_config.sh` detects ≥ 64 GB RAM
+- **High-memory profile (≥ 33 GB)**: `qwen3-vl:32b` (VLM) + `qwen3:30b` (text)
+  - Automatically selected when `config/models.yaml` resolves to the high-memory profile
   - Full-precision multimodal reasoning with 128K+ context and hybrid thinking
   - Ideal for workstation/desktop servers running agentic or heavy RAG workloads
 
@@ -733,7 +733,7 @@ This guide provides `curl` examples for quickly interacting with the Shared Olla
 Before you begin, ensure the API service is running:
 
 ```bash
-./scripts/start.sh
+./scripts/core/start.sh
 ```
 
 ### 1. Text-Only Chat
@@ -1355,7 +1355,7 @@ All modules are shipped as a package (installable via `pip install -e .`) with t
 ./scripts/install_native.sh
 
 # Start the REST API (automatically manages Ollama internally)
-./scripts/start.sh
+./scripts/core/start.sh
 ```
 
 **MPS/Metal Optimizations Enabled:**
@@ -1435,9 +1435,9 @@ pip install -e ".[dev]" -c constraints.txt
 **REST API:**
 
 ```bash
-./scripts/start.sh              # Start REST API server (port 8000)
+./scripts/core/start.sh              # Start REST API server (port 8000)
                                  # Automatically runs verify_setup.sh to check/generate optimal config
-./scripts/start.sh --skip-verify # Skip verification (faster startup)
+./scripts/core/start.sh --skip-verify # Skip verification (faster startup)
 curl http://0.0.0.0:8000/api/v1/health  # Health check
 
 # Core Endpoints
@@ -1503,7 +1503,7 @@ make fix         # Auto-fix issues
 
 ```bash
 # Quick status check (recommended)
-./scripts/status.sh
+./scripts/core/status.sh
 
 # Comprehensive health check
 ./scripts/health_check.sh
@@ -1561,7 +1561,7 @@ The REST API provides centralized logging, metrics, and rate limiting for all pr
 
 ```bash
 # Start the API server (runs on port 8000 by default)
-./scripts/start.sh
+./scripts/core/start.sh
 ```
 
 **Key Features:**
@@ -2071,23 +2071,12 @@ export API_BASE_URL="http://0.0.0.0:8000"
 export OLLAMA_BASE_URL="http://localhost:11434"
 ```
 
-**For Service Configuration** (auto-detected from `config/model_profiles.yaml`):
+**For Service Configuration**:
 
-**Automatic Configuration Generation** (Recommended):
-
-```bash
-# Inspect detected hardware profile and recommended settings
-./scripts/generate_optimal_config.sh
-
-# This script:
-# - Detects CPU, GPU, RAM, chip type
-# - Calculates optimal OLLAMA_MAX_RAM based on model requirements
-# - Reserves memory for RAG systems (default: 8GB)
-# - Configures GPU acceleration (Metal for Apple Silicon)
-# - Sets optimal parallel model count
-# - Configures network access (default: localhost for security)
-# - Prints the selected model profile (no .env file required)
-```
+All model selection and hardware defaults are driven by `config/models.yaml`.
+Edit that file if you want to change which models load on a given RAM tier.
+The service automatically detects the current machine’s RAM and selects the
+matching profile—no `.env` file or extra scripts required.
 
 **Override Configuration** (optional):
 
@@ -2096,7 +2085,7 @@ export OLLAMA_BASE_URL="http://localhost:11434"
 export OLLAMA_HOST=localhost        # localhost = local only, 0.0.0.0 = network accessible
 export API_HOST=0.0.0.0            # REST API host (can be network accessible)
 
-# Memory Configuration (auto-calculated by generate_optimal_config.sh)
+# Memory Configuration (use ./scripts/calculate_memory_limit.sh for recommendations)
 export OLLAMA_MAX_RAM=44GB         # Based on model requirements + RAG reserves
 export OLLAMA_NUM_PARALLEL=3       # Number of parallel models (max 3)
 
@@ -2143,7 +2132,7 @@ The `OLLAMA_KEEP_ALIVE` setting determines how long models remain in memory afte
 
 ```bash
 export OLLAMA_KEEP_ALIVE=15m
-./scripts/shutdown.sh && ./scripts/start.sh
+./scripts/core/shutdown.sh && ./scripts/core/start.sh
 ```
 
 ### Port Configuration
@@ -2221,7 +2210,7 @@ ollama pull qwen3:14b-q4_K_M
 
 ```bash
 # Start REST API (automatically manages Ollama internally)
-./scripts/start.sh
+./scripts/core/start.sh
 
 # The REST API will:
 # - Auto-detect system hardware + model profile
@@ -2234,14 +2223,14 @@ ollama pull qwen3:14b-q4_K_M
 
 ```bash
 # Stop REST API and Ollama
-./scripts/shutdown.sh
+./scripts/core/shutdown.sh
 ```
 
 **Check Status:**
 
 ```bash
 # Quick status check
-./scripts/status.sh
+./scripts/core/status.sh
 
 # Health check (REST API)
 curl http://0.0.0.0:8000/api/v1/health
@@ -2305,7 +2294,7 @@ system_profiler SPDisplaysDataType | grep -i metal
 which ollama
 
 # Start REST API
-./scripts/start.sh
+./scripts/core/start.sh
 
 # Check if REST API is running
 curl http://0.0.0.0:8000/api/v1/health
@@ -2356,10 +2345,10 @@ lsof -i :8000  # macOS/Linux
 netstat -an | grep 8000  # Alternative
 
 # If not running, start it
-./scripts/start.sh
+./scripts/core/start.sh
 
 # If running but not responding, restart
-./scripts/shutdown.sh && ./scripts/start.sh
+./scripts/core/shutdown.sh && ./scripts/core/start.sh
 ```
 
 #### 2. Remote Connection Issues
@@ -2472,7 +2461,7 @@ echo $API_HOST
 
 # If incorrect, set it before starting
 export API_HOST=0.0.0.0
-./scripts/start.sh
+./scripts/core/start.sh
 ```
 
 **Issue**: "No route to host"
@@ -2519,8 +2508,8 @@ Run through this checklist systematically:
 If issues persist:
 
 1. **Check logs**: `tail -f logs/api.log logs/api.error.log`
-2. **Run diagnostics**: `./scripts/status.sh`
-3. **Verify configuration**: `./scripts/generate_optimal_config.sh`
+2. **Run diagnostics**: `./scripts/core/status.sh`
+3. **Verify configuration**: Inspect `config/models.yaml` (ensure the correct models are listed for your hardware tier)
 4. **Test with verbose curl**:
 
    ```bash
@@ -2544,7 +2533,7 @@ The Ollama service is **not exposed to the internet** by default. Only localhost
 **To Enable Network Access:**
 
 - Export `OLLAMA_HOST=0.0.0.0` before launching the service to allow connections from other machines on the same network
-- Run `./scripts/generate_optimal_config.sh` to confirm the active configuration
+- Review `config/models.yaml` to confirm the active configuration
 - **Security Note**: Only enable network access on trusted networks. Consider firewall rules for untrusted networks.
 
 ### Model Access Control
@@ -2557,7 +2546,7 @@ Models are stored locally: `~/.ollama/models`
 
 ```bash
 # Fast status overview (recommended)
-./scripts/status.sh
+./scripts/core/status.sh
 ```
 
 Shows:
@@ -2614,7 +2603,7 @@ python scripts/performance_report.py --window 60
 
 **Quick Monitoring**:
 
-- **Quick status**: `./scripts/status.sh` (fast overview)
+- **Quick status**: `./scripts/core/status.sh` (fast overview)
 - **Health checks**: `./scripts/health_check.sh` (comprehensive)
 - **Model status**: `curl http://0.0.0.0:8000/api/v1/models`
 - **Resource usage**: `top -pid $(pgrep ollama)` or Activity Monitor
@@ -2757,7 +2746,7 @@ The service uses **model-based memory calculation** (not percentage-based) to en
   - System overhead: 8GB
   - RAG systems: 8GB (configurable via `RAG_RESERVE_GB` environment variable)
   - Safety buffer: 4GB
-- **Automatic Configuration**: Run `./scripts/generate_optimal_config.sh` to auto-detect hardware and print the optimal settings (applied dynamically, no `.env` file)
+- **Automatic Configuration**: The service auto-detects RAM on startup and selects the matching profile defined in `config/models.yaml` (no `.env` file required)
 - **Customization**: Adjust RAG reserve if needed:
 
   ```bash
@@ -2819,7 +2808,7 @@ KEEP_ALIVE=60m ./scripts/warmup_models.sh
 
 ```bash
 # Start REST API
-./scripts/start.sh
+./scripts/core/start.sh
 
 # In another terminal, warm up models (optional)
 ./scripts/warmup_models.sh

@@ -349,7 +349,7 @@ Infrastructure (Adapters implement Application Interfaces)
 
 - **Centralized**: Single source of truth for all configuration
 - **Type-Safe**: Pydantic models with validation
-- **Profile-Driven**: Auto-selects defaults from `config/model_profiles.yaml` with optional environment overrides
+- **Profile-Driven**: Auto-selects defaults from `config/models.yaml` with optional environment overrides
 - **Validated**: All values validated at startup
 
 ### 4. Request Queuing
@@ -383,8 +383,8 @@ Infrastructure (Adapters implement Application Interfaces)
 
 ## Operational Checklist
 
-1. Start Ollama (`ollama serve` or `scripts/start.sh`)
-2. Verify health (`scripts/status.sh`, `scripts/verify_setup.sh`)
+1. Start Ollama (`ollama serve` or `scripts/core/start.sh`)
+2. Verify health (`scripts/core/status.sh`, `scripts/verify_setup.sh`)
 3. Run clients/tests with `.venv` activated (`pip install -e ".[dev]" -c constraints.txt` recommended)
 4. Monitor logs (`logs/ollama.log`, `ollama.error.log`) or forward to observability platform
 5. Use `scripts/performance_report.py` to baseline latency after model upgrades

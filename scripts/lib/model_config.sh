@@ -1,112 +1,118 @@
 #!/bin/bash
 
-# Shared helper for loading model configuration from config/model_profiles.yaml
+# Model configuration loader backed by config/models.yaml.
+# Selects the appropriate models based on total system RAM. Configuration-only,
+# no .env overrides or manual fiddling required.
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-MODEL_PROFILE_FILE="$PROJECT_ROOT/config/model_profiles.yaml"
-DETECT_SCRIPT="$PROJECT_ROOT/scripts/detect_system.sh"
+CONFIG_FILE="$PROJECT_ROOT/config/models.yaml"
+
+detect_ram_gb() {
+    if command -v sysctl >/dev/null 2>&1; then
+        echo $(( (sysctl -n hw.memsize 2>/dev/null || echo 0) / 1024 / 1024 / 1024 ))
+    elif [ -r /proc/meminfo ]; then
+        echo $(( $(grep -i memtotal /proc/meminfo | awk '{print $2}') / 1024 / 1024 ))
+    else
+        echo 32
+    fi
+}
+
+load_profile_from_config() {
+    python3 <<'PY' "$CONFIG_FILE" "$RAM_GB"
+import json
+import sys
+from pathlib import Path
+
+try:
+    import yaml
+except ImportError as exc:  # pragma: no cover
+    raise SystemExit("PyYAML is required to read config/models.yaml") from exc
+
+config_path = Path(sys.argv[1])
+ram_gb = int(sys.argv[2])
+
+if not config_path.exists():
+    raise SystemExit(f"Configuration file not found: {config_path}")
+
+with config_path.open("r", encoding="utf-8") as fh:
+    data = yaml.safe_load(fh) or {}
+
+profiles = data.get("profiles") or []
+if not isinstance(profiles, list) or not profiles:
+    raise SystemExit("No profiles defined in config/models.yaml")
+
+def matches(profile):
+    min_ram = profile.get("min_ram_gb", 0)
+    max_ram = profile.get("max_ram_gb")
+    if max_ram is None:
+        return ram_gb >= min_ram
+    return ram_gb >= min_ram and ram_gb <= max_ram
+
+selected = None
+for profile in profiles:
+    if isinstance(profile, dict) and matches(profile):
+        selected = profile
+        break
+
+if selected is None:
+    selected = profiles[-1]
+
+defaults = data.get("defaults") or {}
+
+def csv_list(items):
+    if not isinstance(items, list):
+        items = [items]
+    return ",".join(str(item) for item in items if item)
+
+memory_hints = selected.get("memory_hints") or {}
+memory_hint_pairs = ",".join(f"{k}:{v}" for k, v in memory_hints.items())
+
+profile = {
+    "DEFAULT_VLM_MODEL": selected.get("vlm_model", ""),
+    "DEFAULT_TEXT_MODEL": selected.get("text_model", ""),
+    "REQUIRED_MODELS_CSV": csv_list(selected.get("required_models", [])),
+    "WARMUP_MODELS_CSV": csv_list(selected.get("warmup_models", [])),
+    "MODEL_MEMORY_HINTS_CSV": memory_hint_pairs,
+    "LARGEST_MODEL_GB": selected.get("largest_model_gb", 8),
+    "INFERENCE_BUFFER_GB": selected.get("inference_buffer_gb", defaults.get("inference_buffer_gb", 4)),
+    "SERVICE_OVERHEAD_GB": selected.get("service_overhead_gb", defaults.get("service_overhead_gb", 2)),
+}
+
+print(json.dumps(profile))
+PY
+}
 
 load_model_config() {
     if [[ -n "${MODEL_CONFIG_LOADED:-}" ]]; then
         return
     fi
 
-    # Allow explicit overrides via environment variables if the user sets them
-    DEFAULT_VLM_MODEL="${OLLAMA_DEFAULT_VLM_MODEL:-}"
-    DEFAULT_TEXT_MODEL="${OLLAMA_DEFAULT_TEXT_MODEL:-}"
-    REQUIRED_MODELS_CSV="${OLLAMA_REQUIRED_MODELS:-}"
-    WARMUP_MODELS_CSV="${OLLAMA_WARMUP_MODELS:-}"
+    RAM_GB=$(detect_ram_gb)
+    PROFILE_JSON=$(load_profile_from_config)
 
-    MODEL_MEMORY_HINTS_CSV="${OLLAMA_MODEL_MEMORY_HINTS:-}"
-    LARGEST_MODEL_GB="${OLLAMA_LARGEST_MODEL_GB:-}"
-    INFERENCE_BUFFER_GB="${OLLAMA_INFERENCE_BUFFER_GB:-}"
-    SERVICE_OVERHEAD_GB="${OLLAMA_SERVICE_OVERHEAD_GB:-}"
-
-    if [[ -z "$DEFAULT_VLM_MODEL" || -z "$DEFAULT_TEXT_MODEL" || -z "$REQUIRED_MODELS_CSV" || -z "$WARMUP_MODELS_CSV" || -z "$MODEL_MEMORY_HINTS_CSV" || -z "$LARGEST_MODEL_GB" ]]; then
-        ARCH=""
-        TOTAL_RAM_GB=""
-
-        if [[ -x "$DETECT_SCRIPT" ]]; then
-            SYSTEM_INFO=$(bash "$DETECT_SCRIPT" 2>/dev/null || true)
-            while IFS='=' read -r key value; do
-                [[ -z "$key" || "$key" =~ ^# ]] && continue
-                case "$key" in
-                    ARCH) ARCH="$value" ;;
-                    TOTAL_RAM_GB) TOTAL_RAM_GB="$value" ;;
-                esac
-            done <<< "$SYSTEM_INFO"
-        fi
-
-        PROFILE_DEFAULTS=$(PROJECT_ROOT="$PROJECT_ROOT" ARCH="$ARCH" TOTAL_RAM_GB="$TOTAL_RAM_GB" python3 - <<'PY'
-import json
-import math
-import os
-from pathlib import Path
-
-try:
-    import yaml  # type: ignore
-except ImportError:  # pragma: no cover - yaml is part of project deps
-    yaml = None
-
-project_root = Path(os.environ["PROJECT_ROOT"])
-profile_path = project_root / "config" / "model_profiles.yaml"
-
-defaults = {}
-if yaml and profile_path.exists():
-    with profile_path.open("r", encoding="utf-8") as fh:
-        data = yaml.safe_load(fh) or {}
-    profiles = data.get("profiles") or {}
-    ram = int(os.environ.get("TOTAL_RAM_GB") or 0)
-    arch = os.environ.get("ARCH")
-    selected = profiles.get("default", {}) if isinstance(profiles, dict) else {}
-    for profile in profiles.values():
-        if not isinstance(profile, dict):
-            continue
-        match = profile.get("match") or {}
-        min_ram = match.get("min_ram_gb", 0)
-        max_ram = match.get("max_ram_gb", math.inf)
-        match_arch = match.get("arch")
-        if ram >= min_ram and ram <= max_ram and (match_arch is None or match_arch == arch):
-            selected = profile
-            break
-    defaults = selected.get("defaults") or {}
-
-print(json.dumps(defaults))
-PY
-)
-
-        if [[ -n "$PROFILE_DEFAULTS" && "$PROFILE_DEFAULTS" != "null" ]]; then
-            DEFAULT_VLM_MODEL="${DEFAULT_VLM_MODEL:-$(echo "$PROFILE_DEFAULTS" | jq -r '.vlm_model // empty')}"
-            DEFAULT_TEXT_MODEL="${DEFAULT_TEXT_MODEL:-$(echo "$PROFILE_DEFAULTS" | jq -r '.text_model // empty')}"
-            REQUIRED_MODELS_CSV="${REQUIRED_MODELS_CSV:-$(echo "$PROFILE_DEFAULTS" | jq -r '(.required_models // []) | join(",")')}"
-            WARMUP_MODELS_CSV="${WARMUP_MODELS_CSV:-$(echo "$PROFILE_DEFAULTS" | jq -r '(.warmup_models // []) | join(",")')}"
-            MODEL_MEMORY_HINTS_CSV="${MODEL_MEMORY_HINTS_CSV:-$(echo "$PROFILE_DEFAULTS" | jq -r '(.memory_hints // {}) | to_entries | map("\(.key):\(.value)") | join(",")')}"
-            LARGEST_MODEL_GB="${LARGEST_MODEL_GB:-$(echo "$PROFILE_DEFAULTS" | jq -r '.largest_model_gb // empty')}"
-            INFERENCE_BUFFER_GB="${INFERENCE_BUFFER_GB:-$(echo "$PROFILE_DEFAULTS" | jq -r '.inference_buffer_gb // empty')}"
-            SERVICE_OVERHEAD_GB="${SERVICE_OVERHEAD_GB:-$(echo "$PROFILE_DEFAULTS" | jq -r '.service_overhead_gb // empty')}"
-        fi
+    if [ -z "$PROFILE_JSON" ]; then
+        echo "Failed to load model configuration from $CONFIG_FILE" >&2
+        exit 1
     fi
 
-    # Fallback defaults: Use mac_32gb profile (safer, works on more systems)
-    # If profile selection fails, default to smaller models rather than workstation models
-    DEFAULT_VLM_MODEL="${DEFAULT_VLM_MODEL:-qwen3-vl:8b-instruct-q4_K_M}"
-    DEFAULT_TEXT_MODEL="${DEFAULT_TEXT_MODEL:-qwen3:14b-q4_K_M}"
-    MODEL_MEMORY_HINTS_CSV="${MODEL_MEMORY_HINTS_CSV:-$DEFAULT_VLM_MODEL:6,$DEFAULT_TEXT_MODEL:8}"
-    LARGEST_MODEL_GB="${LARGEST_MODEL_GB:-8}"
-    INFERENCE_BUFFER_GB="${INFERENCE_BUFFER_GB:-4}"
-    SERVICE_OVERHEAD_GB="${SERVICE_OVERHEAD_GB:-2}"
+    DEFAULT_VLM_MODEL=$(python3 -c "import json,sys; print(json.loads(sys.argv[1])['DEFAULT_VLM_MODEL'])" "$PROFILE_JSON")
+    DEFAULT_TEXT_MODEL=$(python3 -c "import json,sys; print(json.loads(sys.argv[1])['DEFAULT_TEXT_MODEL'])" "$PROFILE_JSON")
+    REQUIRED_MODELS_CSV=$(python3 -c "import json,sys; print(json.loads(sys.argv[1])['REQUIRED_MODELS_CSV'])" "$PROFILE_JSON")
+    WARMUP_MODELS_CSV=$(python3 -c "import json,sys; print(json.loads(sys.argv[1])['WARMUP_MODELS_CSV'])" "$PROFILE_JSON")
+    MODEL_MEMORY_HINTS_CSV=$(python3 -c "import json,sys; print(json.loads(sys.argv[1])['MODEL_MEMORY_HINTS_CSV'])" "$PROFILE_JSON")
+    LARGEST_MODEL_GB=$(python3 -c "import json,sys; print(json.loads(sys.argv[1])['LARGEST_MODEL_GB'])" "$PROFILE_JSON")
+    INFERENCE_BUFFER_GB=$(python3 -c "import json,sys; print(json.loads(sys.argv[1])['INFERENCE_BUFFER_GB'])" "$PROFILE_JSON")
+    SERVICE_OVERHEAD_GB=$(python3 -c "import json,sys; print(json.loads(sys.argv[1])['SERVICE_OVERHEAD_GB'])" "$PROFILE_JSON")
 
-    if [[ -z "$REQUIRED_MODELS_CSV" ]]; then
-        REQUIRED_MODELS_CSV="$DEFAULT_VLM_MODEL,$DEFAULT_TEXT_MODEL"
+    if [[ -z "$DEFAULT_VLM_MODEL" || -z "$DEFAULT_TEXT_MODEL" ]]; then
+        echo "Invalid model configuration: missing vlm/text model entries." >&2
+        exit 1
     fi
+
     IFS=',' read -r -a REQUIRED_MODELS <<< "$REQUIRED_MODELS_CSV"
-
-    if [[ -z "$WARMUP_MODELS_CSV" ]]; then
-        WARMUP_MODELS_CSV="$DEFAULT_VLM_MODEL,$DEFAULT_TEXT_MODEL"
-    fi
     IFS=',' read -r -a WARMUP_MODELS <<< "$WARMUP_MODELS_CSV"
-
     MODEL_MEMORY_HINTS="$MODEL_MEMORY_HINTS_CSV"
+
     MODEL_CONFIG_LOADED=1
 }
 

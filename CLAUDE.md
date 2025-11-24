@@ -98,15 +98,15 @@ pip install -e ".[dev]" -c constraints.txt
 ./scripts/verify_setup.sh
 
 # Start service
-./scripts/start.sh                    # Manages Ollama + REST API
+./scripts/core/start.sh                    # Manages Ollama + REST API
 # Service runs at: http://0.0.0.0:8000
 # API docs at: http://0.0.0.0:8000/api/docs
 
 # Stop service
-./scripts/shutdown.sh                 # Graceful shutdown
+./scripts/core/shutdown.sh                 # Graceful shutdown
 
 # Check service status
-./scripts/status.sh                   # Shows metrics, model cache, queues
+./scripts/core/status.sh                   # Shows metrics, model cache, queues
 ./scripts/health_check.sh             # Quick health check
 ```
 
@@ -233,7 +233,7 @@ async def chat(request: Request, use_case: ChatUseCase = Depends(get_chat_use_ca
 
 ## Configuration Management
 
-- Hardware + model defaults live in `config/model_profiles.yaml` (auto-selected per machine)
+- Hardware + model defaults live in `config/models.yaml` (auto-selected per machine)
 - Additional overrides come from exported environment variables (no `.env` is required)
 
 ```bash
@@ -276,7 +276,7 @@ ollama serve
 
 # Or use native macOS service
 ./scripts/install_native.sh
-./scripts/start.sh  # REST API manages Ollama internally
+./scripts/core/start.sh  # REST API manages Ollama internally
 
 # Preload models (first time)
 ./scripts/preload_models.sh      # Downloads the required Qwen 3 models (tier-specific)

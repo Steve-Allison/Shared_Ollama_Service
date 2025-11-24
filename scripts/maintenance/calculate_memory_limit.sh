@@ -33,7 +33,7 @@ fi
 echo -e "${GREEN}✓ Total System RAM: ${TOTAL_RAM_GB} GB${NC}"
 echo ""
 
-# Load model configuration from config/model_profiles.yaml
+# Load model configuration from config/models.yaml
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/lib/model_config.sh"
 load_model_config

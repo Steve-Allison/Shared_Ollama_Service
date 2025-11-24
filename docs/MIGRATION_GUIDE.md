@@ -282,7 +282,7 @@ docker-compose restart ollama
 
 ### Issue: Different model versions
 
-Some projects might expect specific model versions (e.g., laptop profile vs workstation profile). Keep `config/model_profiles.yaml` in sync across environments.
+Some projects might expect specific model versions (e.g., laptop profile vs workstation profile). Keep `config/models.yaml` in sync across environments.
 
 **Solution:**
 1. Pull both versions

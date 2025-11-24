@@ -16,6 +16,16 @@ NC='\033[0m' # No Color
 # Configuration
 OLLAMA_URL="http://localhost:11434"
 API_ENDPOINT="${OLLAMA_URL}/api"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+CLEANUP_SCRIPT="$SCRIPT_DIR/cleanup.sh"
+
+kill_pattern() {
+    local pattern=$1
+    if pkill -f "$pattern" 2>/dev/null; then
+        print_info "Terminated processes matching pattern: $pattern"
+    fi
+}
 
 echo -e "${BLUE}🛑 Ollama Service Shutdown and Cleanup${NC}"
 echo "=================================================="
@@ -68,55 +78,11 @@ fi
 
 # Kill all Ollama processes (serve, runner, etc.)
 print_info "Killing all Ollama processes..."
-
-# Kill ollama serve processes
-OLLAMA_SERVE_PIDS=$(ps aux | grep -i "[o]llama serve" | awk '{print $2}' 2>/dev/null || true)
-if [ -n "$OLLAMA_SERVE_PIDS" ]; then
-    print_info "Killing ollama serve processes..."
-    for pid in $OLLAMA_SERVE_PIDS; do
-        kill -TERM "$pid" 2>/dev/null || true
-    done
-    sleep 2
-    # Force kill if still running
-    for pid in $OLLAMA_SERVE_PIDS; do
-        if ps -p "$pid" > /dev/null 2>&1; then
-            kill -9 "$pid" 2>/dev/null || true
-        fi
-    done
-fi
-
-# Kill ollama runner processes (model instances)
-OLLAMA_RUNNER_PIDS=$(ps aux | grep -i "[o]llama runner" | awk '{print $2}' 2>/dev/null || true)
-if [ -n "$OLLAMA_RUNNER_PIDS" ]; then
-    print_info "Killing ollama runner processes (model instances)..."
-    for pid in $OLLAMA_RUNNER_PIDS; do
-        kill -TERM "$pid" 2>/dev/null || true
-    done
-    sleep 2
-    # Force kill if still running
-    for pid in $OLLAMA_RUNNER_PIDS; do
-        if ps -p "$pid" > /dev/null 2>&1; then
-            kill -9 "$pid" 2>/dev/null || true
-        fi
-    done
-fi
-
-# Kill any other ollama processes (catch-all)
-OLLAMA_OTHER_PIDS=$(ps aux | grep -i "[o]llama" | grep -v "grep" | grep -v "ollama serve" | grep -v "ollama runner" | awk '{print $2}' 2>/dev/null || true)
-if [ -n "$OLLAMA_OTHER_PIDS" ]; then
-    print_info "Killing other Ollama processes..."
-    for pid in $OLLAMA_OTHER_PIDS; do
-        kill -TERM "$pid" 2>/dev/null || true
-    done
-    sleep 1
-    for pid in $OLLAMA_OTHER_PIDS; do
-        if ps -p "$pid" > /dev/null 2>&1; then
-            kill -9 "$pid" 2>/dev/null || true
-        fi
-    done
-fi
-
+kill_pattern "ollama serve"
+kill_pattern "ollama runner"
+kill_pattern "ollama .*(download|load|model)"
 sleep 1
+
 # Verify all Ollama processes are killed
 REMAINING_OLLAMA=$(ps aux | grep -i "[o]llama" | grep -v "grep" | wc -l | tr -d ' ' || echo "0")
 if [ "$REMAINING_OLLAMA" -eq 0 ]; then
@@ -128,47 +94,26 @@ else
 fi
 
 # Kill REST API server (gunicorn master and workers)
-GUNICORN_MASTER_PIDS=$(ps aux | grep -i "[g]unicorn.*shared_ollama.api.server" | grep -v "worker" | awk '{print $2}' 2>/dev/null || true)
-GUNICORN_WORKER_PIDS=$(ps aux | grep -i "[g]unicorn.*shared_ollama.api.server.*worker" | awk '{print $2}' 2>/dev/null || true)
-UVICORN_WORKER_PIDS=$(ps aux | grep -i "[u]vicorn.*shared_ollama.api.server" | awk '{print $2}' 2>/dev/null || true)
+if pgrep -f "shared_ollama.api.server" > /dev/null 2>&1; then
+    print_info "Stopping REST API server (gunicorn/uvicorn)..."
+    kill_pattern "gunicorn .*shared_ollama.api.server:app"
+    kill_pattern "uvicorn.workers.UvicornWorker"
+    kill_pattern "python .*shared_ollama.api.server"
+    sleep 2
 
-if [ -n "$GUNICORN_MASTER_PIDS" ] || [ -n "$GUNICORN_WORKER_PIDS" ] || [ -n "$UVICORN_WORKER_PIDS" ]; then
-    print_info "Stopping REST API server (gunicorn master and workers)..."
-    
-    # Kill gunicorn master first (will gracefully stop workers)
-    if [ -n "$GUNICORN_MASTER_PIDS" ]; then
-        for pid in $GUNICORN_MASTER_PIDS; do
-            print_info "Stopping gunicorn master (PID: $pid)..."
-            kill -TERM "$pid" 2>/dev/null || true
-        done
-        sleep 3  # Give gunicorn time to gracefully stop workers
-    fi
-    
-    # Kill any remaining workers
-    if [ -n "$GUNICORN_WORKER_PIDS" ]; then
-        for pid in $GUNICORN_WORKER_PIDS; do
-            kill -TERM "$pid" 2>/dev/null || true
-        done
+    # Force kill any remaining processes
+    if pgrep -f "shared_ollama.api.server" > /dev/null 2>&1; then
+        print_warning "Forcing remaining API processes to stop..."
+        pkill -9 -f "shared_ollama.api.server" 2>/dev/null || true
         sleep 1
     fi
-    
-    if [ -n "$UVICORN_WORKER_PIDS" ]; then
-        for pid in $UVICORN_WORKER_PIDS; do
-            kill -TERM "$pid" 2>/dev/null || true
-        done
-        sleep 1
+
+    if pgrep -f "shared_ollama.api.server" > /dev/null 2>&1; then
+        print_warning "Some API processes are still running despite kill attempts:"
+        ps aux | grep -i "[s]hared_ollama.api.server" | head -5
+    else
+        print_status 0 "REST API server stopped"
     fi
-    
-    # Force kill if still running
-    ALL_API_PIDS="$GUNICORN_MASTER_PIDS $GUNICORN_WORKER_PIDS $UVICORN_WORKER_PIDS"
-    for pid in $ALL_API_PIDS; do
-        if ps -p "$pid" > /dev/null 2>&1; then
-            print_info "Force killing process (PID: $pid)..."
-            kill -9 "$pid" 2>/dev/null || true
-        fi
-    done
-    sleep 1
-    print_status 0 "REST API server stopped"
 else
     print_status 0 "No running REST API server found"
 fi
@@ -203,11 +148,6 @@ fi
 # ============================================================================
 echo ""
 echo -e "${BLUE}[2/5]${NC} Running cleanup script..."
-
-# Get project root directory
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-CLEANUP_SCRIPT="$SCRIPT_DIR/cleanup.sh"
 
 if [ -f "$CLEANUP_SCRIPT" ]; then
     print_info "Running cleanup script to remove logs, Python caches, and temp files..."
@@ -294,7 +234,7 @@ if [ -f "$LAUNCHD_PLIST" ]; then
 elif command -v brew &> /dev/null && brew services list 2>/dev/null | grep -q "ollama"; then
     echo "  - brew services start ollama"
 else
-    echo "  - ./scripts/start.sh (recommended - includes MPS/Metal optimizations)"
+    echo "  - ./scripts/core/start.sh (recommended - includes MPS/Metal optimizations)"
     echo "  - ollama serve (manual start)"
 fi
 

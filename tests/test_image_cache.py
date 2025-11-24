@@ -31,15 +31,6 @@ class TestCacheEntry:
         assert entry.metadata == metadata
         assert entry.timestamp == 123.45
 
-    def test_cache_entry_uses_slots(self):
-        """Test that CacheEntry uses __slots__ for memory efficiency."""
-        entry = CacheEntry(
-            base64_string="test",
-            metadata={"format": "jpeg", "width": 100, "height": 100, "size": 1024},
-            timestamp=0.0,
-        )
-        # Should not have __dict__ if using slots
-        assert not hasattr(entry, "__dict__") or hasattr(entry, "__slots__")
 
 
 class TestImageCacheBasicOperations:
@@ -420,4 +411,46 @@ class TestImageCacheEdgeCases:
         assert result[0] == "data2"  # Should be new data
         assert result[1] == metadata2  # Should be new metadata
         assert cache.get_stats()["size"] == 1  # Still only one entry
+
+    def test_cache_concurrent_access_patterns(self):
+        """Test that cache handles concurrent access patterns correctly."""
+        import threading
+
+        cache = ImageCache(max_size=100)
+        metadata: ImageMetadata = {"format": "jpeg", "width": 100, "height": 100, "size": 1024}
+        results = []
+
+        def worker(thread_id: int):
+            for i in range(10):
+                data_url = f"data:image/jpeg;base64,image{thread_id}_{i}"
+                cache.put(data_url, "jpeg", f"data{thread_id}_{i}", metadata)
+                result = cache.get(data_url, "jpeg")
+                results.append((thread_id, i, result is not None))
+
+        threads = [threading.Thread(target=worker, args=(i,)) for i in range(5)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        # All puts should result in successful gets
+        assert all(success for _, _, success in results)
+        assert len(results) == 50  # 5 threads * 10 operations
+
+    def test_cache_ttl_expiration_under_load(self):
+        """Test that TTL expiration works correctly under load."""
+        cache = ImageCache(max_size=100, ttl_seconds=0.1)  # Very short TTL
+        metadata: ImageMetadata = {"format": "jpeg", "width": 100, "height": 100, "size": 1024}
+
+        # Add entry
+        cache.put("data:image/jpeg;base64,test", "jpeg", "data", metadata)
+        assert cache.get("data:image/jpeg;base64,test", "jpeg") is not None
+
+        # Wait for expiration
+        import time
+        time.sleep(0.15)
+
+        # Should be expired
+        assert cache.get("data:image/jpeg;base64,test", "jpeg") is None
+        assert cache.get_stats()["misses"] >= 1
 

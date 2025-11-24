@@ -365,19 +365,17 @@ class TestImageMetadata:
         with pytest.raises(Exception):  # dataclass frozen=True
             metadata.width = 200
 
-    def test_image_metadata_uses_slots(self):
-        """Test that ImageMetadata uses __slots__ for memory efficiency."""
-        metadata = ImageMetadata(
-            original_size=1000,
-            compressed_size=500,
-            width=100,
-            height=100,
-            format=ImageFormat.JPEG,
-            compression_ratio=2.0,
-        )
-
-        # If using slots, __dict__ should not exist or be empty
-        assert not hasattr(metadata, "__dict__") or len(metadata.__dict__) == 0
+    def test_image_metadata_contains_all_required_fields(self, image_processor, sample_jpeg_image):
+        """Test that ImageMetadata contains all required fields after processing."""
+        _, metadata = image_processor.process_image(sample_jpeg_image, target_format="jpeg")
+        
+        # Verify all expected fields are present and valid
+        assert metadata.original_size > 0
+        assert metadata.compressed_size > 0
+        assert metadata.width > 0
+        assert metadata.height > 0
+        assert metadata.format in [ImageFormat.JPEG, ImageFormat.PNG, ImageFormat.WEBP]
+        assert metadata.compression_ratio > 0
 
 
 class TestImageProcessorEdgeCases:

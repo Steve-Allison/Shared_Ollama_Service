@@ -534,3 +534,228 @@ class TestUseCaseEdgeCases:
 
         assert len(results) == 10
         assert all(isinstance(r, dict) for r in results)
+
+    async def test_execute_propagates_client_errors_correctly(self, use_case_dependencies, mock_async_client):
+        """Test that use case propagates client errors with correct types."""
+        use_case = GenerateUseCase(**use_case_dependencies)
+
+        # Test ConnectionError propagation
+        mock_async_client.generate.side_effect = ConnectionError("Service unavailable")
+        request = GenerationRequest(
+            prompt=Prompt(value="Test"),
+            model=ModelName(value="qwen3-vl:8b-instruct-q4_K_M"),
+        )
+
+        with pytest.raises(ConnectionError, match="Service unavailable"):
+            await use_case.execute(request, request_id="test-1")
+
+        # Test TimeoutError propagation
+        mock_async_client.generate.side_effect = TimeoutError("Request timed out")
+        with pytest.raises(TimeoutError, match="Request timed out"):
+            await use_case.execute(request, request_id="test-2")
+
+    async def test_execute_records_metrics_for_failures(self, use_case_dependencies, mock_async_client):
+        """Test that use case records failure metrics correctly."""
+        MetricsCollector.reset()
+        use_case = GenerateUseCase(**use_case_dependencies)
+
+        mock_async_client.generate.side_effect = ConnectionError("Failure")
+        request = GenerationRequest(
+            prompt=Prompt(value="Test"),
+            model=ModelName(value="qwen3-vl:8b-instruct-q4_K_M"),
+        )
+
+        with pytest.raises(ConnectionError):
+            await use_case.execute(request, request_id="test-1")
+
+        metrics = MetricsCollector.get_metrics()
+        assert metrics.total_requests >= 1
+        assert metrics.failed_requests >= 1
+        assert metrics.successful_requests == 0
+
+    async def test_execute_records_metrics_for_successes(self, use_case_dependencies):
+        """Test that use case records success metrics correctly."""
+        MetricsCollector.reset()
+        use_case = GenerateUseCase(**use_case_dependencies)
+
+        request = GenerationRequest(
+            prompt=Prompt(value="Test"),
+            model=ModelName(value="qwen3-vl:8b-instruct-q4_K_M"),
+        )
+
+        await use_case.execute(request, request_id="test-1")
+
+        metrics = MetricsCollector.get_metrics()
+        assert metrics.total_requests >= 1
+        assert metrics.successful_requests >= 1
+        assert metrics.failed_requests == 0
+
+    async def test_execute_handles_streaming_type_errors(self, use_case_dependencies, mock_async_client):
+        """Test that use case handles streaming type errors correctly."""
+        use_case = GenerateUseCase(**use_case_dependencies)
+
+        # Mock client returning wrong type for streaming
+        mock_async_client.generate_stream.return_value = "not an iterator"
+        request = GenerationRequest(
+            prompt=Prompt(value="Test"),
+            model=ModelName(value="qwen3-vl:8b-instruct-q4_K_M"),
+        )
+
+        with pytest.raises(TypeError, match="Expected streaming iterator"):
+            await use_case.execute(request, request_id="test-1", stream=True)
+
+    async def test_execute_handles_non_streaming_type_errors(self, use_case_dependencies, mock_async_client):
+        """Test that use case handles non-streaming type errors correctly."""
+        use_case = GenerateUseCase(**use_case_dependencies)
+
+        # Mock client returning wrong type for non-streaming (string instead of GenerateResponse)
+        mock_async_client.generate.return_value = "not a GenerateResponse"
+        request = GenerationRequest(
+            prompt=Prompt(value="Test"),
+            model=ModelName(value="qwen3-vl:8b-instruct-q4_K_M"),
+        )
+
+        # Should raise AttributeError when trying to access .text on a string
+        with pytest.raises((TypeError, AttributeError)):
+            await use_case.execute(request, request_id="test-1", stream=False)
+
+    async def test_chat_execute_handles_tool_calling_workflow(self, use_case_dependencies, mock_async_client):
+        """Test that ChatUseCase handles complete tool calling workflow."""
+        use_case = ChatUseCase(**use_case_dependencies)
+
+        # Mock response with tool calls
+        mock_async_client.chat.return_value = {
+            "model": "qwen3-vl:8b-instruct-q4_K_M",
+            "message": {
+                "role": "assistant",
+                "content": "",
+                "tool_calls": [
+                    {
+                        "id": "call_1",
+                        "type": "function",
+                        "function": {
+                            "name": "get_weather",
+                            "arguments": '{"location": "SF"}',
+                        },
+                    }
+                ],
+            },
+            "done": True,
+        }
+
+        request = ChatRequest(
+            messages=(
+                ChatMessage(role="user", content="What's the weather in SF?"),
+            ),
+            model=ModelName(value="qwen3-vl:8b-instruct-q4_K_M"),
+        )
+
+        result = await use_case.execute(request, request_id="test-1")
+        assert "message" in result
+        assert "tool_calls" in result["message"]
+
+    async def test_chat_execute_handles_multi_turn_conversation(self, use_case_dependencies, mock_async_client):
+        """Test that ChatUseCase handles multi-turn conversations correctly."""
+        use_case = ChatUseCase(**use_case_dependencies)
+
+        request = ChatRequest(
+            messages=(
+                ChatMessage(role="system", content="You are helpful"),
+                ChatMessage(role="user", content="Hello"),
+                ChatMessage(role="assistant", content="Hi! How can I help?"),
+                ChatMessage(role="user", content="What's 2+2?"),
+            ),
+            model=ModelName(value="qwen3-vl:8b-instruct-q4_K_M"),
+        )
+
+        await use_case.execute(request, request_id="test-1")
+
+        call_kwargs = mock_async_client.chat.call_args.kwargs
+        messages = call_kwargs["messages"]
+        assert len(messages) == 4
+        assert messages[0]["role"] == "system"
+        assert messages[-1]["role"] == "user"
+
+    async def test_list_models_handles_client_errors(self, use_case_dependencies, mock_async_client):
+        """Test that ListModelsUseCase handles client errors correctly."""
+        mock_async_client.list_models.side_effect = ConnectionError("Service unavailable")
+        use_case = ListModelsUseCase(**use_case_dependencies)
+
+        with pytest.raises(ConnectionError):
+            await use_case.execute(request_id="test-1")
+
+    async def test_list_models_records_metrics_on_error(self, use_case_dependencies, mock_async_client):
+        """Test that ListModelsUseCase records metrics even on error."""
+        MetricsCollector.reset()
+        mock_async_client.list_models.side_effect = ConnectionError("Failure")
+        use_case = ListModelsUseCase(**use_case_dependencies)
+
+        with pytest.raises(ConnectionError):
+            await use_case.execute(request_id="test-1")
+
+        metrics = MetricsCollector.get_metrics()
+        assert metrics.total_requests >= 1
+        assert metrics.failed_requests >= 1
+
+    async def test_generate_execute_handles_dict_format(self, use_case_dependencies, mock_async_client):
+        """Test that GenerateUseCase handles dict format (JSON schema) correctly."""
+        use_case = GenerateUseCase(**use_case_dependencies)
+
+        schema = {"type": "object", "properties": {"name": {"type": "string"}}}
+        request = GenerationRequest(
+            prompt=Prompt(value="Generate a person"),
+            model=ModelName(value="qwen3-vl:8b-instruct-q4_K_M"),
+            format=schema,  # Dict format for JSON schema
+        )
+
+        await use_case.execute(request, request_id="test-1")
+
+        call_kwargs = mock_async_client.generate.call_args.kwargs
+        assert call_kwargs["format"] == schema
+
+    async def test_chat_execute_handles_dict_format(self, use_case_dependencies, mock_async_client):
+        """Test that ChatUseCase handles dict format (JSON schema) correctly."""
+        use_case = ChatUseCase(**use_case_dependencies)
+
+        schema = {"type": "object", "properties": {"response": {"type": "string"}}}
+        request = ChatRequest(
+            messages=(ChatMessage(role="user", content="Respond in JSON"),),
+            model=ModelName(value="qwen3-vl:8b-instruct-q4_K_M"),
+            format=schema,
+        )
+
+        await use_case.execute(request, request_id="test-1")
+
+        call_kwargs = mock_async_client.chat.call_args.kwargs
+        assert call_kwargs["format"] == schema
+
+    async def test_concurrent_use_cases_independent(self, use_case_dependencies):
+        """Test that concurrent use case executions are independent."""
+        generate_use_case = GenerateUseCase(**use_case_dependencies)
+        chat_use_case = ChatUseCase(**use_case_dependencies)
+
+        async def run_generate(i: int):
+            request = GenerationRequest(
+                prompt=Prompt(value=f"Generate {i}"),
+                model=ModelName(value="qwen3-vl:8b-instruct-q4_K_M"),
+            )
+            return await generate_use_case.execute(request, request_id=f"gen-{i}")
+
+        async def run_chat(i: int):
+            request = ChatRequest(
+                messages=(ChatMessage(role="user", content=f"Chat {i}"),),
+                model=ModelName(value="qwen3-vl:8b-instruct-q4_K_M"),
+            )
+            return await chat_use_case.execute(request, request_id=f"chat-{i}")
+
+        # Run both use cases concurrently
+        tasks = [
+            run_generate(i) for i in range(5)
+        ] + [
+            run_chat(i) for i in range(5)
+        ]
+
+        results = await asyncio.gather(*tasks)
+
+        assert len(results) == 10
+        assert all(isinstance(r, dict) for r in results)

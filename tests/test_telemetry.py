@@ -533,3 +533,118 @@ class TestStructuredLogging:
             structured_logging.REQUEST_LOGGER.removeHandler(handler)
             handler.close()
             structured_logging.REQUEST_LOGGER.handlers = original_handlers
+
+    def test_log_request_event_handles_concurrent_logging(self, tmp_path):
+        """Test that log_request_event() handles concurrent logging correctly."""
+        import threading
+        from shared_ollama.telemetry import structured_logging
+
+        original_handlers = structured_logging.REQUEST_LOGGER.handlers[:]
+        structured_logging.REQUEST_LOGGER.handlers = []
+        log_path = tmp_path / "requests.jsonl"
+        handler = structured_logging.logging.FileHandler(log_path)
+        structured_logging.REQUEST_LOGGER.addHandler(handler)
+
+        try:
+            def log_worker(thread_id: int):
+                for i in range(10):
+                    log_request_event({
+                        "event": "test",
+                        "thread_id": thread_id,
+                        "request_id": f"req-{thread_id}-{i}",
+                        "model": "test-model",
+                    })
+
+            threads = [threading.Thread(target=log_worker, args=(i,)) for i in range(5)]
+            for t in threads:
+                t.start()
+            for t in threads:
+                t.join()
+
+            # Verify all logs were written
+            content = log_path.read_text()
+            lines = [line for line in content.strip().split("\n") if line]
+            assert len(lines) == 50  # 5 threads * 10 logs
+
+            # Verify all entries are valid JSON
+            for line in lines:
+                data = json.loads(line)
+                assert "event" in data
+                assert "thread_id" in data
+        finally:
+            structured_logging.REQUEST_LOGGER.removeHandler(handler)
+            handler.close()
+            structured_logging.REQUEST_LOGGER.handlers = original_handlers
+
+
+class TestTelemetryConcurrency:
+    """Tests for concurrent telemetry operations."""
+
+    def test_metrics_collector_handles_rapid_requests(self):
+        """Test that MetricsCollector handles rapid request recording."""
+        MetricsCollector.reset()
+
+        # Record many requests rapidly
+        for i in range(100):
+            MetricsCollector.record_request(
+                model=f"model-{i % 5}",
+                operation="generate",
+                latency_ms=float(i),
+                success=(i % 10 != 0),  # 10% failure rate
+            )
+
+        metrics = MetricsCollector.get_metrics()
+        assert metrics.total_requests == 100
+        assert metrics.successful_requests == 90
+        assert metrics.failed_requests == 10
+
+    def test_analytics_collector_handles_project_filtering(self):
+        """Test that AnalyticsCollector correctly filters by project."""
+        AnalyticsCollector.reset()
+        AnalyticsCollector._project_metadata.clear()  # type: ignore[attr-defined]
+
+        # Record requests with different projects
+        for i in range(20):
+            MetricsCollector.record_request(
+                model="test-model",
+                operation="generate",
+                latency_ms=100.0,
+                success=True,
+            )
+            AnalyticsCollector._project_metadata[i] = f"project-{i % 3}"  # type: ignore[attr-defined]
+
+        # Get analytics for specific project
+        analytics = AnalyticsCollector.get_analytics(project="project-0")
+        assert analytics.total_requests > 0
+        assert "project-0" in analytics.project_metrics
+
+    def test_performance_collector_handles_zero_duration(self):
+        """Test that PerformanceCollector handles zero duration correctly."""
+        PerformanceCollector.reset()
+
+        # Test with zero duration - should not crash
+        response = GenerateResponse(
+            text="test",
+            model="test-model",
+            total_duration=0,
+            load_duration=0,
+            prompt_eval_count=0,
+            prompt_eval_duration=0,
+            eval_count=0,
+            eval_duration=0,
+        )
+
+        PerformanceCollector.record_performance(
+            model="test-model",
+            operation="generate",
+            total_latency_ms=0.0,
+            success=True,
+            response=response,
+        )
+
+        # Should handle zero duration without crashing
+        stats = PerformanceCollector.get_performance_stats()
+        assert isinstance(stats, dict)
+        # Note: get_performance_stats only includes metrics with tokens_per_second,
+        # so zero duration metrics (with no tokens) may not appear in stats
+        # This is expected behavior - the function filters for metrics with token data

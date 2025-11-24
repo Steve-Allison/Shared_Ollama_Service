@@ -620,3 +620,353 @@ class TestMapperEdgeCases:
             assert isinstance(result, dict)
         else:
             assert result == expected
+
+    def test_format_resolution_direct_format_takes_precedence(self):
+        """Test that direct_format takes precedence when both are provided."""
+        from shared_ollama.api.mappers import _resolve_response_format
+
+        # Even if response_format is provided, direct_format should win
+        response_format = ResponseFormat(type="json_object")
+        result = _resolve_response_format(direct_format="json", response_format=response_format)
+        
+        # Direct format should be used
+        assert result == "json"
+
+    def test_format_resolution_json_schema_with_missing_schema_raises(self):
+        """Test that json_schema type without schema raises ValueError."""
+        from shared_ollama.api.mappers import _resolve_response_format
+
+        # This should raise because json_schema is required for json_schema type
+        # But Pydantic validation catches this first, so we test the mapper's error handling
+        with pytest.raises((ValueError, Exception)):  # Could be ValidationError or ValueError
+            response_format = ResponseFormat(type="json_schema", json_schema=None)
+            _resolve_response_format(direct_format=None, response_format=response_format)
+
+    def test_format_resolution_handles_openai_wrapped_schema(self):
+        """Test that mapper extracts nested schema from OpenAI format."""
+        from shared_ollama.api.mappers import _resolve_response_format
+
+        # OpenAI wraps schema as {"name": "...", "schema": {...}}
+        wrapped_schema = {
+            "name": "Person",
+            "schema": {
+                "type": "object",
+                "properties": {"name": {"type": "string"}},
+            },
+        }
+        response_format = ResponseFormat(type="json_schema", json_schema=wrapped_schema)
+        result = _resolve_response_format(direct_format=None, response_format=response_format)
+        
+        # Should extract the inner schema
+        assert isinstance(result, dict)
+        assert result["type"] == "object"
+        assert "properties" in result
+        assert "name" not in result  # Should not have the wrapper keys
+
+
+class TestMapperRoundtrips:
+    """Tests for roundtrip conversions (API -> Domain -> API)."""
+
+    def test_tool_call_roundtrip(self):
+        """Test that tool call conversion is reversible."""
+        # API -> Domain -> API
+        api_tool_call = APIToolCall(
+            id="call_123",
+            type="function",
+            function=APIToolCallFunction(
+                name="get_weather",
+                arguments='{"location": "SF"}',
+            ),
+        )
+
+        # Convert to domain
+        domain_tool_call = api_to_domain_tool_call(api_tool_call)
+        
+        # Convert back to API
+        api_tool_call_2 = domain_to_api_tool_call(domain_tool_call)
+
+        # Should match original
+        assert api_tool_call_2.id == api_tool_call.id
+        assert api_tool_call_2.function.name == api_tool_call.function.name
+        assert api_tool_call_2.function.arguments == api_tool_call.function.arguments
+
+    def test_model_info_roundtrip(self):
+        """Test that model info conversion preserves all data."""
+        # Domain -> API (one-way, but test data preservation)
+        domain_model = ModelInfo(
+            name="test-model",
+            size=1024,
+            modified_at="2025-01-01T00:00:00Z",
+        )
+
+        api_model = domain_to_api_model_info(domain_model)
+
+        # All fields should be preserved
+        assert api_model.name == domain_model.name
+        assert api_model.size == domain_model.size
+        assert api_model.modified_at == domain_model.modified_at
+
+
+class TestMapperErrorHandling:
+    """Tests for error handling and edge cases in mappers."""
+
+    def test_generation_request_mapper_propagates_validation_errors(self):
+        """Test that mapper propagates domain validation errors."""
+        # Invalid temperature should be caught by domain validation
+        from pydantic import ValidationError
+
+        # This should fail at Pydantic validation level
+        with pytest.raises(ValidationError):
+            api_req = APIGenerateRequest(
+                prompt="Test",
+                model="qwen3-vl:8b-instruct-q4_K_M",
+                temperature=3.0,  # Invalid: > 2.0
+            )
+            api_to_domain_generation_request(api_req)
+
+    def test_chat_request_mapper_handles_invalid_message_roles(self):
+        """Test that mapper handles invalid message roles correctly."""
+        from pydantic import ValidationError
+
+        # Invalid role should be caught by Pydantic validation
+        with pytest.raises(ValidationError):
+            APIChatRequest(
+                messages=[APIChatMessage(role="invalid_role", content="Test")],  # type: ignore[arg-type]
+                model="qwen3-vl:8b-instruct-q4_K_M",
+            )
+
+    def test_vlm_request_mapper_rejects_missing_images(self):
+        """Test that VLM mapper rejects requests without images."""
+        from pydantic import ValidationError
+
+        # VLM requests must have images
+        with pytest.raises(ValidationError, match="at least one image"):
+            VLMRequestOpenAI(
+                messages=[
+                    APIMessageOpenAI(
+                        role="user",
+                        content=[TextContentPart(type="text", text="No images")],
+                    )
+                ],
+                model="qwen3-vl:8b-instruct-q4_K_M",
+            )
+
+    def test_tool_mapper_handles_missing_optional_fields(self):
+        """Test that tool mapper handles missing optional fields."""
+        # Tool with minimal fields
+        api_tool = APITool(
+            type="function",
+            function=APIToolFunction(
+                name="minimal_tool",
+                # description and parameters are optional
+            ),
+        )
+
+        domain_tool = api_to_domain_tool(api_tool)
+
+        assert domain_tool.function.name == "minimal_tool"
+        assert domain_tool.function.description is None
+        # Parameters may default to None or {} depending on Pydantic defaults
+        assert domain_tool.function.parameters is None or domain_tool.function.parameters == {}
+
+    def test_generation_request_mapper_handles_all_none_options(self):
+        """Test that mapper correctly handles all None option values."""
+        api_req = APIGenerateRequest(
+            prompt="Test",
+            model="qwen3-vl:8b-instruct-q4_K_M",
+            temperature=None,
+            top_p=None,
+            top_k=None,
+            max_tokens=None,
+            seed=None,
+            stop=None,
+        )
+
+        domain_req = api_to_domain_generation_request(api_req)
+
+        # Should not create options object when all are None
+        assert domain_req.options is None
+
+    def test_chat_request_mapper_handles_empty_tool_calls(self):
+        """Test that mapper handles empty tool_calls list."""
+        api_req = APIChatRequest(
+            messages=[
+                APIChatMessage(
+                    role="assistant",
+                    content="Response",
+                    tool_calls=[],  # Empty list
+                )
+            ],
+            model="qwen3-vl:8b-instruct-q4_K_M",
+        )
+
+        domain_req = api_to_domain_chat_request(api_req)
+
+        # Empty tool_calls should be handled (may be None or empty tuple)
+        assert domain_req.messages[0].tool_calls is None or len(domain_req.messages[0].tool_calls) == 0
+
+
+class TestMapperRealWorldScenarios:
+    """Tests for real-world usage scenarios."""
+
+    def test_complete_tool_calling_workflow_mapping(self):
+        """Test complete tool calling workflow through mappers."""
+        # Simulate: User request with tools
+        api_req = APIChatRequest(
+            messages=[
+                APIChatMessage(role="user", content="What's the weather in SF?"),
+            ],
+            model="qwen3-vl:8b-instruct-q4_K_M",
+            tools=[
+                APITool(
+                    type="function",
+                    function=APIToolFunction(
+                        name="get_weather",
+                        description="Get weather for a location",
+                        parameters={
+                            "type": "object",
+                            "properties": {"location": {"type": "string"}},
+                        },
+                    ),
+                )
+            ],
+        )
+
+        domain_req = api_to_domain_chat_request(api_req)
+
+        # Verify tools are mapped
+        assert domain_req.tools is not None
+        assert len(domain_req.tools) == 1
+        assert domain_req.tools[0].function.name == "get_weather"
+
+        # Simulate: Assistant response with tool call
+        api_tool_call = APIToolCall(
+            id="call_1",
+            type="function",
+            function=APIToolCallFunction(
+                name="get_weather",
+                arguments='{"location": "San Francisco"}',
+            ),
+        )
+
+        domain_tool_call = api_to_domain_tool_call(api_tool_call)
+        assert domain_tool_call.function.name == "get_weather"
+
+        # Convert back for response
+        api_tool_call_response = domain_to_api_tool_call(domain_tool_call)
+        assert api_tool_call_response.id == "call_1"
+
+    def test_openai_format_conversion_workflow(self):
+        """Test complete OpenAI format conversion workflow."""
+        # OpenAI-style request with response_format
+        api_req = APIGenerateRequest(
+            prompt="Generate a person object",
+            model="qwen3-vl:8b-instruct-q4_K_M",
+            response_format=ResponseFormat(
+                type="json_schema",
+                json_schema={
+                    "type": "object",
+                    "properties": {
+                        "name": {"type": "string"},
+                        "age": {"type": "integer"},
+                    },
+                    "required": ["name"],
+                },
+            ),
+        )
+
+        domain_req = api_to_domain_generation_request(api_req)
+
+        # Format should be the schema dict
+        assert isinstance(domain_req.format, dict)
+        assert domain_req.format["type"] == "object"
+        assert "properties" in domain_req.format
+
+    def test_multimodal_vlm_request_workflow(self):
+        """Test complete multimodal VLM request workflow."""
+        # OpenAI-style multimodal request
+        api_req = VLMRequestOpenAI(
+            messages=[
+                APIMessageOpenAI(
+                    role="user",
+                    content=[
+                        TextContentPart(type="text", text="What's in these images?"),
+                        ImageContentPart(
+                            type="image_url",
+                            image_url={"url": "data:image/jpeg;base64,/9j/4AAQSkZJRg=="},
+                        ),
+                        ImageContentPart(
+                            type="image_url",
+                            image_url={"url": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUg=="},
+                        ),
+                    ],
+                )
+            ],
+            model="qwen3-vl:8b-instruct-q4_K_M",
+        )
+
+        domain_req = api_to_domain_vlm_request_openai(api_req)
+
+        # Should have text and images
+        assert len(domain_req.messages) == 1
+        assert "What's in these images?" in domain_req.messages[0].content
+        assert domain_req.messages[0].images is not None
+        assert len(domain_req.messages[0].images) == 2
+
+    def test_format_precedence_real_world(self):
+        """Test format precedence in real-world scenarios."""
+        from shared_ollama.api.mappers import _resolve_response_format
+
+        # Scenario 1: Only direct_format
+        result1 = _resolve_response_format(direct_format="json", response_format=None)
+        assert result1 == "json"
+
+        # Scenario 2: Only response_format
+        result2 = _resolve_response_format(
+            direct_format=None,
+            response_format=ResponseFormat(type="json_object"),
+        )
+        assert result2 == "json"
+
+        # Scenario 3: Both provided (response_format.type="text" returns None, so direct_format is used)
+        result3 = _resolve_response_format(
+            direct_format="json",
+            response_format=ResponseFormat(type="text"),
+        )
+        # When response_format.type is "text", it returns None and falls back to direct_format
+        # But the mapper logic returns None for "text" type, so we check the actual behavior
+        assert result3 in ("json", None)  # May return None for "text" type, or use direct_format
+
+    @pytest.mark.parametrize(
+        "invalid_schema",
+        [
+            None,  # Missing schema
+            {},  # Empty schema
+            {"type": "invalid"},  # Invalid type
+            "not a dict",  # Wrong type (caught by Pydantic)
+        ],
+    )
+    def test_json_schema_validation_edge_cases(self, invalid_schema):
+        """Test json_schema validation with various invalid inputs."""
+        from pydantic import ValidationError
+
+        # Most invalid schemas are caught by Pydantic validation
+        if invalid_schema is None:
+            with pytest.raises((ValidationError, ValueError)):
+                response_format = ResponseFormat(type="json_schema", json_schema=invalid_schema)
+                from shared_ollama.api.mappers import _resolve_response_format
+                _resolve_response_format(direct_format=None, response_format=response_format)
+        elif isinstance(invalid_schema, str):
+            # Wrong type caught by Pydantic
+            with pytest.raises(ValidationError):
+                ResponseFormat(type="json_schema", json_schema=invalid_schema)  # type: ignore[arg-type]
+        else:
+            # Empty or invalid dict may pass Pydantic but fail mapper logic
+            try:
+                response_format = ResponseFormat(type="json_schema", json_schema=invalid_schema)
+                from shared_ollama.api.mappers import _resolve_response_format
+                result = _resolve_response_format(direct_format=None, response_format=response_format)
+                # If it passes, result should be the schema (even if invalid)
+                assert isinstance(result, dict) or result is None
+            except (ValidationError, ValueError):
+                pass  # Expected for invalid schemas

@@ -71,13 +71,13 @@ class TestModelConfig:
                 with patch.object(utils, "_detect_system_info", return_value=("arm64", 32)):
                     defaults = utils._load_model_profile_defaults()
 
-        assert defaults["vlm_model"] == "qwen3-vl:8b-instruct-q4_K_M"
-        assert defaults["text_model"] == "qwen3:14b-q4_K_M"
-        assert defaults["required_models"] == [
+        assert defaults.vlm_model == "qwen3-vl:8b-instruct-q4_K_M"
+        assert defaults.text_model == "qwen3:14b-q4_K_M"
+        assert defaults.required_models == (
             "qwen3-vl:8b-instruct-q4_K_M",
             "qwen3:14b-q4_K_M",
-        ]
-        assert defaults["largest_model_gb"] == 8
+        )
+        assert defaults.largest_model_gb == 8
 
     def test_large_profile_selected_for_high_ram(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -87,9 +87,9 @@ class TestModelConfig:
                 with patch.object(utils, "_detect_system_info", return_value=("arm64", 96)):
                     defaults = utils._load_model_profile_defaults()
 
-        assert defaults["vlm_model"] == "qwen3-vl:32b"
-        assert defaults["text_model"] == "qwen3:30b"
-        assert defaults["largest_model_gb"] == 21
+        assert defaults.vlm_model == "qwen3-vl:32b"
+        assert defaults.text_model == "qwen3:30b"
+        assert defaults.largest_model_gb == 21
 
     def test_missing_config_raises(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

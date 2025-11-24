@@ -965,7 +965,7 @@ class ChatRequestOpenAI(BaseModel):
         )
 
     @model_validator(mode="after")
-    def convert_guided_json_to_response_format(self) -> "ChatRequestOpenAI":
+    def convert_guided_json_to_response_format(self) -> ChatRequestOpenAI:
         """Convert LiteLLM guided_json to response_format if needed."""
         # Only convert if response_format is not already set and guided_json is provided
         if self.guided_json is not None and self.response_format is None:
@@ -1098,7 +1098,7 @@ class VLMRequestOpenAI(BaseModel):
         )
 
     @model_validator(mode="after")
-    def convert_guided_json_to_response_format(self) -> "VLMRequestOpenAI":
+    def convert_guided_json_to_response_format(self) -> VLMRequestOpenAI:
         """Convert LiteLLM guided_json to response_format if needed."""
         # Only convert if response_format is not already set and guided_json is provided
         if self.guided_json is not None and self.response_format is None:

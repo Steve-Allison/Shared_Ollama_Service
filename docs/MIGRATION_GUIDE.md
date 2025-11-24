@@ -299,7 +299,7 @@ After migration, verify:
 
 - [ ] Shared Ollama service is running on port 11434
 - [ ] All required models are available
-- [ ] Health check passes: `./scripts/health_check.sh`
+- [ ] Health check passes: `./scripts/diagnostics/health_check.sh`
 - [ ] Knowledge Machine tests pass
 - [ ] Course Intelligence Compiler tests pass
 - [ ] Story Machine tests pass
@@ -332,7 +332,7 @@ After migration, verify:
 If you encounter issues:
 
 1. Check logs: `docker-compose logs ollama`
-2. Run health check: `./scripts/health_check.sh`
+2. Run health check: `./scripts/diagnostics/health_check.sh`
 3. Verify models: `docker-compose exec ollama ollama list`
 4. Test API: `curl http://localhost:11434/api/tags`
 

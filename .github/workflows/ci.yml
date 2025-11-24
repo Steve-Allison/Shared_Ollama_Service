@@ -29,7 +29,8 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -e ".[dev]"
+          pip install -r requirements.lock
+          pip install -e . --no-deps
       
       - name: Run Ruff linter
         run: |
@@ -37,11 +38,11 @@ jobs:
           ruff format --check .
       
       - name: Run Pyright type checker
-        run: pyright shared_ollama_client.py utils.py monitoring.py resilience.py shared_ollama_client_async.py
+        run: pyright
       
       - name: Run tests with pytest
         run: |
-          pytest tests/ -v --cov=shared_ollama_client --cov=utils --cov=monitoring --cov=resilience --cov-report=xml --cov-report=term
+          pytest tests/ -v --cov=shared_ollama --cov-report=xml --cov-report=term
       
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
@@ -67,7 +68,8 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install ruff pyright
+          pip install -r requirements.lock
+          pip install -e . --no-deps
       
       - name: Run Ruff check
         run: ruff check . --output-format=github
@@ -92,11 +94,11 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install pyright
+          pip install -r requirements.lock
+          pip install -e . --no-deps
       
       - name: Run Pyright
-        run: |
-          pyright shared_ollama_client.py utils.py monitoring.py resilience.py shared_ollama_client_async.py --outputjson || true
+        run: pyright --outputjson || true
 
   security:
     name: Security Scan

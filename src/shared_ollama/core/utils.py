@@ -35,7 +35,7 @@ import importlib
 import platform
 from itertools import takewhile
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 if TYPE_CHECKING:
     from shared_ollama.client.sync import SharedOllamaClient
@@ -233,10 +233,16 @@ def _detect_system_info() -> tuple[str, int]:
 
 
 def _coerce_int(value: Any, default: int) -> int:
-    try:
+    if isinstance(value, bool):
         return int(value)
-    except (TypeError, ValueError):
-        return default
+    if isinstance(value, int | float):
+        return int(value)
+    if isinstance(value, str):
+        try:
+            return int(value.strip())
+        except ValueError:
+            return default
+    return default
 
 
 @functools.cache
@@ -253,19 +259,26 @@ def _load_model_profile_defaults() -> dict[str, Any]:
     with config_path.open("r", encoding="utf-8") as fh:
         data = yaml.safe_load(fh) or {}
 
-    profiles = data.get("profiles") or []
-    if not isinstance(profiles, list) or not profiles:
+    raw_profiles = data.get("profiles") or []
+    if not isinstance(raw_profiles, list) or not raw_profiles:
         raise RuntimeError("config/models.yaml must define at least one profile")
+    profiles: list[dict[str, Any]] = []
+    for profile in raw_profiles:
+        if not isinstance(profile, dict):
+            raise RuntimeError("Each profile entry must be a mapping")
+        profile_dict = cast(dict[str, Any], profile)
+        profiles.append(profile_dict)
 
     _, ram = _detect_system_info()
     ram = ram or 32
 
     def matches(profile: dict[str, object]) -> bool:
-        min_ram = int(profile.get("min_ram_gb", 0) or 0)
-        max_ram = profile.get("max_ram_gb")
-        if max_ram is None:
+        min_ram = _coerce_int(profile.get("min_ram_gb"), 0)
+        max_ram_value = profile.get("max_ram_gb")
+        if max_ram_value is None:
             return ram >= min_ram
-        return ram >= min_ram and ram <= int(max_ram)
+        max_ram = _coerce_int(max_ram_value, min_ram)
+        return ram >= min_ram and ram <= max_ram
 
     selected: dict[str, object] | None = None
     for profile in profiles:
@@ -276,7 +289,10 @@ def _load_model_profile_defaults() -> dict[str, Any]:
     if selected is None:
         selected = profiles[-1]  # Fall back to last profile defined
 
-    defaults_section = data.get("defaults") or {}
+    defaults_obj = data.get("defaults") or {}
+    if not isinstance(defaults_obj, dict):
+        raise RuntimeError("defaults section must be a mapping")
+    defaults_section: dict[str, Any] = cast(dict[str, Any], defaults_obj)
 
     def normalize_list(value: object) -> list[str]:
         if isinstance(value, list):
@@ -285,19 +301,25 @@ def _load_model_profile_defaults() -> dict[str, Any]:
             return [str(value)]
         return []
 
+    selected_profile: dict[str, Any] = selected if selected is not None else profiles[-1]
+
     result: dict[str, Any] = {
-        "vlm_model": str(selected.get("vlm_model") or ""),
-        "text_model": str(selected.get("text_model") or ""),
-        "required_models": normalize_list(selected.get("required_models")),
-        "warmup_models": normalize_list(selected.get("warmup_models")),
-        "memory_hints": selected.get("memory_hints") or {},
-        "largest_model_gb": _coerce_int(selected.get("largest_model_gb"), 8),
+        "vlm_model": str(selected_profile.get("vlm_model") or ""),
+        "text_model": str(selected_profile.get("text_model") or ""),
+        "required_models": normalize_list(selected_profile.get("required_models")),
+        "warmup_models": normalize_list(selected_profile.get("warmup_models")),
+        "memory_hints": selected_profile.get("memory_hints") or {},
+        "largest_model_gb": _coerce_int(selected_profile.get("largest_model_gb"), 8),
         "inference_buffer_gb": _coerce_int(
-            selected.get("inference_buffer_gb", defaults_section.get("inference_buffer_gb", 4)),
+            selected_profile.get(
+                "inference_buffer_gb", defaults_section.get("inference_buffer_gb", 4)
+            ),
             4,
         ),
         "service_overhead_gb": _coerce_int(
-            selected.get("service_overhead_gb", defaults_section.get("service_overhead_gb", 2)),
+            selected_profile.get(
+                "service_overhead_gb", defaults_section.get("service_overhead_gb", 2)
+            ),
             2,
         ),
     }

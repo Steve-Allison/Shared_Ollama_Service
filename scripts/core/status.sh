@@ -135,5 +135,5 @@ fi
 
 echo ""
 echo "=================================================="
-echo "For more info, see: ./scripts/health_check.sh"
+echo "For more info, see: ./scripts/diagnostics/health_check.sh"
 

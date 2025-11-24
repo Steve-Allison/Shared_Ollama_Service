@@ -5,6 +5,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
+import yaml
 
 from shared_ollama.core import utils
 
@@ -125,4 +126,31 @@ class TestModelConfig:
 
         assert "qwen3-vl:8b-instruct-q4_K_M" in allowed
         assert "qwen3:30b" not in allowed
+
+
+def test_repo_models_yaml_is_well_formed() -> None:
+    config_path = Path(__file__).resolve().parents[1] / "config" / "models.yaml"
+    assert config_path.exists(), "config/models.yaml must exist in the repository"
+
+    data = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+    assert isinstance(data, dict)
+
+    profiles = data.get("profiles")
+    assert isinstance(profiles, list) and profiles, "profiles list must be present"
+
+    for profile in profiles:
+        assert isinstance(profile, dict), "each profile must be a mapping"
+        assert profile.get("vlm_model"), "vlm_model is required"
+        assert profile.get("text_model"), "text_model is required"
+        assert isinstance(profile.get("required_models"), list), "required_models must be a list"
+        assert isinstance(profile.get("warmup_models"), list), "warmup_models must be a list"
+        memory_hints = profile.get("memory_hints")
+        assert isinstance(memory_hints, dict), "memory_hints must be a mapping"
+        for value in memory_hints.values():
+            assert isinstance(value, int), "memory_hints must map to integers"
+
+    defaults = data.get("defaults")
+    assert isinstance(defaults, dict), "defaults section must exist"
+    assert isinstance(defaults.get("inference_buffer_gb"), int)
+    assert isinstance(defaults.get("service_overhead_gb"), int)
 

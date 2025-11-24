@@ -22,10 +22,11 @@ python3.13 -m venv .venv
 source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 
 # Install dependencies
-pip install -e ".[dev]" -c constraints.txt
+pip install -r requirements.lock
+pip install -e . --no-deps
 
 # Verify setup
-./scripts/verify_setup.sh
+./scripts/core/verify_setup.sh
 ```
 
 ### Configuration
@@ -43,6 +44,7 @@ The test suite follows Clean Architecture principles:
 - **Unit Tests**: Test individual components in isolation
 - **Integration Tests**: Test component interactions
 - **API Tests**: Test HTTP endpoints end-to-end
+- **Script Smoke Tests**: `tests/test_scripts_smoke.py` runs `bash -n` over every script in `scripts/core` and `scripts/maintenance` to ensure they stay runnable after refactors
 
 ### Running Tests
 

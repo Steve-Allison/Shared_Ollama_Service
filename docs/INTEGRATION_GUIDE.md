@@ -8,7 +8,7 @@ This guide shows you how to integrate the Shared Ollama Service into your projec
 
 ```bash
 # From Shared_Ollama_Service directory
-./scripts/verify_setup.sh
+./scripts/core/verify_setup.sh
 ```
 
 Or check status:

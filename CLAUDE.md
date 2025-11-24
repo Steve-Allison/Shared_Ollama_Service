@@ -95,7 +95,7 @@ The service supports POML (Prompt Orchestration Markup Language) with:
 # Setup (first time)
 python3 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]" -c constraints.txt
-./scripts/verify_setup.sh
+./scripts/core/verify_setup.sh
 
 # Start service
 ./scripts/core/start.sh                    # Manages Ollama + REST API
@@ -107,7 +107,7 @@ pip install -e ".[dev]" -c constraints.txt
 
 # Check service status
 ./scripts/core/status.sh                   # Shows metrics, model cache, queues
-./scripts/health_check.sh             # Quick health check
+./scripts/diagnostics/health_check.sh             # Quick health check
 ```
 
 ### Testing & Quality

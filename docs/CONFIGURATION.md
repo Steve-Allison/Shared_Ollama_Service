@@ -18,6 +18,8 @@ The Shared Ollama Service uses a centralized configuration system built on `pyda
 2. Export any overrides directly in your shell (all variables are optional)
 3. Start the service - configuration is automatically applied
 
+> **Tip:** Every edit to `config/models.yaml` is validated by `tests/test_model_config.py::test_repo_models_yaml_is_well_formed`. Run `pytest tests/test_model_config.py -k models_yaml` after updating the file to catch schema issues early.
+
 ## Configuration Structure
 
 Configuration is organized into logical sections:

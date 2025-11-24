@@ -4,9 +4,12 @@ import io
 import json
 from contextlib import redirect_stdout
 
-from scripts.async_load_test import run_load_test
-from scripts.performance_report import calculate_performance_stats, parse_performance_log
-from scripts.view_analytics import print_analytics_dashboard
+from scripts.diagnostics.async_load_test import run_load_test
+from scripts.diagnostics.performance_report import (
+    calculate_performance_stats,
+    parse_performance_log,
+)
+from scripts.diagnostics.view_analytics import print_analytics_dashboard
 from shared_ollama import (
     AnalyticsCollector,
     MetricsCollector,

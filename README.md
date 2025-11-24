@@ -1402,10 +1402,9 @@ source .venv/bin/activate  # On macOS/Linux
 # or
 .venv\Scripts\activate  # On Windows
 
-# Install dependencies (choose one method):
-pip install -r requirements.txt -c constraints.txt
-# OR (modern approach, preferred during development):
-pip install -e .[dev] -c constraints.txt
+# Install dependencies (locked + editable project)
+pip install -r requirements.lock
+pip install -e . --no-deps
 
 # Deactivate when done
 deactivate
@@ -1413,15 +1412,16 @@ deactivate
 
 **Dependency Management:**
 
-- `requirements.txt` - Simple dependency list (pip install -r requirements.txt)
-- `pyproject.toml` - Modern Python packaging standard (pip install -e .)
-- Both files are provided for compatibility
+- `requirements.lock` - Fully pinned third-party dependencies (pip install -r requirements.lock)
+- `pyproject.toml` - Modern Python packaging standard (pip install -e . --no-deps)
+- `pip install -r requirements.lock && pip install -e . --no-deps` is the supported flow for CI and local dev
 
 **Install Development Tools:**
 
 ```bash
-# Install with development dependencies (Ruff, Pyright, pytest)
-pip install -e ".[dev]" -c constraints.txt
+# Already included in requirements.lock
+pip install -r requirements.lock
+pip install -e . --no-deps
 ```
 
 **Modern Development Tools:**
@@ -1436,7 +1436,7 @@ pip install -e ".[dev]" -c constraints.txt
 
 ```bash
 ./scripts/core/start.sh              # Start REST API server (port 8000)
-                                 # Automatically runs verify_setup.sh to check/generate optimal config
+                                 # Automatically runs core/verify_setup.sh to check/generate optimal config
 ./scripts/core/start.sh --skip-verify # Skip verification (faster startup)
 curl http://0.0.0.0:8000/api/v1/health  # Health check
 
@@ -1506,7 +1506,7 @@ make fix         # Auto-fix issues
 ./scripts/core/status.sh
 
 # Comprehensive health check
-./scripts/health_check.sh
+./scripts/diagnostics/health_check.sh
 
 # Or check REST API health
 curl http://0.0.0.0:8000/api/v1/health
@@ -2148,7 +2148,7 @@ export OLLAMA_KEEP_ALIVE=15m
 
 ```bash
 # Comprehensive setup verification (recommended)
-./scripts/verify_setup.sh
+./scripts/core/verify_setup.sh
 
 # This checks:
 # - Detects hardware profile and loads recommended settings
@@ -2159,7 +2159,7 @@ export OLLAMA_KEEP_ALIVE=15m
 # - Health checks (tests all models)
 
 # Quick health check
-./scripts/health_check.sh
+./scripts/diagnostics/health_check.sh
 
 # This checks:
 # - Ollama service is running
@@ -2604,7 +2604,7 @@ python scripts/performance_report.py --window 60
 **Quick Monitoring**:
 
 - **Quick status**: `./scripts/core/status.sh` (fast overview)
-- **Health checks**: `./scripts/health_check.sh` (comprehensive)
+- **Health checks**: `./scripts/diagnostics/health_check.sh` (comprehensive)
 - **Model status**: `curl http://0.0.0.0:8000/api/v1/models`
 - **Resource usage**: `top -pid $(pgrep ollama)` or Activity Monitor
 
@@ -3195,6 +3195,6 @@ MIT
 For issues or questions:
 
 - Check logs: `tail -f logs/api.log`
-- Run health check: `./scripts/health_check.sh`
+- Run health check: `./scripts/diagnostics/health_check.sh`
 - Verify service: `curl http://0.0.0.0:8000/api/v1/health`
 - Open issue in project repository

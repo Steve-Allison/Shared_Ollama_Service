@@ -13,7 +13,7 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/lib/model_config.sh"
+source "$SCRIPT_DIR/../lib/model_config.sh"
 load_model_config
 
 echo -e "${BLUE}🚀 Native Ollama Installation for Apple Silicon${NC}"

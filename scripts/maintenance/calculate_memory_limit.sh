@@ -35,7 +35,7 @@ echo ""
 
 # Load model configuration from config/models.yaml
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/lib/model_config.sh"
+source "$SCRIPT_DIR/../lib/model_config.sh"
 load_model_config
 
 if [[ -n "${OLLAMA_REQUIRED_MODELS:-}" ]]; then

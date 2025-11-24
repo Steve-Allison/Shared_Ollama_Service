@@ -17,7 +17,7 @@ API_ENDPOINT="${OLLAMA_URL}/api"
 
 # Load model configuration
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/lib/model_config.sh"
+source "$SCRIPT_DIR/../lib/model_config.sh"
 load_model_config
 
 # Status tracking

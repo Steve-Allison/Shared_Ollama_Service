@@ -269,15 +269,16 @@ for i in {1..30}; do
 done
 
 # Warm up models in background
-if [ -f "$SCRIPT_DIR/warmup_models.sh" ]; then
+WARMUP_SCRIPT="$PROJECT_ROOT/scripts/maintenance/warmup_models.sh"
+if [ -f "$WARMUP_SCRIPT" ]; then
     echo ""
     echo -e "${BLUE}🔥 Warming up models...${NC}"
-    "$SCRIPT_DIR/warmup_models.sh" > /dev/null 2>&1 &
+    "$WARMUP_SCRIPT" > /dev/null 2>&1 &
     WARMUP_PID=$!
     echo -e "${GRAY}Model warmup started in background (PID: $WARMUP_PID)${NC}"
     echo -e "${GRAY}Models will be preloaded for faster first requests${NC}"
 else
-    echo -e "${YELLOW}⚠ Warmup script not found at $SCRIPT_DIR/warmup_models.sh${NC}"
+    echo -e "${YELLOW}⚠ Warmup script not found at $WARMUP_SCRIPT${NC}"
 fi
 
 echo ""

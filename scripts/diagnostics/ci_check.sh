@@ -14,7 +14,7 @@ BLUE='\033[0;34m'
 NC='\033[0m'
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/lib/model_config.sh"
+source "$SCRIPT_DIR/../lib/model_config.sh"
 load_model_config
 
 OLLAMA_URL="${OLLAMA_URL:-http://localhost:11434}"

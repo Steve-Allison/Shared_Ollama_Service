@@ -17,7 +17,7 @@ NC='\033[0m' # No Color
 OLLAMA_URL="http://localhost:11434"
 API_ENDPOINT="${OLLAMA_URL}/api"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 CLEANUP_SCRIPT="$SCRIPT_DIR/cleanup.sh"
 
 kill_pattern() {

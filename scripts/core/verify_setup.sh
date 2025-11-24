@@ -28,7 +28,7 @@ echo ""
 
 # Get project root directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 MEMORY_SCRIPT="$SCRIPT_DIR/calculate_memory_limit.sh"
 source "$SCRIPT_DIR/lib/model_config.sh"
 

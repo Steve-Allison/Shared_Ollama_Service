@@ -4,7 +4,7 @@
 # Selects the appropriate models based on total system RAM. Configuration-only,
 # no .env overrides or manual fiddling required.
 
-PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 CONFIG_FILE="$PROJECT_ROOT/config/models.yaml"
 
 detect_ram_gb() {

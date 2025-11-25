@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.1] - 2025-11-25
+
+### Changed
+- Regenerated `requirements.lock` with `--extra=async --extra=dev` to ensure httpx/httpcore are included
+- All dependencies verified at latest compatible versions
+- All 642 tests passing with updated dependency stack
+
+### Fixed
+- Promoted `test_get_metrics_calculates_percentiles` from xfail to normal test (now stable with updated dependencies)
+
+## [Unreleased]
+
 ### Added
 - Comprehensive test suite with pytest
 - Async/await support (`AsyncSharedOllamaClient`)

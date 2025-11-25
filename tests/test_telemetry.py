@@ -65,18 +65,22 @@ class TestMetricsCollector:
     def test_record_request_limits_collection_size(self):
         """Test that metrics collection is limited to _max_metrics."""
         MetricsCollector.reset()
+        original_limit = MetricsCollector._max_metrics
         MetricsCollector._max_metrics = 10
 
-        # Add more than max
-        for i in range(15):
-            MetricsCollector.record_request(
-                model="test", operation="generate", latency_ms=float(i), success=True
-            )
+        try:
+            # Add more than max
+            for i in range(15):
+                MetricsCollector.record_request(
+                    model="test", operation="generate", latency_ms=float(i), success=True
+                )
 
-        # Should only keep last 10
-        assert len(MetricsCollector._metrics) == 10
-        # Oldest should be discarded (latency 5, not 0)
-        assert MetricsCollector._metrics[0].latency_ms == 5.0
+            # Should only keep last 10
+            assert len(MetricsCollector._metrics) == 10
+            # Oldest should be discarded (latency 5, not 0)
+            assert MetricsCollector._metrics[0].latency_ms == 5.0
+        finally:
+            MetricsCollector._max_metrics = original_limit
 
     def test_get_metrics_with_empty_collection(self):
         """Test that get_metrics() returns empty ServiceMetrics when no metrics."""

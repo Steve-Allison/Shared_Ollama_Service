@@ -79,7 +79,10 @@ class TestModelConfig:
         )
         assert defaults.largest_model_gb == 8
 
-    def test_large_profile_selected_for_high_ram(self) -> None:
+    def test_large_profile_selected_for_high_ram(self, monkeypatch) -> None:
+        monkeypatch.delenv("SHARED_OLLAMA_FORCE_PROFILE", raising=False)
+        monkeypatch.delenv("SHARED_OLLAMA_FORCE_RAM_GB", raising=False)
+        reset_caches()
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
             write_config(root)
@@ -99,7 +102,10 @@ class TestModelConfig:
                     with pytest.raises(RuntimeError, match="Model configuration file not found"):
                         utils._load_model_profile_defaults()
 
-    def test_get_default_helpers_use_selected_profile(self) -> None:
+    def test_get_default_helpers_use_selected_profile(self, monkeypatch) -> None:
+        monkeypatch.delenv("SHARED_OLLAMA_FORCE_PROFILE", raising=False)
+        monkeypatch.delenv("SHARED_OLLAMA_FORCE_RAM_GB", raising=False)
+        reset_caches()
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
             write_config(root)

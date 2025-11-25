@@ -3,6 +3,7 @@ Pytest configuration and fixtures for Shared Ollama Service tests.
 """
 
 import json
+import os
 import socketserver
 import sys
 import threading
@@ -12,6 +13,9 @@ from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 import pytest
+
+os.environ.setdefault("SHARED_OLLAMA_FORCE_PROFILE", "small")
+os.environ.setdefault("SHARED_OLLAMA_FORCE_RAM_GB", "32")
 
 SRC_ROOT = Path(__file__).resolve().parents[1] / "src"
 if str(SRC_ROOT) not in sys.path:

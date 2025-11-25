@@ -16,6 +16,7 @@ from __future__ import annotations
 import contextlib
 import functools
 import importlib
+import os
 import platform
 import subprocess
 from collections.abc import Mapping, Sequence
@@ -310,8 +311,31 @@ def _build_model_defaults(
 @functools.cache
 def _load_model_profile_defaults() -> ModelDefaults:
     config = _read_models_config()
-    _, ram = _detect_system_info()
-    selected_profile = _select_profile(config["profiles"], ram or 32)
+    forced_profile = os.environ.get("SHARED_OLLAMA_FORCE_PROFILE", "").strip().lower()
+    forced_ram = os.environ.get("SHARED_OLLAMA_FORCE_RAM_GB", "").strip()
+
+    match forced_profile:
+        case "":
+            _, detected_ram = _detect_system_info()
+            ram_gb = _coerce_int(forced_ram, detected_ram or 32)
+            selected_profile = _select_profile(config["profiles"], ram_gb or 32)
+        case _:
+            selected_profile = next(
+                (
+                    profile
+                    for profile in config["profiles"]
+                    if profile.get("name", "").strip().lower() == forced_profile
+                ),
+                None,
+            )
+            if selected_profile is None:
+                available = ", ".join(
+                    profile.get("name", "<unnamed>") for profile in config["profiles"]
+                )
+                raise ModelConfigError(
+                    f"Unknown hardware profile '{forced_profile}'. Available profiles: {available}"
+                )
+
     return _build_model_defaults(selected_profile, config["defaults"])
 
 

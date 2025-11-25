@@ -106,10 +106,6 @@ class TestMetricsCollector:
         metrics = MetricsCollector.get_metrics()
         assert metrics.average_latency_ms == 30.0
 
-    @pytest.mark.xfail(
-        reason="Test passes in isolation but can fail in full suite due to shared class variable state. "
-        "Investigating pytest collection/execution order effects."
-    )
     def test_get_metrics_calculates_percentiles(self):
         """Test that get_metrics() calculates percentiles correctly."""
         # Reset and clear to ensure clean state

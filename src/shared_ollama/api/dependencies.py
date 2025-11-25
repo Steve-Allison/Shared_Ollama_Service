@@ -486,12 +486,12 @@ async def parse_request_json(request: Request, model_cls: type[T]) -> T:
         return model_cls(**body)
     except ValueError as e:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=f"Invalid JSON in request body: {e!s}",
         ) from e
     except Exception as e:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=f"Request validation failed: {e!s}",
         ) from e
 

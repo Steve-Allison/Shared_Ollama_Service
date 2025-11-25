@@ -11,6 +11,16 @@
 
 **📚 Documentation**: See [docs/README.md](docs/README.md) for complete documentation index.
 
+## Core Stack (Nov 2025)
+
+- `fastapi` **0.122.0** + `uvicorn[standard]` **0.38.0** for the HTTP layer
+- `gunicorn` **23.0.0** for production process supervision
+- `psutil` **7.1.3**, `tenacity` **9.1.2**, `cachetools` **6.2.2** for process control, retries, and caching
+- `Pillow` **12.0.0** for VLM image handling
+- Tooling: `pytest` **9.0.1**, `pytest-asyncio` **1.3.0**, `pytest-cov` **7.0.0**, `ruff` **0.14.6**
+
+See `pyproject.toml` and `constraints.txt` for the authoritative list of pinned versions.
+
 ## Overview
 
 This service provides a REST API (port 8000) that manages Ollama internally and makes it accessible to all projects:
@@ -2281,7 +2291,13 @@ export OLLAMA_NUM_THREAD=14        # CPU threads
 # Model Keep-Alive
 export OLLAMA_KEEP_ALIVE=30m       # How long models stay loaded after last use
 export OLLAMA_DEBUG=false
+
+# Hardware profile overrides (CI/testing only)
+export SHARED_OLLAMA_FORCE_PROFILE=small   # Force a specific config/models.yaml profile
+export SHARED_OLLAMA_FORCE_RAM_GB=32       # Bypass auto-detected RAM when forcing a profile
 ```
+
+These overrides keep CI and local test runs deterministic by pinning the hardware profile that `config/models.yaml` resolves to. Omit them in production so the service can auto-detect RAM and choose the correct tier.
 
 **Network Access:**
 

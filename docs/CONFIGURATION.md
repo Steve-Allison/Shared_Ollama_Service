@@ -20,6 +20,23 @@ The Shared Ollama Service uses a centralized configuration system built on `pyda
 
 > **Tip:** Every edit to `config/models.yaml` is validated by `tests/test_model_config.py::test_repo_models_yaml_is_well_formed`. Run `pytest tests/test_model_config.py -k models_yaml` after updating the file to catch schema issues early.
 
+### Hardware Profile Overrides
+
+For CI pipelines or load tests you can bypass automatic RAM detection and force a specific profile. The service (and pytest fixtures) honor two environment variables:
+
+- `SHARED_OLLAMA_FORCE_PROFILE` — set to a profile name from `config/models.yaml` (e.g., `small`, `large`)
+- `SHARED_OLLAMA_FORCE_RAM_GB` — optional integer hint used when you still want `_select_profile` to run but with a fixed RAM value
+
+Example:
+
+```bash
+export SHARED_OLLAMA_FORCE_PROFILE=small
+export SHARED_OLLAMA_FORCE_RAM_GB=32
+pytest
+```
+
+Leave these unset in production so the profile is selected automatically.
+
 ## Configuration Structure
 
 Configuration is organized into logical sections:

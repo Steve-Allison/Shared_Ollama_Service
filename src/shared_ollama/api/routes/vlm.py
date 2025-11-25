@@ -179,12 +179,12 @@ async def vlm_chat(
         event_data["images_count"] = len(api_req.images)
     except ValueError as e:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=f"Invalid JSON in request body: {e!s}",
         ) from e
     except Exception as e:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=f"Request validation failed: {e!s}",
         ) from e
 
@@ -309,12 +309,12 @@ async def vlm_chat_openai(
         event_data["compression_format"] = api_req.compression_format
     except ValueError as e:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=f"Invalid JSON in request body: {e!s}",
         ) from e
     except Exception as e:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=f"Request validation failed: {e!s}",
         ) from e
 

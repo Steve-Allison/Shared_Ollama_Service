@@ -64,7 +64,7 @@
 ## Current Package Status
 
 ### Core Dependencies (Required)
-- ✅ `fastapi` (0.121.2)
+- ✅ `fastapi` (0.122.0)
 - ✅ `uvicorn[standard]` (0.38.0)
 - ✅ `gunicorn` (23.0.0) - **NEW**
 - ✅ `psutil` (7.1.3) - **NEW**
@@ -79,7 +79,7 @@
 
 ### Optional Dependencies
 - ✅ `httpx` (0.28.1) - async client
-- ✅ `ruff` (0.14.5) - dev: linting
+- ✅ `ruff` (0.14.6) - dev: linting
 - ✅ `pyright` (1.1.407) - dev: type checking
 - ✅ `pytest` (9.0.1) - dev: testing
 - ✅ `pytest-cov` (7.0.0) - dev: coverage

@@ -23,6 +23,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Improved type safety throughout
 - Enhanced error handling with specific exceptions
 - Better code organization and structure
+- Upgraded dependency baseline: FastAPI 0.122.0, Pillow 12.0.0, cachetools 6.2.2, tenacity 9.1.2, psutil 7.1.3, pytest 9.0.1, pytest-asyncio 1.3.0, pytest-cov 7.0.0, ruff 0.14.6
+- Added `SHARED_OLLAMA_FORCE_PROFILE` / `SHARED_OLLAMA_FORCE_RAM_GB` overrides for deterministic CI/test profiles
 
 ### Fixed
 - Bare `except:` clauses replaced with specific exception handling

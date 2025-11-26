@@ -42,13 +42,13 @@ class OllamaManager:
     """Manage the Ollama subprocess lifecycle with optional warmup support."""
 
     __slots__ = (
-        "base_url",
-        "log_dir",
-        "auto_detect_optimizations",
-        "force_manage",
-        "process",
         "_ollama_path",
         "_ollama_path_initialized",
+        "auto_detect_optimizations",
+        "base_url",
+        "force_manage",
+        "log_dir",
+        "process",
     )
 
     def __init__(

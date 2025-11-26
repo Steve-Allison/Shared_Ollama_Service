@@ -67,12 +67,12 @@ class ResilientOllamaClient:
     """SharedOllamaClient facade with baked-in retry + circuit-breaker policies."""
 
     __slots__ = (
+        "_circuit_decorator",
+        "_retryable_exceptions",
         "base_url",
-        "retry_config",
         "circuit_breaker_config",
         "client",
-        "_retryable_exceptions",
-        "_circuit_decorator",
+        "retry_config",
     )
 
     def __init__(

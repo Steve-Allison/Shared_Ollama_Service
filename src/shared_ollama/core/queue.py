@@ -32,14 +32,14 @@ class RequestQueue:
     """Async queue that enforces concurrency limits and tracks telemetry."""
 
     __slots__ = (
-        "max_concurrent",
-        "max_queue_size",
-        "default_timeout",
         "_active_requests",
         "_queue",
         "_semaphore",
         "_stats",
         "_stats_lock",
+        "default_timeout",
+        "max_concurrent",
+        "max_queue_size",
     )
 
     def __init__(

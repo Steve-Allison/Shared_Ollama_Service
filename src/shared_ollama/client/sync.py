@@ -47,6 +47,14 @@ from typing import Any
 
 import requests
 from requests.adapters import HTTPAdapter
+from tenacity import (
+    RetryError,
+    Retrying,
+    before_sleep_log,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_fixed,
+)
 
 from shared_ollama.telemetry.metrics import MetricsCollector
 from shared_ollama.telemetry.structured_logging import log_request_event
@@ -227,7 +235,7 @@ class SharedOllamaClient:
         """Verify connection to Ollama service with retries.
 
         Performs a health check by requesting /api/tags endpoint. Retries
-        on failure with exponential backoff.
+        on failure with configurable delay managed by tenacity.
 
         Args:
             retries: Number of retry attempts.
@@ -240,31 +248,35 @@ class SharedOllamaClient:
         Side effects:
             Makes HTTP GET request to /api/tags endpoint.
         """
-        for attempt in range(retries):
-            try:
-                response = self.session.get(
-                    f"{self.config.base_url}/api/tags",
-                    timeout=self.config.health_check_timeout,
-                )
-                response.raise_for_status()
-                logger.info("Connected to Ollama service")
-                return
-            except requests.exceptions.RequestException as exc:
-                if attempt < retries - 1:
-                    logger.warning(
-                        "Connection attempt %s failed, retrying in %ss...",
-                        attempt + 1,
-                        delay,
-                    )
-                    time.sleep(delay)
-                else:
-                    logger.exception("Failed to connect to Ollama after %s attempts", retries)
-                    msg = (
-                        f"Cannot connect to Ollama at {self.config.base_url}. "
-                        "Make sure the service is running.\n"
-                        "Start with: ./scripts/core/start.sh (REST API manages Ollama internally)"
-                    )
-                    raise ConnectionError(msg) from exc
+        attempts = max(1, retries)
+        wait_seconds = max(0.0, delay)
+        retryer = Retrying(
+            stop=stop_after_attempt(attempts),
+            wait=wait_fixed(wait_seconds),
+            retry=retry_if_exception_type(requests.exceptions.RequestException),
+            before_sleep=before_sleep_log(logger, logging.WARNING),
+            reraise=False,
+        )
+
+        def _attempt() -> None:
+            response = self.session.get(
+                f"{self.config.base_url}/api/tags",
+                timeout=self.config.health_check_timeout,
+            )
+            response.raise_for_status()
+            logger.info("Connected to Ollama service")
+
+        try:
+            retryer(_attempt)
+        except RetryError as exc:
+            logger.exception("Failed to connect to Ollama after %s attempts", attempts)
+            msg = (
+                f"Cannot connect to Ollama at {self.config.base_url}. "
+                "Make sure the service is running.\n"
+                "Start with: ./scripts/core/start.sh (REST API manages Ollama internally)"
+            )
+            last_exc = exc.last_attempt.exception() if exc.last_attempt else exc
+            raise ConnectionError(msg) from last_exc
 
     def list_models(self) -> list[dict[str, Any]]:
         """List all available models.

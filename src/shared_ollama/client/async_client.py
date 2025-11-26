@@ -57,6 +57,15 @@ except ImportError as exc:  # pragma: no cover
     msg = "httpx is required for async support. Install with: pip install httpx"
     raise ImportError(msg) from exc
 
+from tenacity import (
+    AsyncRetrying,
+    RetryError,
+    before_sleep_log,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_fixed,
+)
+
 from shared_ollama.client.sync import GenerateOptions, GenerateResponse, Model
 from shared_ollama.telemetry.metrics import MetricsCollector
 from shared_ollama.telemetry.structured_logging import log_request_event
@@ -247,7 +256,7 @@ class AsyncSharedOllamaClient:
         """Verify connection to Ollama service with retries.
 
         Performs a health check by requesting /api/tags endpoint. Retries
-        on failure with configurable delay.
+        on failure with configurable delay managed by tenacity.
 
         Args:
             retries: Number of retry attempts. If None, uses config.max_retries.
@@ -262,41 +271,43 @@ class AsyncSharedOllamaClient:
             - Makes HTTP GET request to /api/tags endpoint
             - Sleeps between retry attempts
         """
-        retries = retries or self.config.max_retries
-        delay = delay or self.config.retry_delay
+        attempts = max(1, retries or self.config.max_retries)
+        wait_seconds = max(0.0, delay or self.config.retry_delay)
 
         await self._ensure_client()
 
         if self.client is None:
             raise RuntimeError("Client not initialized")
 
-        for attempt in range(retries):
-            try:
-                async with self._acquire_slot():
-                    response = await self.client.get(
-                        "/api/tags",
-                        timeout=self.config.health_check_timeout,
-                    )
-                response.raise_for_status()
-                logger.info("Connected to Ollama service")
-                self._needs_verification = False
-                return
-            except (httpx.RequestError, httpx.HTTPStatusError) as exc:
-                if attempt < retries - 1:
-                    logger.warning(
-                        "Connection attempt %s failed, retrying in %ss...",
-                        attempt + 1,
-                        delay,
-                    )
-                    await asyncio.sleep(delay)
-                else:
-                    logger.exception("Failed to connect to Ollama after %s attempts", retries)
-                    msg = (
-                        f"Cannot connect to Ollama at {self.config.base_url}. "
-                        "Make sure the service is running.\n"
-                        "Start with: ./scripts/core/start.sh (REST API manages Ollama internally)"
-                    )
-                    raise ConnectionError(msg) from exc
+        retryer = AsyncRetrying(
+            stop=stop_after_attempt(attempts),
+            wait=wait_fixed(wait_seconds),
+            retry=retry_if_exception_type((httpx.RequestError, httpx.HTTPStatusError)),
+            before_sleep=before_sleep_log(logger, logging.WARNING),
+            reraise=False,
+        )
+
+        try:
+            async for attempt in retryer:
+                with attempt:
+                    async with self._acquire_slot():
+                        response = await self.client.get(
+                            "/api/tags",
+                            timeout=self.config.health_check_timeout,
+                        )
+                    response.raise_for_status()
+                    logger.info("Connected to Ollama service")
+                    self._needs_verification = False
+                    return
+        except RetryError as exc:
+            logger.exception("Failed to connect to Ollama after %s attempts", attempts)
+            msg = (
+                f"Cannot connect to Ollama at {self.config.base_url}. "
+                "Make sure the service is running.\n"
+                "Start with: ./scripts/core/start.sh (REST API manages Ollama internally)"
+            )
+            last_exc = exc.last_attempt.exception() if exc.last_attempt else exc
+            raise ConnectionError(msg) from last_exc
 
     async def close(self) -> None:
         """Close the httpx client and cleanup resources.

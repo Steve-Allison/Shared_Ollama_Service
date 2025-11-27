@@ -529,6 +529,51 @@ class ModelsResponse(BaseModel):
     models: list[ModelInfo] = Field(..., description="List of available models")
 
 
+class ModelProfileResponse(BaseModel):
+    """Response model describing the active hardware profile and model defaults."""
+
+    model_config = ConfigDict(
+        validate_assignment=True,
+        extra="forbid",
+    )
+
+    profile: str = Field(..., description="Name of the selected hardware profile")
+    selection_method: Literal["auto", "forced_profile", "forced_ram"] = Field(
+        ..., description="How the profile was selected"
+    )
+    architecture: str = Field(..., description="Detected CPU architecture (e.g., arm64)")
+    detected_ram_gb: int | None = Field(
+        None, ge=0, description="Total system RAM detected in gigabytes"
+    )
+    effective_ram_gb: int = Field(..., ge=0, description="RAM value used for profile selection")
+    forced_profile: str | None = Field(
+        None, description="Forced profile name when SHARED_OLLAMA_FORCE_PROFILE is set"
+    )
+    forced_ram_gb: int | None = Field(
+        None, ge=0, description="Forced RAM value when SHARED_OLLAMA_FORCE_RAM_GB is set"
+    )
+    min_ram_gb: int | None = Field(
+        None, ge=0, description="Minimum RAM requirement for the selected profile"
+    )
+    max_ram_gb: int | None = Field(
+        None, ge=0, description="Maximum RAM supported by the selected profile"
+    )
+    default_vlm_model: str = Field(..., description="VLM model selected for this profile")
+    default_text_model: str = Field(..., description="Text model selected for this profile")
+    required_models: list[str] = Field(..., description="Models that must always be present")
+    warmup_models: list[str] = Field(..., description="Models preloaded at startup")
+    allowed_models: list[str] = Field(..., description="Models permitted on this host")
+    memory_hints: dict[str, int] = Field(
+        default_factory=dict,
+        description="Approximate RAM footprint hints per model (GB)",
+    )
+    largest_model_gb: int = Field(..., ge=0, description="Size of the largest allowed model (GB)")
+    inference_buffer_gb: int = Field(..., ge=0, description="Additional buffer reserved for inference")
+    service_overhead_gb: int = Field(
+        ..., ge=0, description="Service overhead accounted for in profile selection"
+    )
+
+
 class HealthResponse(BaseModel):
     """Response model for health check endpoint.
 

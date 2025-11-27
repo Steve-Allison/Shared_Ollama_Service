@@ -59,6 +59,9 @@ curl http://0.0.0.0:8000/api/v1/health
 
 # List available models
 curl http://0.0.0.0:8000/api/v1/models
+
+# Inspect the active hardware profile and model recommendations
+curl http://0.0.0.0:8000/api/v1/system/model-profile
 ```
 
 Expected response:
@@ -128,6 +131,8 @@ http://0.0.0.0:8000/api/docs
 ## Models Available
 
 **Note**: Models are loaded on-demand. Up to 3 models can be loaded simultaneously based on available RAM.
+
+- **Know your active profile**: call `GET /api/v1/system/model-profile` to see which hardware profile was selected, which models are preloaded/warmed, and what RAM assumptions were used after auto-detection.
 
 - **Primary**: `qwen3-vl:8b-instruct-q4_K_M` (8B parameters, quantized vision-language model) ⭐ **VLM SUPPORTED**
   - **Optimized for laptops**: Quantized Q4_K_M build keeps RAM usage around ~6 GB while retaining Qwen 3 multimodal features

@@ -72,13 +72,14 @@ from shared_ollama.api.models import (
     AnalyticsResponse,
     HealthResponse,
     MetricsResponse,
+    ModelProfileResponse,
     ModelsResponse,
     PerformanceStatsResponse,
     QueueStatsResponse,
 )
 from shared_ollama.application.use_cases import ListModelsUseCase
 from shared_ollama.core.queue import RequestQueue
-from shared_ollama.core.utils import check_service_health
+from shared_ollama.core.utils import check_service_health, get_model_profile_summary
 
 logger = logging.getLogger(__name__)
 
@@ -385,3 +386,11 @@ async def list_models(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"An internal error occurred (request_id: {ctx.request_id}). Please try again later or contact support.",
         ) from exc
+
+
+@router.get("/system/model-profile", response_model=ModelProfileResponse, tags=["Models"])
+async def get_model_profile() -> ModelProfileResponse:
+    """Return the active hardware profile and model recommendations."""
+
+    summary = get_model_profile_summary()
+    return ModelProfileResponse(**summary)

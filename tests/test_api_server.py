@@ -281,6 +281,43 @@ class TestQueueStatsEndpoint:
         assert isinstance(data["max_queue_size"], int)
 
 
+class TestModelProfileEndpoint:
+    """Behavioral tests for the model profile endpoint."""
+
+    def test_model_profile_returns_summary(self, sync_api_client, mock_async_client):
+        summary = {
+            "profile": "small",
+            "selection_method": "auto",
+            "architecture": "arm64",
+            "detected_ram_gb": 64,
+            "effective_ram_gb": 64,
+            "forced_profile": None,
+            "forced_ram_gb": None,
+            "min_ram_gb": 16,
+            "max_ram_gb": 64,
+            "default_vlm_model": "qwen3-vl:8b-instruct-q4_K_M",
+            "default_text_model": "qwen3:14b-q4_K_M",
+            "required_models": ["qwen3-vl:8b-instruct-q4_K_M"],
+            "warmup_models": ["qwen3:14b-q4_K_M"],
+            "allowed_models": ["qwen3-vl:8b-instruct-q4_K_M", "qwen3:14b-q4_K_M"],
+            "memory_hints": {"qwen3-vl:8b-instruct-q4_K_M": 6},
+            "largest_model_gb": 8,
+            "inference_buffer_gb": 4,
+            "service_overhead_gb": 2,
+        }
+
+        with patch(
+            "shared_ollama.api.routes.system.get_model_profile_summary",
+            return_value=summary,
+        ):
+            response = sync_api_client.get("/api/v1/system/model-profile")
+
+        data = assert_response_structure(response, 200)
+        assert data["profile"] == summary["profile"]
+        assert data["default_vlm_model"] == summary["default_vlm_model"]
+        assert data["allowed_models"] == summary["allowed_models"]
+
+
 class TestSystemMetricsEndpoints:
     """Behavioral tests for metrics/performance/analytics endpoints."""
 

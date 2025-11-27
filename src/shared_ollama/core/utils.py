@@ -309,16 +309,24 @@ def _build_model_defaults(
 
 
 @functools.cache
-def _load_model_profile_defaults() -> ModelDefaults:
+def _resolve_model_profile_selection() -> tuple[_ProfileConfig, ModelDefaults, dict[str, Any]]:
+    """Resolve the active profile, defaults, and metadata in a single cached call."""
+
     config = _read_models_config()
     forced_profile = os.environ.get("SHARED_OLLAMA_FORCE_PROFILE", "").strip().lower()
     forced_ram = os.environ.get("SHARED_OLLAMA_FORCE_RAM_GB", "").strip()
+    architecture, detected_ram = _detect_system_info()
+
+    effective_ram = _coerce_int(forced_ram, detected_ram or 32)
+    if effective_ram <= 0:
+        effective_ram = 32
+
+    selection_method: Literal["auto", "forced_profile", "forced_ram"]
 
     match forced_profile:
         case "":
-            _, detected_ram = _detect_system_info()
-            ram_gb = _coerce_int(forced_ram, detected_ram or 32)
-            selected_profile = _select_profile(config["profiles"], ram_gb or 32)
+            selected_profile = _select_profile(config["profiles"], effective_ram or 32)
+            selection_method = "forced_ram" if forced_ram else "auto"
         case _:
             selected_profile = next(
                 (
@@ -335,8 +343,58 @@ def _load_model_profile_defaults() -> ModelDefaults:
                 raise ModelConfigError(
                     f"Unknown hardware profile '{forced_profile}'. Available profiles: {available}"
                 )
+            selection_method = "forced_profile"
 
-    return _build_model_defaults(selected_profile, config["defaults"])
+    defaults = _build_model_defaults(selected_profile, config["defaults"])
+    min_ram = _coerce_int(selected_profile.get("min_ram_gb"), 0)
+    max_ram_val = selected_profile.get("max_ram_gb")
+    max_ram = _coerce_int(max_ram_val, min_ram) if max_ram_val is not None else None
+    metadata = {
+        "profile_name": selected_profile.get("name", "").strip() or "default",
+        "selection_method": selection_method,
+        "architecture": architecture or "unknown",
+        "detected_ram_gb": detected_ram or None,
+        "effective_ram_gb": effective_ram,
+        "forced_profile": forced_profile or None,
+        "forced_ram_gb": _coerce_int(forced_ram, 0) if forced_ram else None,
+        "min_ram_gb": min_ram or None,
+        "max_ram_gb": max_ram,
+    }
+
+    return selected_profile, defaults, metadata
+
+
+@functools.cache
+def _load_model_profile_defaults() -> ModelDefaults:
+    return _resolve_model_profile_selection()[1]
+
+
+@functools.cache
+def get_model_profile_summary() -> dict[str, Any]:
+    """Return a human-readable summary of the active hardware profile and models."""
+
+    _, defaults, metadata = _resolve_model_profile_selection()
+
+    return {
+        "profile": metadata["profile_name"],
+        "selection_method": metadata["selection_method"],
+        "architecture": metadata["architecture"],
+        "detected_ram_gb": metadata["detected_ram_gb"],
+        "effective_ram_gb": metadata["effective_ram_gb"],
+        "forced_profile": metadata["forced_profile"],
+        "forced_ram_gb": metadata["forced_ram_gb"],
+        "min_ram_gb": metadata["min_ram_gb"],
+        "max_ram_gb": metadata["max_ram_gb"],
+        "default_vlm_model": defaults.vlm_model,
+        "default_text_model": defaults.text_model,
+        "required_models": list(defaults.required_models),
+        "warmup_models": list(defaults.warmup_models),
+        "allowed_models": sorted(defaults.allowed_models),
+        "memory_hints": dict(defaults.memory_hints),
+        "largest_model_gb": defaults.largest_model_gb,
+        "inference_buffer_gb": defaults.inference_buffer_gb,
+        "service_overhead_gb": defaults.service_overhead_gb,
+    }
 
 
 @functools.cache
@@ -380,6 +438,7 @@ def is_model_allowed(model_name: str | None) -> bool:
 __all__ = [
     "ModelConfigError",
     "ModelDefaults",
+    "get_model_profile_summary",
     "check_service_health",
     "ensure_service_running",
     "get_allowed_models",

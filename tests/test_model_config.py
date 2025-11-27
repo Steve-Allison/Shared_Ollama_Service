@@ -53,10 +53,12 @@ def write_config(directory: Path, contents: str = SAMPLE_CONFIG) -> Path:
 
 def reset_caches() -> None:
     utils._load_model_profile_defaults.cache_clear()
+    utils._resolve_model_profile_selection.cache_clear()
     utils.get_default_vlm_model.cache_clear()
     utils.get_default_text_model.cache_clear()
     utils.get_warmup_models.cache_clear()
     utils.get_allowed_models.cache_clear()
+    utils.get_model_profile_summary.cache_clear()
 
 
 class TestModelConfig:
@@ -132,6 +134,39 @@ class TestModelConfig:
 
         assert "qwen3-vl:8b-instruct-q4_K_M" in allowed
         assert "qwen3:30b" not in allowed
+
+    def test_get_model_profile_summary_auto_selection(self, monkeypatch) -> None:
+        monkeypatch.delenv("SHARED_OLLAMA_FORCE_PROFILE", raising=False)
+        monkeypatch.delenv("SHARED_OLLAMA_FORCE_RAM_GB", raising=False)
+        reset_caches()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            write_config(root)
+            with patch.object(utils, "get_project_root", return_value=root):
+                with patch.object(utils, "_detect_system_info", return_value=("arm64", 64)):
+                    summary = utils.get_model_profile_summary()
+
+        assert summary["profile"] == "large"
+        assert summary["selection_method"] == "auto"
+        assert summary["default_vlm_model"] == "qwen3-vl:32b"
+        assert summary["default_text_model"] == "qwen3:30b"
+        assert summary["allowed_models"] == ["qwen3-vl:32b", "qwen3:30b"]
+
+    def test_get_model_profile_summary_forced_profile(self, monkeypatch) -> None:
+        monkeypatch.setenv("SHARED_OLLAMA_FORCE_PROFILE", "small")
+        monkeypatch.delenv("SHARED_OLLAMA_FORCE_RAM_GB", raising=False)
+        reset_caches()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            write_config(root)
+            with patch.object(utils, "get_project_root", return_value=root):
+                with patch.object(utils, "_detect_system_info", return_value=("arm64", 96)):
+                    summary = utils.get_model_profile_summary()
+
+        assert summary["profile"] == "small"
+        assert summary["selection_method"] == "forced_profile"
+        assert summary["default_vlm_model"] == "qwen3-vl:8b-instruct-q4_K_M"
+        assert summary["allowed_models"] == ["qwen3-vl:8b-instruct-q4_K_M", "qwen3:14b-q4_K_M"]
 
 
 def test_repo_models_yaml_is_well_formed() -> None:

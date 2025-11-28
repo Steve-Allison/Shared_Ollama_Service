@@ -28,6 +28,22 @@ class QueueStats:
     avg_wait_time_ms: float = 0.0
 
 
+class QueueFullError(RuntimeError):
+    """Raised when the bounded queue is at capacity."""
+
+    def __init__(self, max_size: int) -> None:
+        super().__init__(f"Queue is full ({max_size} requests already queued)")
+        self.max_size = max_size
+
+
+class QueueAcquireTimeoutError(TimeoutError):
+    """Raised when waiting for a queue slot exceeds the configured timeout."""
+
+    def __init__(self, timeout: float) -> None:
+        super().__init__(f"Queue wait timed out after {timeout}s")
+        self.timeout = timeout
+
+
 class RequestQueue:
     """Async queue that enforces concurrency limits and tracks telemetry."""
 
@@ -75,7 +91,7 @@ class RequestQueue:
 
         if self._queue.full():
             await self._register_rejection()
-            raise RuntimeError(f"Queue is full ({self.max_queue_size} requests already queued)")
+            raise QueueFullError(self.max_queue_size)
 
         await self._queue.put((request_id, queued_at))
         await self._refresh_queue_size()
@@ -85,10 +101,10 @@ class RequestQueue:
             try:
                 async with asyncio.timeout(timeout):
                     await self._semaphore.acquire()
-            except TimeoutError:
+            except TimeoutError as exc:
                 await self._register_timeout()
                 logger.warning("request_timeout id=%s timeout=%ss", request_id, timeout)
-                raise
+                raise QueueAcquireTimeoutError(timeout) from exc
 
             acquired = True
             wait_time_ms = await self._drain_queue_entry(request_id)
@@ -196,4 +212,4 @@ class RequestQueue:
             self._stats.queued = self._queue.qsize()
 
 
-__all__ = ["QueueStats", "RequestQueue"]
+__all__ = ["QueueStats", "RequestQueue", "QueueFullError", "QueueAcquireTimeoutError"]

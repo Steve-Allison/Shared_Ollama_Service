@@ -106,7 +106,7 @@ class QueueConfig(BaseModel):
     )
     chat_max_queue_size: int = Field(default=50, ge=1, le=1000, description="Max chat queue depth")
     chat_default_timeout: float = Field(
-        default=60.0, ge=1.0, le=600.0, description="Default chat timeout (seconds)"
+        default=120.0, ge=1.0, le=600.0, description="Default chat timeout (seconds)"
     )
 
     # VLM queue settings
@@ -115,7 +115,7 @@ class QueueConfig(BaseModel):
     )
     vlm_max_queue_size: int = Field(default=20, ge=1, le=500, description="Max VLM queue depth")
     vlm_default_timeout: float = Field(
-        default=120.0, ge=1.0, le=1200.0, description="Default VLM timeout (seconds)"
+        default=150.0, ge=1.0, le=1200.0, description="Default VLM timeout (seconds)"
     )
 
 
@@ -166,7 +166,7 @@ class ImageCacheConfig(BaseModel):
 class ClientConfig(BaseModel):
     """Async client configuration."""
 
-    timeout: int = Field(default=300, ge=1, le=3600, description="Request timeout (seconds)")
+    timeout: int = Field(default=180, ge=1, le=3600, description="Request timeout (seconds)")
     health_check_timeout: int = Field(
         default=5, ge=1, le=60, description="Health check timeout (seconds)"
     )

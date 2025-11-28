@@ -9,7 +9,8 @@
 - **OpenAI-Compatible Format**: For Docling and other OpenAI-compatible clients
 - **Automatic Management**: REST API automatically starts and manages Ollama (no manual setup needed)
 
-**📚 Documentation**: See [docs/README.md](docs/README.md) for complete documentation index.
+**📚 Documentation**: See [docs/README.md](docs/README.md) for complete documentation index.  
+**🛠️ Stability Plan**: See [docs/STABILITY_PLAN.md](docs/STABILITY_PLAN.md) for the hardening roadmap.
 
 ## Core Stack (Nov 2025)
 
@@ -128,6 +129,61 @@ http://0.0.0.0:8000/api/docs
 - **API Reference**: See [docs/API_REFERENCE.md](docs/API_REFERENCE.md) for complete endpoint documentation
 - **Monitoring**: See [Monitoring & Metrics](#monitoring--metrics) for observability features
 
+## Client Usage Guidelines (RAG & Chat)
+
+The service is multi-tenant and backed by finite Ollama workers. Follow these
+guardrails so your workloads stay fast and predictable:
+
+### Request Size & Time Limits
+- **Max prompt tokens:** 4 096 (matches current Ollama profile). Trim history or
+  summarize before sending. Requests exceeding the limit are rejected with
+  `400`/`code=prompt_too_large`.
+- **Max request body:** 1.5 MiB (after base64). Compress or split large images.
+- **Timeouts:** Text chat endpoints hard-stop at **120 s**, VLM at **150 s**.
+  When a timeout hits you will receive `503` with `code=request_timeout`.
+
+### Concurrency & Backpressure
+- **Per-tenant concurrency:** 6 in-flight text jobs, 3 VLM jobs. Extra requests
+  receive `429` with `Retry-After` headers—respect them.
+- **Queue depth:** When the shared queue is full we fail fast with `503
+  code=queue_full`. Back off exponentially (≥2 s with jitter) before retrying.
+- **Streaming encouraged:** Request streamed responses (`stream=true` in the
+  OpenAI format) so you can stop when you have enough tokens and free capacity.
+
+### Payload Hygiene
+- Include only the *minimal* retrieved chunks needed for the answer. Use your
+  RAG retriever to deduplicate and summarize source docs.
+- Drop verbose system prompts; reuse the shared templates from `examples/`.
+- For multi-turn chats keep the last 4–6 turns, summarize older context in your
+  app, and prepend the summary instead of raw history.
+
+### Recommended Client Behavior
+- Propagate `X-Shared-Ollama-Request-Id` into your logs for support.
+- Implement cancellation hooks: if the caller disconnects, cancel the HTTP
+  request so the server frees the slot immediately.
+- Handle structured errors: every error response includes `code` and
+  `retry_after` (if applicable). Use those fields rather than guessing.
+
+### Troubleshooting Checklist
+1. Capture `X-Shared-Ollama-Request-Id` and search it in `logs/api.log`.
+2. `prompt_too_large` → shrink payload; call `/api/v1/system/model-profile`
+   for live limits.
+3. `queue_full` or `request_timeout` → respect `Retry-After`, stagger retries,
+   and consider lowering client-side concurrency.
+4. If issues persist, capture logs plus request metadata and open a ticket.
+
+> Tip: [docs/STABILITY_PLAN.md](docs/STABILITY_PLAN.md) tracks planned limit
+> changes. Watch that file (or release notes) when upgrading clients.
+
+### Error Codes You Will See
+- `prompt_too_large` (400): prompt history exceeded ~4 096 tokens. Trim/summarize
+  before retrying.
+- `request_too_large` (413): JSON body exceeded **1.5 MiB**. Chunk or compress.
+- `queue_full` (503): shared queue saturated. Honor `Retry-After` and stagger
+  retries.
+- `request_timeout` (503): you waited 120 s (text) / 150 s (VLM) for a slot.
+  Reduce concurrency or payload size.
+
 ## Models Available
 
 **Note**: Models are loaded on-demand. Up to 3 models can be loaded simultaneously based on available RAM.
@@ -175,14 +231,14 @@ Both endpoints are optimized for `qwen3-vl:8b-instruct-q4_K_M` and share the sam
 
 | Endpoint | Format | Purpose | Max Concurrent | Timeout | Rate Limit |
 |----------|--------|---------|----------------|---------|------------|
-| `/api/v1/chat` | Native Ollama | Text-only chat | 6 | 60s | 60/min |
-| `/api/v1/chat/completions` | OpenAI-compatible | Text-only chat (OpenAI format) | 6 | 60s | 60/min |
-| `/api/v1/vlm` | Native Ollama | VLM with images | 3 | 120s | 30/min |
-| `/api/v1/vlm/openai` | OpenAI-compatible | VLM with images (OpenAI format) | 3 | 120s | 30/min |
-| `/api/v1/batch/chat` | Native Ollama | Batch text chat | 5 | 60s | 10/min |
-| `/api/v1/batch/chat/completions` | OpenAI-compatible | Batch text chat (OpenAI format) | 5 | 60s | 10/min |
-| `/api/v1/batch/vlm` | Native Ollama | Batch VLM | 3 | 120s | 5/min |
-| `/api/v1/batch/vlm/completions` | OpenAI-compatible | Batch VLM (OpenAI format) | 3 | 120s | 5/min |
+| `/api/v1/chat` | Native Ollama | Text-only chat | 6 | 120s | 60/min |
+| `/api/v1/chat/completions` | OpenAI-compatible | Text-only chat (OpenAI format) | 6 | 120s | 60/min |
+| `/api/v1/vlm` | Native Ollama | VLM with images | 3 | 150s | 30/min |
+| `/api/v1/vlm/openai` | OpenAI-compatible | VLM with images (OpenAI format) | 3 | 150s | 30/min |
+| `/api/v1/batch/chat` | Native Ollama | Batch text chat | 5 | 120s | 10/min |
+| `/api/v1/batch/chat/completions` | OpenAI-compatible | Batch text chat (OpenAI format) | 5 | 120s | 10/min |
+| `/api/v1/batch/vlm` | Native Ollama | Batch VLM | 3 | 150s | 5/min |
+| `/api/v1/batch/vlm/completions` | OpenAI-compatible | Batch VLM (OpenAI format) | 3 | 150s | 5/min |
 
 ### Native Ollama Format
 

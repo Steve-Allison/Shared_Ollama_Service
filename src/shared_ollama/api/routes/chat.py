@@ -55,6 +55,7 @@ from shared_ollama.api.dependencies import (
     validate_model_allowed,
 )
 from shared_ollama.api.error_handlers import handle_route_errors
+from shared_ollama.api.http_errors import queue_full_error, queue_timeout_error
 from shared_ollama.api.mappers import api_to_domain_chat_request, api_to_domain_chat_request_openai
 from shared_ollama.api.middleware import limiter
 from shared_ollama.api.models import ChatRequest, ChatRequestOpenAI
@@ -66,8 +67,12 @@ from shared_ollama.api.response_builders import (
     stream_sse_events,
 )
 from shared_ollama.api.type_guards import is_dict_result
+from shared_ollama.api.validators import (
+    enforce_native_prompt_limit,
+    enforce_openai_prompt_limit,
+)
 from shared_ollama.application.use_cases import ChatUseCase
-from shared_ollama.core.queue import RequestQueue
+from shared_ollama.core.queue import QueueAcquireTimeoutError, QueueFullError, RequestQueue
 
 logger = logging.getLogger(__name__)
 
@@ -133,6 +138,7 @@ async def chat(
 
     # Parse and validate request
     api_req = await parse_request_json(request, ChatRequest)
+    enforce_native_prompt_limit(api_req.messages, request_label="chat")
 
     try:
         # Validate model is allowed for current hardware profile
@@ -143,41 +149,46 @@ async def chat(
         domain_model = getattr(domain_req, "model", None)
         model_name = domain_model.value if domain_model else None
 
-        # Acquire queue slot for request processing
-        async with queue.acquire(request_id=ctx.request_id):
-            # Handle streaming if requested
-            if api_req.stream:
-                logger.info("streaming_chat_requested: request_id=%s", ctx.request_id)
-                # Use case returns AsyncIterator for streaming
+        try:
+            # Acquire queue slot for request processing
+            async with queue.acquire(request_id=ctx.request_id):
+                # Handle streaming if requested
+                if api_req.stream:
+                    logger.info("streaming_chat_requested: request_id=%s", ctx.request_id)
+                    # Use case returns AsyncIterator for streaming
+                    result = await use_case.execute(
+                        request=domain_req,
+                        request_id=ctx.request_id,
+                        client_ip=ctx.client_ip,
+                        project_name=ctx.project_name,
+                        stream=True,
+                    )
+                    # Type narrowing: stream=True returns AsyncIterator
+                    if isinstance(result, dict):
+                        raise RuntimeError("Expected AsyncIterator for streaming request")
+                    return StreamingResponse(
+                        stream_sse_events(result, ctx, "chat"),
+                        media_type="text/event-stream",
+                    )
+
+                # Non-streaming: use case handles all business logic, logging, and metrics
                 result = await use_case.execute(
                     request=domain_req,
                     request_id=ctx.request_id,
                     client_ip=ctx.client_ip,
                     project_name=ctx.project_name,
-                    stream=True,
+                    stream=False,
                 )
-                # Type narrowing: stream=True returns AsyncIterator
-                if isinstance(result, dict):
-                    raise RuntimeError("Expected AsyncIterator for streaming request")
-                return StreamingResponse(
-                    stream_sse_events(result, ctx, "chat"),
-                    media_type="text/event-stream",
-                )
+                # Type narrowing: stream=False returns dict
+                if not is_dict_result(result):
+                    raise RuntimeError("Expected dict result for non-streaming request")
 
-            # Non-streaming: use case handles all business logic, logging, and metrics
-            result = await use_case.execute(
-                request=domain_req,
-                request_id=ctx.request_id,
-                client_ip=ctx.client_ip,
-                project_name=ctx.project_name,
-                stream=False,
-            )
-            # Type narrowing: stream=False returns dict
-            if not is_dict_result(result):
-                raise RuntimeError("Expected dict result for non-streaming request")
-
-            response = build_chat_response(result, ctx)
-            return json_response(response)
+                response = build_chat_response(result, ctx)
+                return json_response(response)
+        except QueueFullError as exc:
+            raise queue_full_error() from exc
+        except QueueAcquireTimeoutError as exc:
+            raise queue_timeout_error() from exc
 
     except HTTPException:
         # Re-raise HTTPException (from parsing or other validation)
@@ -245,6 +256,7 @@ async def chat_completions(
 
     # Parse and validate request (OpenAI-compatible format)
     api_req = await parse_request_json(request, ChatRequestOpenAI)
+    enforce_openai_prompt_limit(api_req.messages, request_label="chat")
 
     try:
         # Validate model is allowed for current hardware profile
@@ -255,62 +267,67 @@ async def chat_completions(
         domain_model = getattr(domain_req, "model", None)
         model_name = domain_model.value if domain_model else None
 
-        # Acquire queue slot for request processing
-        async with queue.acquire(request_id=ctx.request_id):
-            # Handle streaming if requested
-            if api_req.stream:
-                logger.info("streaming_chat_completions_requested: request_id=%s", ctx.request_id)
-                # Use case returns AsyncIterator for streaming
-                result_stream = await use_case.execute(
+        try:
+            # Acquire queue slot for request processing
+            async with queue.acquire(request_id=ctx.request_id):
+                # Handle streaming if requested
+                if api_req.stream:
+                    logger.info("streaming_chat_completions_requested: request_id=%s", ctx.request_id)
+                    # Use case returns AsyncIterator for streaming
+                    result_stream = await use_case.execute(
+                        request=domain_req,
+                        request_id=ctx.request_id,
+                        client_ip=ctx.client_ip,
+                        project_name=ctx.project_name,
+                        stream=True,
+                    )
+                    if isinstance(result_stream, dict):
+                        raise RuntimeError("Expected AsyncIterator for streaming request")
+
+                    created_ts = int(time.time())
+                    role_emitted = False
+
+                    async def openai_stream():
+                        nonlocal role_emitted
+                        async for chunk in result_stream:
+                            openai_chunk = build_openai_stream_chunk(
+                                chunk,
+                                ctx,
+                                created_ts=created_ts,
+                                include_role=not role_emitted,
+                            )
+                            role_emitted = True
+                            yield f"data: {json.dumps(openai_chunk)}\n\n"
+                        # Send final [DONE] marker
+                        yield "data: [DONE]\n\n"
+
+                    return StreamingResponse(
+                        openai_stream(),
+                        media_type="text/event-stream",
+                    )
+
+                # Non-streaming: use case handles all business logic, logging, and metrics
+                result = await use_case.execute(
                     request=domain_req,
                     request_id=ctx.request_id,
                     client_ip=ctx.client_ip,
                     project_name=ctx.project_name,
-                    stream=True,
+                    stream=False,
                 )
-                if isinstance(result_stream, dict):
-                    raise RuntimeError("Expected AsyncIterator for streaming request")
+                # Type narrowing: stream=False returns dict
+                if not is_dict_result(result):
+                    raise RuntimeError("Expected dict result for non-streaming request")
 
-                created_ts = int(time.time())
-                role_emitted = False
-
-                async def openai_stream():
-                    nonlocal role_emitted
-                    async for chunk in result_stream:
-                        openai_chunk = build_openai_stream_chunk(
-                            chunk,
-                            ctx,
-                            created_ts=created_ts,
-                            include_role=not role_emitted,
-                        )
-                        role_emitted = True
-                        yield f"data: {json.dumps(openai_chunk)}\n\n"
-                    # Send final [DONE] marker
-                    yield "data: [DONE]\n\n"
-
-                return StreamingResponse(
-                    openai_stream(),
-                    media_type="text/event-stream",
+                # Convert to OpenAI-compatible response format
+                openai_response = build_openai_chat_response(result, ctx)
+                return Response(
+                    content=json.dumps(openai_response),
+                    media_type="application/json",
                 )
-
-            # Non-streaming: use case handles all business logic, logging, and metrics
-            result = await use_case.execute(
-                request=domain_req,
-                request_id=ctx.request_id,
-                client_ip=ctx.client_ip,
-                project_name=ctx.project_name,
-                stream=False,
-            )
-            # Type narrowing: stream=False returns dict
-            if not is_dict_result(result):
-                raise RuntimeError("Expected dict result for non-streaming request")
-
-            # Convert to OpenAI-compatible response format
-            openai_response = build_openai_chat_response(result, ctx)
-            return Response(
-                content=json.dumps(openai_response),
-                media_type="application/json",
-            )
+        except QueueFullError as exc:
+            raise queue_full_error() from exc
+        except QueueAcquireTimeoutError as exc:
+            raise queue_timeout_error() from exc
 
     except HTTPException:
         # Re-raise HTTPException (from parsing or other validation)

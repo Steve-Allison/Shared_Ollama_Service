@@ -56,8 +56,10 @@ from shared_ollama.api.dependencies import (
     get_request_context,
     get_vlm_queue,
     get_vlm_use_case,
+    parse_request_json,
     validate_model_allowed,
 )
+from shared_ollama.api.http_errors import queue_full_error, queue_timeout_error
 from shared_ollama.api.error_handlers import handle_route_errors
 from shared_ollama.api.mappers import (
     api_to_domain_vlm_request,
@@ -76,8 +78,12 @@ from shared_ollama.api.response_builders import (
     stream_sse_events,
 )
 from shared_ollama.api.type_guards import is_dict_result
+from shared_ollama.api.validators import (
+    enforce_native_prompt_limit,
+    enforce_openai_prompt_limit,
+)
 from shared_ollama.application.vlm_use_cases import VLMUseCase
-from shared_ollama.core.queue import RequestQueue
+from shared_ollama.core.queue import QueueAcquireTimeoutError, QueueFullError, RequestQueue
 from shared_ollama.domain.entities import VLMRequest as DomainVLMRequest
 from shared_ollama.telemetry.structured_logging import log_request_event
 
@@ -161,32 +167,22 @@ async def vlm_chat(
     )
 
     # Parse request body
-    try:
-        body = await request.json()
-        log_request_event(
-            {
-                "event": "api_payload",
-                "route": "vlm",
-                "request_id": ctx.request_id,
-                "payload": body,
-            }
-        )
-        api_req = VLMRequest(**body)
-        event_data["stream"] = api_req.stream
-        event_data["compression_format"] = api_req.compression_format
-        event_data["image_compression"] = api_req.image_compression
-        event_data["max_dimension"] = api_req.max_dimension
-        event_data["images_count"] = len(api_req.images)
-    except ValueError as e:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail=f"Invalid JSON in request body: {e!s}",
-        ) from e
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail=f"Request validation failed: {e!s}",
-        ) from e
+    api_req = await parse_request_json(request, VLMRequest)
+    event_data["stream"] = api_req.stream
+    event_data["compression_format"] = api_req.compression_format
+    event_data["image_compression"] = api_req.image_compression
+    event_data["max_dimension"] = api_req.max_dimension
+    event_data["images_count"] = len(api_req.images)
+    enforce_native_prompt_limit(api_req.messages, request_label="vlm")
+    log_request_event(
+        {
+            "event": "api_payload",
+            "route": "vlm",
+            "request_id": ctx.request_id,
+            "stream": api_req.stream,
+            "images_count": len(api_req.images),
+        }
+    )
 
     try:
         # Validate model is allowed for current hardware profile
@@ -197,52 +193,57 @@ async def vlm_chat(
         domain_model = getattr(domain_req, "model", None)
         event_data["model"] = domain_model.value if domain_model else None
 
-        # Acquire VLM queue slot for request processing
-        async with queue.acquire(request_id=ctx.request_id):
-            # Handle streaming if requested
-            if api_req.stream:
-                logger.info("streaming_vlm_requested: request_id=%s", ctx.request_id)
-                # Use case returns AsyncIterator for streaming
+        try:
+            # Acquire VLM queue slot for request processing
+            async with queue.acquire(request_id=ctx.request_id):
+                # Handle streaming if requested
+                if api_req.stream:
+                    logger.info("streaming_vlm_requested: request_id=%s", ctx.request_id)
+                    # Use case returns AsyncIterator for streaming
+                    result = await vlm_use_case_dep.execute(
+                        request=domain_req,
+                        request_id=ctx.request_id,
+                        client_ip=ctx.client_ip,
+                        project_name=ctx.project_name,
+                        stream=True,
+                        target_format=api_req.compression_format,
+                    )
+                    # Type narrowing: stream=True returns AsyncIterator
+                    if isinstance(result, dict):
+                        raise RuntimeError("Expected AsyncIterator for streaming request")
+                    return StreamingResponse(
+                        stream_sse_events(result, ctx, "vlm"),
+                        media_type="text/event-stream",
+                    )
+
+                # Non-streaming: use case handles all business logic, logging, and metrics
                 result = await vlm_use_case_dep.execute(
                     request=domain_req,
                     request_id=ctx.request_id,
                     client_ip=ctx.client_ip,
                     project_name=ctx.project_name,
-                    stream=True,
+                    stream=False,
                     target_format=api_req.compression_format,
                 )
-                # Type narrowing: stream=True returns AsyncIterator
-                if isinstance(result, dict):
-                    raise RuntimeError("Expected AsyncIterator for streaming request")
-                return StreamingResponse(
-                    stream_sse_events(result, ctx, "vlm"),
-                    media_type="text/event-stream",
+                # Type narrowing: stream=False returns dict
+                if not is_dict_result(result):
+                    raise RuntimeError("Expected dict result for non-streaming request")
+
+                log_request_event(
+                    {
+                        "event": "api_response",
+                        "route": "vlm",
+                        "request_id": ctx.request_id,
+                        "response": {"images_processed": len(api_req.images)},
+                    }
                 )
 
-            # Non-streaming: use case handles all business logic, logging, and metrics
-            result = await vlm_use_case_dep.execute(
-                request=domain_req,
-                request_id=ctx.request_id,
-                client_ip=ctx.client_ip,
-                project_name=ctx.project_name,
-                stream=False,
-                target_format=api_req.compression_format,
-            )
-            # Type narrowing: stream=False returns dict
-            if not is_dict_result(result):
-                raise RuntimeError("Expected dict result for non-streaming request")
-
-            log_request_event(
-                {
-                    "event": "api_response",
-                    "route": "vlm",
-                    "request_id": ctx.request_id,
-                    "response": result,
-                }
-            )
-
-            response = build_vlm_response(result, ctx, images_processed=len(api_req.images))
-            return json_response(response)
+                response = build_vlm_response(result, ctx, images_processed=len(api_req.images))
+                return json_response(response)
+        except QueueFullError as exc:
+            raise queue_full_error() from exc
+        except QueueAcquireTimeoutError as exc:
+            raise queue_timeout_error() from exc
 
     except HTTPException:
         # Re-raise HTTPException (from parsing or other validation)
@@ -294,29 +295,18 @@ async def vlm_chat_openai(
     )
 
     # Parse request body (OpenAI-compatible format)
-    try:
-        body = await request.json()
-        log_request_event(
-            {
-                "event": "api_payload",
-                "route": "vlm_openai",
-                "request_id": ctx.request_id,
-                "payload": body,
-            }
-        )
-        api_req = VLMRequestOpenAI(**body)
-        event_data["stream"] = api_req.stream
-        event_data["compression_format"] = api_req.compression_format
-    except ValueError as e:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail=f"Invalid JSON in request body: {e!s}",
-        ) from e
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail=f"Request validation failed: {e!s}",
-        ) from e
+    api_req = await parse_request_json(request, VLMRequestOpenAI)
+    enforce_openai_prompt_limit(api_req.messages, request_label="vlm")
+    event_data["stream"] = api_req.stream
+    event_data["compression_format"] = api_req.compression_format
+    log_request_event(
+        {
+            "event": "api_payload",
+            "route": "vlm_openai",
+            "request_id": ctx.request_id,
+            "stream": api_req.stream,
+        }
+    )
 
     try:
         # Validate model is allowed for current hardware profile
@@ -331,70 +321,75 @@ async def vlm_chat_openai(
         image_count = _count_images_from_domain_request(domain_req)
         event_data["images_count"] = image_count
 
-        # Acquire VLM queue slot for request processing
-        async with queue.acquire(request_id=ctx.request_id):
-            # Handle streaming if requested
-            if api_req.stream:
-                logger.info("streaming_vlm_openai_requested: request_id=%s", ctx.request_id)
-                # Use case returns AsyncIterator for streaming
-                result_stream = await vlm_use_case_dep.execute(
+        try:
+            # Acquire VLM queue slot for request processing
+            async with queue.acquire(request_id=ctx.request_id):
+                # Handle streaming if requested
+                if api_req.stream:
+                    logger.info("streaming_vlm_openai_requested: request_id=%s", ctx.request_id)
+                    # Use case returns AsyncIterator for streaming
+                    result_stream = await vlm_use_case_dep.execute(
+                        request=domain_req,
+                        request_id=ctx.request_id,
+                        client_ip=ctx.client_ip,
+                        project_name=ctx.project_name,
+                        stream=True,
+                        target_format=api_req.compression_format,
+                    )
+                    if isinstance(result_stream, dict):
+                        raise RuntimeError("Expected AsyncIterator for streaming request")
+
+                    created_ts = int(time.time())
+                    role_emitted = False
+
+                    async def openai_stream():
+                        nonlocal role_emitted
+                        async for chunk in result_stream:
+                            openai_chunk = build_openai_stream_chunk(
+                                chunk,
+                                ctx,
+                                created_ts=created_ts,
+                                include_role=not role_emitted,
+                            )
+                            role_emitted = True
+                            yield f"data: {json.dumps(openai_chunk)}\n\n"
+                        # Send final [DONE] marker per OpenAI SSE spec
+                        yield "data: [DONE]\n\n"
+
+                    return StreamingResponse(
+                        openai_stream(),
+                        media_type="text/event-stream",
+                    )
+
+                result = await vlm_use_case_dep.execute(
                     request=domain_req,
                     request_id=ctx.request_id,
                     client_ip=ctx.client_ip,
                     project_name=ctx.project_name,
-                    stream=True,
+                    stream=False,
                     target_format=api_req.compression_format,
                 )
-                if isinstance(result_stream, dict):
-                    raise RuntimeError("Expected AsyncIterator for streaming request")
+                if not is_dict_result(result):
+                    raise RuntimeError("Expected dict result for non-streaming request")
 
-                created_ts = int(time.time())
-                role_emitted = False
-
-                async def openai_stream():
-                    nonlocal role_emitted
-                    async for chunk in result_stream:
-                        openai_chunk = build_openai_stream_chunk(
-                            chunk,
-                            ctx,
-                            created_ts=created_ts,
-                            include_role=not role_emitted,
-                        )
-                        role_emitted = True
-                        yield f"data: {json.dumps(openai_chunk)}\n\n"
-                    # Send final [DONE] marker per OpenAI SSE spec
-                    yield "data: [DONE]\n\n"
-
-                return StreamingResponse(
-                    openai_stream(),
-                    media_type="text/event-stream",
+                log_request_event(
+                    {
+                        "event": "api_response",
+                        "route": "vlm_openai",
+                        "request_id": ctx.request_id,
+                        "response": {"images_count": image_count},
+                    }
                 )
 
-            result = await vlm_use_case_dep.execute(
-                request=domain_req,
-                request_id=ctx.request_id,
-                client_ip=ctx.client_ip,
-                project_name=ctx.project_name,
-                stream=False,
-                target_format=api_req.compression_format,
-            )
-            if not is_dict_result(result):
-                raise RuntimeError("Expected dict result for non-streaming request")
-
-            log_request_event(
-                {
-                    "event": "api_response",
-                    "route": "vlm_openai",
-                    "request_id": ctx.request_id,
-                    "response": result,
-                }
-            )
-
-            openai_response = build_openai_chat_response(result, ctx)
-            return Response(
-                content=json.dumps(openai_response),
-                media_type="application/json",
-            )
+                openai_response = build_openai_chat_response(result, ctx)
+                return Response(
+                    content=json.dumps(openai_response),
+                    media_type="application/json",
+                )
+        except QueueFullError as exc:
+            raise queue_full_error() from exc
+        except QueueAcquireTimeoutError as exc:
+            raise queue_timeout_error() from exc
 
     except HTTPException:
         # Re-raise HTTPException (from parsing or other validation)

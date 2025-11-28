@@ -47,6 +47,7 @@ from shared_ollama.api.dependencies import (
     validate_model_allowed,
 )
 from shared_ollama.api.error_handlers import handle_route_errors
+from shared_ollama.api.http_errors import queue_full_error, queue_timeout_error
 from shared_ollama.api.mappers import api_to_domain_generation_request
 from shared_ollama.api.middleware import limiter
 from shared_ollama.api.models import GenerateRequest
@@ -56,8 +57,9 @@ from shared_ollama.api.response_builders import (
     stream_sse_events,
 )
 from shared_ollama.api.type_guards import is_dict_result
+from shared_ollama.api.validators import enforce_text_prompt_limit
 from shared_ollama.application.use_cases import GenerateUseCase
-from shared_ollama.core.queue import RequestQueue
+from shared_ollama.core.queue import QueueAcquireTimeoutError, QueueFullError, RequestQueue
 
 logger = logging.getLogger(__name__)
 
@@ -119,6 +121,11 @@ async def generate(
 
     # Parse and validate request
     api_req = await parse_request_json(request, GenerateRequest)
+    enforce_text_prompt_limit(
+        api_req.prompt,
+        request_label="generate",
+        extra_chunks=[api_req.system],
+    )
 
     try:
         # Validate model is allowed for current hardware profile
@@ -129,41 +136,46 @@ async def generate(
         domain_model = getattr(domain_req, "model", None)
         model_name = domain_model.value if domain_model else None
 
-        # Acquire queue slot for request processing
-        async with queue.acquire(request_id=ctx.request_id):
-            # Handle streaming if requested
-            if api_req.stream:
-                logger.info("streaming_generate_requested: request_id=%s", ctx.request_id)
-                # Use case returns AsyncIterator for streaming
+        try:
+            # Acquire queue slot for request processing
+            async with queue.acquire(request_id=ctx.request_id):
+                # Handle streaming if requested
+                if api_req.stream:
+                    logger.info("streaming_generate_requested: request_id=%s", ctx.request_id)
+                    # Use case returns AsyncIterator for streaming
+                    result = await use_case.execute(
+                        request=domain_req,
+                        request_id=ctx.request_id,
+                        client_ip=ctx.client_ip,
+                        project_name=ctx.project_name,
+                        stream=True,
+                    )
+                    # Type narrowing: stream=True returns AsyncIterator
+                    if isinstance(result, dict):
+                        raise RuntimeError("Expected AsyncIterator for streaming request")
+                    return StreamingResponse(
+                        stream_sse_events(result, ctx, "generate", include_role_in_error=False),
+                        media_type="text/event-stream",
+                    )
+
+                # Non-streaming: use case handles all business logic, logging, and metrics
                 result = await use_case.execute(
                     request=domain_req,
                     request_id=ctx.request_id,
                     client_ip=ctx.client_ip,
                     project_name=ctx.project_name,
-                    stream=True,
+                    stream=False,
                 )
-                # Type narrowing: stream=True returns AsyncIterator
-                if isinstance(result, dict):
-                    raise RuntimeError("Expected AsyncIterator for streaming request")
-                return StreamingResponse(
-                    stream_sse_events(result, ctx, "generate", include_role_in_error=False),
-                    media_type="text/event-stream",
-                )
+                # Type narrowing: stream=False returns dict
+                if not is_dict_result(result):
+                    raise RuntimeError("Expected dict result for non-streaming request")
 
-            # Non-streaming: use case handles all business logic, logging, and metrics
-            result = await use_case.execute(
-                request=domain_req,
-                request_id=ctx.request_id,
-                client_ip=ctx.client_ip,
-                project_name=ctx.project_name,
-                stream=False,
-            )
-            # Type narrowing: stream=False returns dict
-            if not is_dict_result(result):
-                raise RuntimeError("Expected dict result for non-streaming request")
-
-            response = build_generate_response(result, ctx)
-            return json_response(response)
+                response = build_generate_response(result, ctx)
+                return json_response(response)
+        except QueueFullError as exc:
+            raise queue_full_error() from exc
+        except QueueAcquireTimeoutError as exc:
+            raise queue_timeout_error() from exc
 
     except HTTPException:
         # Re-raise HTTPException (from parsing or other validation)

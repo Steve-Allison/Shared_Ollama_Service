@@ -28,6 +28,7 @@ Dependency Flow:
 
 from __future__ import annotations
 
+import json
 import logging
 import uuid
 from typing import Annotated, TypeVar
@@ -35,6 +36,7 @@ from typing import Annotated, TypeVar
 from fastapi import Depends, HTTPException, Request, status
 from pydantic import BaseModel
 
+from shared_ollama.api.limits import MAX_REQUEST_BODY_BYTES
 from shared_ollama.api.models import RequestContext
 from shared_ollama.application.batch_use_cases import BatchChatUseCase, BatchVLMUseCase
 from shared_ollama.application.use_cases import (
@@ -482,18 +484,48 @@ async def parse_request_json(request: Request, model_cls: type[T]) -> T:
         ```
     """
     try:
-        body = await request.json()
+        body_bytes = await request.body()
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Unable to read request body.",
+        ) from exc
+
+    if not body_bytes:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Request body is required.",
+        )
+
+    if len(body_bytes) > MAX_REQUEST_BODY_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail={
+                "code": "request_too_large",
+                "message": (
+                    f"Request body is {len(body_bytes):,} bytes but the limit is "
+                    f"{MAX_REQUEST_BODY_BYTES:,} bytes. Split or compress the payload and retry."
+                ),
+                "limit_bytes": MAX_REQUEST_BODY_BYTES,
+                "actual_bytes": len(body_bytes),
+            },
+        )
+
+    try:
+        body = json.loads(body_bytes)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=f"Invalid JSON in request body: {exc!s}",
+        ) from exc
+
+    try:
         return model_cls(**body)
-    except ValueError as e:
+    except Exception as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail=f"Invalid JSON in request body: {e!s}",
-        ) from e
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail=f"Request validation failed: {e!s}",
-        ) from e
+            detail=f"Request validation failed: {exc!s}",
+        ) from exc
 
 
 def validate_model_allowed(model_name: str | None) -> None:

@@ -10,20 +10,15 @@ import platform
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Final
 
 import psutil
 
-from shared_ollama.core.utils import get_project_root, get_warmup_models
+from shared_ollama.core.utils import get_project_root
 from shared_ollama.infrastructure.health_checker import check_ollama_health_simple
 
 logger = logging.getLogger(__name__)
 
 ProcessEnv = dict[str, str]
-
-_CALC_MEMORY_SCRIPT: Final = (
-    get_project_root() / "scripts" / "maintenance" / "calculate_memory_limit.sh"
-)
 
 
 @dataclass(slots=True, frozen=True)
@@ -93,43 +88,22 @@ class OllamaManager:
 
     @staticmethod
     async def _detect_system_optimizations() -> ProcessEnv:
-        env: ProcessEnv = {
-            "OLLAMA_HOST": "0.0.0.0:11434",
-            "OLLAMA_KEEP_ALIVE": "30m",
-        }
+        """Detect and apply Mac Silicon optimizations only."""
+        env: ProcessEnv = {}
 
+        # Only apply Mac Silicon optimizations
         match (platform.system(), platform.machine()):
             case ("Darwin", "arm64"):
                 env.update(
                     {
                         "OLLAMA_METAL": "1",
                         "OLLAMA_NUM_GPU": "-1",
-                        "OLLAMA_NUM_THREAD": str(os.cpu_count() or 8),
                     }
                 )
             case ("Darwin", _):
                 env.update({"OLLAMA_METAL": "0", "OLLAMA_NUM_GPU": "0"})
             case _:
                 logger.debug("Using default optimization env for platform %s", platform.system())
-
-        if _CALC_MEMORY_SCRIPT.exists():
-            try:
-                process = await asyncio.create_subprocess_exec(
-                    "bash",
-                    str(_CALC_MEMORY_SCRIPT),
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.DEVNULL,
-                )
-                async with asyncio.timeout(5):
-                    stdout, _ = await process.communicate()
-                for line in (stdout or b"").decode().splitlines():
-                    if line.startswith("OLLAMA_MAX_RAM="):
-                        env["OLLAMA_MAX_RAM"] = line.split("=", 1)[1].strip()
-                        break
-            except TimeoutError:
-                logger.debug("Memory limit helper timed out")
-            except Exception as exc:  # pragma: no cover - best effort only
-                logger.debug("Memory limit helper failed: %s", exc)
 
         return env
 
@@ -302,46 +276,6 @@ class OllamaManager:
             process.kill()
             await process.wait()
 
-    async def warmup_models(self) -> None:
-        models = get_warmup_models()
-        if not models:
-            logger.info("No warmup models configured")
-            return
-
-        logger.info("Pre-warming models: %s", ", ".join(models))
-        try:
-            tg = asyncio.TaskGroup()
-        except AttributeError:  # pragma: no cover - Python <3.11 fallback
-            await asyncio.gather(*(self._pull_model(model) for model in models))
-        else:
-            async with tg:
-                for model in models:
-                    tg.create_task(self._pull_model(model))
-
-    async def _pull_model(self, model_name: str) -> None:
-        try:
-            process = await asyncio.create_subprocess_exec(
-                "ollama",
-                "pull",
-                model_name,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            async with asyncio.timeout(600):
-                _, stderr = await process.communicate()
-            if process.returncode == 0:
-                logger.info("Warmup pull succeeded for %s", model_name)
-            else:
-                logger.error(
-                    "Warmup pull failed for %s (code %s): %s",
-                    model_name,
-                    process.returncode,
-                    (stderr or b"").decode(errors="ignore"),
-                )
-        except TimeoutError:
-            logger.error("Warmup pull timed out for %s", model_name)
-        except Exception:
-            logger.exception("Unexpected error while pulling %s", model_name)
 
     def is_running(self) -> bool:
         if self.process:

@@ -14,11 +14,7 @@ from typing import Any
 
 import requests
 
-from shared_ollama.telemetry.metrics import MetricsCollector
-from shared_ollama.telemetry.structured_logging import log_request_event
-
 logger = logging.getLogger(__name__)
-
 
 def embeddings_sync(
     session: requests.Session,
@@ -73,100 +69,17 @@ def embeddings_sync(
             msg = "Response missing 'embedding' field"
             raise ValueError(msg)
 
-        latency_ms = (time.perf_counter() - start_time) * 1000
-
-        MetricsCollector.record_request(
-            model=model,
-            operation="embeddings",
-            latency_ms=latency_ms,
-            success=True,
-        )
-
-        log_request_event(
-            {
-                "event": "ollama_request",
-                "client_type": "sync",
-                "operation": "embeddings",
-                "status": "success",
-                "model": model,
-                "request_id": request_id,
-                "latency_ms": round(latency_ms, 3),
-                "prompt_chars": len(prompt),
-                "embedding_dim": len(data.get("embedding", [])),
-            }
-        )
 
         return data
 
     except json.JSONDecodeError as exc:
-        latency_ms = (time.perf_counter() - start_time) * 1000
-        MetricsCollector.record_request(
-            model=model,
-            operation="embeddings",
-            latency_ms=latency_ms,
-            success=False,
-        )
-        log_request_event(
-            {
-                "event": "ollama_request",
-                "client_type": "sync",
-                "operation": "embeddings",
-                "status": "error",
-                "model": model,
-                "request_id": request_id,
-                "latency_ms": round(latency_ms, 3),
-                "error_type": "JSONDecodeError",
-                "error_message": str(exc),
-            }
-        )
         logger.exception("Failed to decode JSON response from /api/embeddings for %s", model)
         raise
     except requests.exceptions.HTTPError as exc:
         status_code = exc.response.status_code if exc.response else None
-        latency_ms = (time.perf_counter() - start_time) * 1000
-        MetricsCollector.record_request(
-            model=model,
-            operation="embeddings",
-            latency_ms=latency_ms,
-            success=False,
-        )
-        log_request_event(
-            {
-                "event": "ollama_request",
-                "client_type": "sync",
-                "operation": "embeddings",
-                "status": "error",
-                "model": model,
-                "request_id": request_id,
-                "latency_ms": round(latency_ms, 3),
-                "error_type": "HTTPError",
-                "error_message": str(exc),
-                "http_status": status_code,
-            }
-        )
         logger.exception("HTTP error generating embeddings with %s: %s", model, status_code)
         raise
     except requests.exceptions.RequestException as exc:
-        latency_ms = (time.perf_counter() - start_time) * 1000
-        MetricsCollector.record_request(
-            model=model,
-            operation="embeddings",
-            latency_ms=latency_ms,
-            success=False,
-        )
-        log_request_event(
-            {
-                "event": "ollama_request",
-                "client_type": "sync",
-                "operation": "embeddings",
-                "status": "error",
-                "model": model,
-                "request_id": request_id,
-                "latency_ms": round(latency_ms, 3),
-                "error_type": exc.__class__.__name__,
-                "error_message": str(exc),
-            }
-        )
         logger.exception("Request error generating embeddings with %s: %s", model, exc)
         raise
 

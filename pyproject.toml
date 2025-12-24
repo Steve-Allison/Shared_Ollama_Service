@@ -10,17 +10,9 @@ readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "requests>=2.31.0,<3.0.0",
-    "fastapi>=0.124.0,<1.0.0",
-    "uvicorn[standard]>=0.38.0,<0.41.0",
-    "gunicorn>=22.0.0,<24.0.0",  # Production ASGI server with process management
-    "slowapi>=0.1.9,<0.2.0",  # Rate limiting
-    "pydantic>=2.12.4,<3.0.0",  # Keep major version constraint (v3 would be breaking)
-    "pydantic-settings>=2.12.0,<3.0.0",  # Keep major version constraint (v3 would be breaking)
-    "Pillow>=12.0.0,<13.0.0",  # Image processing for VLM
     "tenacity>=8.2.0,<10.0.0",  # Retry logic with exponential backoff
-    "circuitbreaker>=2.0.0,<3.0.0",  # Circuit breaker pattern
-    "cachetools>=5.3.0,<7.0.0",  # LRU cache with TTL support
     "psutil>=5.9.0,<8.0.0",  # Cross-platform process management
+    "pyyaml>=6.0.0,<8.0.0",  # For reading config/models.yaml
 ]
 
 [project.optional-dependencies]
@@ -33,9 +25,6 @@ dev = [
     "pytest>=9.0.0,<10.0.0",
     "pytest-cov>=7.0.0,<8.0.0",
     "pytest-asyncio>=0.23.0,<2.0.0",
-]
-production = [
-    "supervisor>=4.2.0,<5.0.0",  # Alternative process manager (optional)
 ]
 
 [tool.setuptools]
@@ -192,4 +181,10 @@ analyzeUnannotatedFunctions = true
 
 # Experimental features for Python 3.13+
 enableExperimentalFeatures = true
+
+# Pytest Configuration
+[tool.pytest.ini_options]
+markers = [
+    "integration: marks tests as integration tests (requires running Ollama service)",
+]
 

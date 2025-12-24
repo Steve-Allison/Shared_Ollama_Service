@@ -332,19 +332,6 @@ class TestSharedOllamaClient:
         with pytest.raises(requests.exceptions.RequestException):
             client.generate("Test")
 
-    def test_generate_records_metrics(self, ollama_server):
-        """Test that generate() records metrics via MetricsCollector."""
-        from shared_ollama.telemetry.metrics import MetricsCollector
-
-        MetricsCollector.reset()
-        config = OllamaConfig(base_url=ollama_server.base_url)
-        client = SharedOllamaClient(config=config, verify_on_init=False)
-
-        client.generate("Test prompt")
-
-        metrics = MetricsCollector.get_metrics()
-        assert metrics.total_requests >= 1
-        assert metrics.successful_requests >= 1
 
     def test_chat_returns_dict_with_message(self, ollama_server):
         """Test that chat() returns dict with message content."""

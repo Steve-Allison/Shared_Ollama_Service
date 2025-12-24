@@ -15,19 +15,49 @@ The Shared Ollama Service provides the OpenAI-compatible endpoints that Docling'
 
 Both endpoints follow OpenAI's `/chat/completions` specification and are compatible with Docling's `ApiVlmOptions`.
 
-### ⚠️ Important Note
+### ✅ Important Update
 
-**Ollama does NOT provide `/v1/chat/completions` endpoint natively.** Ollama provides:
+**Ollama DOES provide `/v1/chat/completions` endpoint natively** (since version 0.13.5+). Ollama provides:
 - `/api/chat` (native format)
 - `/api/generate` (native format)
+- `/v1/chat/completions` (OpenAI-compatible format) ⭐ **Native feature**
+- `/v1/embeddings` (OpenAI-compatible format) ⭐ **Native feature**
 
-The Shared Ollama Service adds the OpenAI-compatible wrapper that Docling needs.
+**Docling can use Ollama directly** at `http://localhost:11434/v1/chat/completions` for basic OpenAI compatibility.
+
+**However**, the Shared Ollama Service adds significant value beyond basic compatibility:
+- Request queuing and rate limiting
+- Image processing and compression
+- Observability and monitoring
+- Background model cleanup
+- Batch processing
 
 ## Configuration for Docling_Machine
 
-### Recommended Settings
+### Option 1: Use Ollama Directly (Simplest)
 
-Instead of connecting directly to Ollama at port 11434, configure Docling to use the Shared Ollama Service at port 8000:
+Since Ollama 0.13.5+ provides OpenAI-compatible endpoints natively, Docling can connect directly:
+
+```python
+# In settings_module.py
+ollama_base_url: str = "http://0.0.0.0:11434"  # Direct Ollama
+ollama_api_format: Literal["native", "openai"] = "openai"  # Use OpenAI format
+```
+
+**Pros:**
+- ✅ Simplest setup - no wrapper needed
+- ✅ Native Ollama OpenAI compatibility
+- ✅ Lower latency (no wrapper overhead)
+
+**Cons:**
+- ❌ No request queuing
+- ❌ No rate limiting
+- ❌ No image processing/compression
+- ❌ Limited observability
+
+### Option 2: Use Shared Ollama Service (Recommended for Production)
+
+For production deployments with multiple users or high traffic:
 
 ```python
 # In settings_module.py
@@ -35,14 +65,27 @@ ollama_base_url: str = "http://0.0.0.0:8000"  # Shared Ollama Service
 ollama_api_format: Literal["native", "openai"] = "openai"  # Use OpenAI format
 ```
 
+**Pros:**
+- ✅ Request queuing and rate limiting
+- ✅ Image processing and compression
+- ✅ Comprehensive observability
+- ✅ Background model cleanup
+- ✅ Production-ready features
+
+**Cons:**
+- ❌ Additional service to manage
+- ❌ Slightly more complex setup
+
 ### ApiVlmOptions Configuration
+
+#### Option 1: Direct Ollama (Port 11434)
 
 ```python
 from docling.datamodel.pipeline_options import ApiVlmOptions
 
-# For VLM (with images)
+# For VLM (with images) - Note: Ollama's native /v1/chat/completions supports images
 vlm_options = ApiVlmOptions(
-    url=f"{settings.ollama_base_url}/api/v1/vlm/openai",
+    url=f"{settings.ollama_base_url}/v1/chat/completions",  # Native endpoint
     params={"model": settings.ollama_model},
     prompt=settings.vlm_prompt,
     timeout=settings.ollama_timeout,
@@ -51,7 +94,30 @@ vlm_options = ApiVlmOptions(
 
 # For text-only chat
 chat_options = ApiVlmOptions(
-    url=f"{settings.ollama_base_url}/api/v1/chat/completions",
+    url=f"{settings.ollama_base_url}/v1/chat/completions",  # Native endpoint
+    params={"model": settings.ollama_model},
+    timeout=settings.ollama_timeout,
+    concurrency=settings.ollama_concurrency,
+)
+```
+
+#### Option 2: Shared Ollama Service (Port 8000)
+
+```python
+from docling.datamodel.pipeline_options import ApiVlmOptions
+
+# For VLM (with images) - Uses wrapper with image processing
+vlm_options = ApiVlmOptions(
+    url=f"{settings.ollama_base_url}/api/v1/vlm/openai",  # Wrapper endpoint
+    params={"model": settings.ollama_model},
+    prompt=settings.vlm_prompt,
+    timeout=settings.ollama_timeout,
+    concurrency=settings.ollama_concurrency,
+)
+
+# For text-only chat
+chat_options = ApiVlmOptions(
+    url=f"{settings.ollama_base_url}/api/v1/chat/completions",  # Wrapper endpoint
     params={"model": settings.ollama_model},
     timeout=settings.ollama_timeout,
     concurrency=settings.ollama_concurrency,
@@ -158,7 +224,19 @@ curl -X POST http://localhost:8000/api/v1/vlm/openai \
 
 ## Conclusion
 
-The Shared Ollama Service is **fully compatible** with Docling_Machine's requirements. Simply change the base URL from `http://0.0.0.0:11434` to `http://0.0.0.0:8000` and use the `/api/v1/vlm/openai` or `/api/v1/chat/completions` endpoints.
+Docling_Machine has **two options**:
 
-This approach provides all the benefits of the Shared Ollama Service (automatic management, observability, queuing) while maintaining full compatibility with Docling's `ApiVlmOptions`.
+### Option 1: Direct Ollama (Simplest)
+- Use `http://localhost:11434/v1/chat/completions` directly
+- Native Ollama OpenAI compatibility (0.13.5+)
+- No wrapper needed for basic use cases
+
+### Option 2: Shared Ollama Service (Production)
+- Use `http://localhost:8000/api/v1/chat/completions` or `/api/v1/vlm/openai`
+- Adds production features: queuing, rate limiting, image processing, observability
+- Recommended for multi-user or production deployments
+
+**Both options work with Docling's `ApiVlmOptions`** - choose based on your needs!
+
+For simple use cases, Option 1 (direct Ollama) is sufficient. For production deployments requiring reliability and observability, Option 2 (Shared Ollama Service) adds significant value.
 

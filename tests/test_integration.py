@@ -15,7 +15,6 @@ from shared_ollama import (
     AsyncSharedOllamaClient,
     GenerateOptions,
     GenerateResponse,
-    MetricsCollector,
     SharedOllamaClient,
 )
 
@@ -59,19 +58,6 @@ class TestEndToEndGeneration:
             assert isinstance(response, GenerateResponse)
             assert response.model == "qwen3-vl:8b-instruct-q4_K_M"
 
-    async def test_generation_workflow_with_metrics(self, ollama_server):
-        """Test that generation workflow records metrics correctly."""
-        MetricsCollector.reset()
-        config = AsyncOllamaConfig(base_url=ollama_server.base_url)
-        async with AsyncSharedOllamaClient(config=config, verify_on_init=False) as client:
-            await client.generate("Test prompt 1")
-            await client.generate("Test prompt 2")
-            await client.generate("Test prompt 3")
-
-        metrics = MetricsCollector.get_metrics()
-        assert metrics.total_requests >= 3
-        assert metrics.successful_requests >= 3
-        assert metrics.requests_by_operation["generate"] >= 3
 
 
 @pytest.mark.asyncio
@@ -296,38 +282,3 @@ class TestSyncClientIntegration:
         assert isinstance(response, GenerateResponse)
 
 
-@pytest.mark.asyncio
-class TestMetricsIntegration:
-    """Integration tests for metrics collection across workflows."""
-
-    async def test_metrics_across_multiple_operations(self, ollama_server):
-        """Test that metrics are collected across multiple operations."""
-        MetricsCollector.reset()
-        config = AsyncOllamaConfig(base_url=ollama_server.base_url)
-        async with AsyncSharedOllamaClient(config=config, verify_on_init=False) as client:
-            # Mix of operations
-            await client.generate("Test 1")
-            await client.chat([{"role": "user", "content": "Test 2"}])
-            await client.list_models()
-            await client.generate("Test 3")
-
-        metrics = MetricsCollector.get_metrics()
-        assert metrics.total_requests >= 4
-        assert metrics.requests_by_operation["generate"] >= 2
-        assert metrics.requests_by_operation["chat"] >= 1
-        assert metrics.requests_by_operation["list_models"] >= 1
-
-    async def test_metrics_with_time_window(self, ollama_server):
-        """Test that metrics filtering by time window works."""
-        MetricsCollector.reset()
-        config = AsyncOllamaConfig(base_url=ollama_server.base_url)
-        async with AsyncSharedOllamaClient(config=config, verify_on_init=False) as client:
-            await client.generate("Test")
-
-        # Get metrics for last minute
-        metrics = MetricsCollector.get_metrics(window_minutes=1)
-        assert metrics.total_requests >= 1
-
-        # Get metrics for last hour
-        metrics_hour = MetricsCollector.get_metrics(window_minutes=60)
-        assert metrics_hour.total_requests >= 1

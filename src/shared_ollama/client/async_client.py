@@ -67,16 +67,12 @@ from tenacity import (
 )
 
 from shared_ollama.client.sync import GenerateOptions, GenerateResponse, Model
-from shared_ollama.telemetry.metrics import MetricsCollector
-from shared_ollama.telemetry.structured_logging import log_request_event
 
 logger = logging.getLogger(__name__)
-
 
 def _env_default_vlm_model() -> str:
     """Read the default VLM model from environment with safe fallback."""
     return os.getenv("OLLAMA_DEFAULT_VLM_MODEL", Model.QWEN3_VL_8B_Q4.value)
-
 
 @dataclass(slots=True, frozen=True)
 class AsyncOllamaConfig:
@@ -111,7 +107,6 @@ class AsyncOllamaConfig:
     max_concurrent_requests: int | None = None
     client_limits: httpx.Limits | None = field(default=None, repr=False)
     client_timeout: httpx.Timeout | None = field(default=None, repr=False)
-
 
 class AsyncSharedOllamaClient:
     """Async unified Ollama client for all projects.
@@ -343,30 +338,6 @@ class AsyncSharedOllamaClient:
         else:
             error_name = error_type
 
-        MetricsCollector.record_request(
-            model=model,
-            operation=operation,
-            latency_ms=latency_ms,
-            success=False,
-            error=error_name,
-        )
-
-        log_data: dict[str, Any] = {
-            "event": "ollama_request",
-            "client_type": "async",
-            "operation": operation,
-            "status": "error",
-            "model": model,
-            "stream": stream,
-            "request_id": request_id,
-            "latency_ms": round(latency_ms, 3),
-            "error_type": error_type,
-            "error_message": str(error),
-        }
-        if status_code is not None:
-            log_data["http_status"] = status_code
-
-        log_request_event(log_data)
         logger.exception(
             "Error during %s for model %s (status: %s)",
             operation,
@@ -416,25 +387,6 @@ class AsyncSharedOllamaClient:
                     msg = f"Expected dict response, got {type(data).__name__}"
                     raise ValueError(msg)
 
-            latency_ms = (time.perf_counter() - start_time) * 1000
-            MetricsCollector.record_request(
-                model="system",
-                operation="list_models",
-                latency_ms=latency_ms,
-                success=True,
-            )
-            log_request_event(
-                {
-                    "event": "ollama_request",
-                    "client_type": "async",
-                    "operation": "list_models",
-                    "status": "success",
-                    "request_id": str(uuid.uuid4()),
-                    "latency_ms": round(latency_ms, 3),
-                    "models_returned": len(models),
-                }
-            )
-
             return models
 
         except json.JSONDecodeError:
@@ -453,25 +405,7 @@ class AsyncSharedOllamaClient:
 
     def _record_list_models_error(self, start_time: float, error_type: str) -> None:
         """Record metrics/logs for list_models errors."""
-        latency_ms = (time.perf_counter() - start_time) * 1000
-        MetricsCollector.record_request(
-            model="system",
-            operation="list_models",
-            latency_ms=latency_ms,
-            success=False,
-            error=error_type,
-        )
-        log_request_event(
-            {
-                "event": "ollama_request",
-                "client_type": "async",
-                "operation": "list_models",
-                "status": "error",
-                "request_id": str(uuid.uuid4()),
-                "latency_ms": round(latency_ms, 3),
-                "error_type": error_type,
-            }
-        )
+        pass
 
     def _build_options_dict(self, options: GenerateOptions | None) -> dict[str, Any] | None:
         """Build options dictionary from GenerateOptions.
@@ -494,7 +428,6 @@ class AsyncSharedOllamaClient:
             "top_k": options.top_k,
             "repeat_penalty": options.repeat_penalty,
         }
-
         optional_opts = {
             k: v
             for k, v in {
@@ -550,9 +483,7 @@ class AsyncSharedOllamaClient:
 
         Side effects:
             - Makes HTTP POST request to /api/generate
-            - Logs request event with metrics
-            - Records metrics via MetricsCollector
-            - May acquire semaphore slot if concurrency limiting enabled
+            - Logs request event with metrics            - May acquire semaphore slot if concurrency limiting enabled
         """
         await self._ensure_client()
         if self.client is None:
@@ -562,8 +493,7 @@ class AsyncSharedOllamaClient:
 
         payload: dict[str, Any] = {
             "model": model_str,
-            "prompt": prompt,
-            "stream": stream,
+            "messages": messages,
         }
         if system:
             payload["system"] = system
@@ -610,35 +540,7 @@ class AsyncSharedOllamaClient:
                 eval_duration=data.get("eval_duration", 0),
             )
 
-            MetricsCollector.record_request(
-                model=model_str,
-                operation="generate",
-                latency_ms=latency_ms,
-                success=True,
-            )
-
-            load_ms = result.load_duration / 1_000_000 if result.load_duration else 0.0
-            total_ms = result.total_duration / 1_000_000 if result.total_duration else 0.0
-
-            log_request_event(
-                {
-                    "event": "ollama_request",
-                    "client_type": "async",
-                    "operation": "generate",
-                    "status": "success",
-                    "model": model_str,
-                    "stream": stream,
-                    "request_id": request_id,
-                    "latency_ms": round(latency_ms, 3),
-                    "total_duration_ms": round(total_ms, 3) if total_ms else None,
-                    "model_load_ms": round(load_ms, 3) if load_ms else 0.0,
-                    "model_warm_start": load_ms == 0.0,
-                    "prompt_chars": len(prompt),
-                    "prompt_eval_count": result.prompt_eval_count,
-                    "generation_eval_count": result.eval_count,
-                    "options": options_dict,
-                }
-            )
+            
 
             return result
 
@@ -691,37 +593,10 @@ class AsyncSharedOllamaClient:
             error_message: Error message string.
             status_code: Optional HTTP status code if applicable.
 
-        Side effects:
-            - Records metrics via MetricsCollector
-            - Logs structured event via log_request_event
-        """
+        Side effects:        """
         latency_ms = (time.perf_counter() - start_time) * 1000
         error_name = f"{error_type}:{status_code}" if status_code else error_type
 
-        MetricsCollector.record_request(
-            model=model,
-            operation="generate",
-            latency_ms=latency_ms,
-            success=False,
-            error=error_name,
-        )
-
-        log_data: dict[str, Any] = {
-            "event": "ollama_request",
-            "client_type": "async",
-            "operation": "generate",
-            "status": "error",
-            "model": model,
-            "stream": stream,
-            "request_id": request_id,
-            "latency_ms": round(latency_ms, 3),
-            "error_type": error_type,
-            "error_message": error_message,
-        }
-        if status_code is not None:
-            log_data["http_status"] = status_code
-
-        log_request_event(log_data)
 
     async def chat(
         self,
@@ -765,9 +640,7 @@ class AsyncSharedOllamaClient:
 
         Side effects:
             - Makes HTTP POST request to /api/chat
-            - Logs request event with metrics
-            - Records metrics via MetricsCollector
-            - May acquire semaphore slot if concurrency limiting enabled
+            - Logs request event with metrics            - May acquire semaphore slot if concurrency limiting enabled
         """
         await self._ensure_client()
         if self.client is None:
@@ -778,9 +651,7 @@ class AsyncSharedOllamaClient:
         payload: dict[str, Any] = {
             "model": model_str,
             "messages": messages,
-            "stream": stream,
         }
-
         # Add images parameter if provided (Ollama's native format for vision models)
         if images:
             payload["images"] = images
@@ -800,17 +671,6 @@ class AsyncSharedOllamaClient:
         request_id = str(uuid.uuid4())
         start_time = time.perf_counter()
 
-        log_request_event(
-            {
-                "event": "ollama_payload",
-                "client_type": "async",
-                "operation": "chat",
-                "request_id": request_id,
-                "model": model_str,
-                "payload": payload,
-            }
-        )
-
         try:
             async with self._acquire_slot():
                 response = await self.client.post(
@@ -828,39 +688,6 @@ class AsyncSharedOllamaClient:
                 case False:
                     msg = f"Expected dict response, got {type(data).__name__}"
                     raise ValueError(msg)
-
-            latency_ms = (time.perf_counter() - start_time) * 1000
-
-            log_request_event(
-                {
-                    "event": "ollama_response",
-                    "client_type": "async",
-                    "operation": "chat",
-                    "request_id": request_id,
-                    "model": model_str,
-                    "response": data,
-                }
-            )
-
-            MetricsCollector.record_request(
-                model=model_str,
-                operation="chat",
-                latency_ms=latency_ms,
-                success=True,
-            )
-            log_request_event(
-                {
-                    "event": "ollama_request",
-                    "client_type": "async",
-                    "operation": "chat",
-                    "status": "success",
-                    "model": model_str,
-                    "stream": stream,
-                    "request_id": request_id,
-                    "latency_ms": round(latency_ms, 3),
-                    "messages_count": len(messages),
-                }
-            )
 
             return data
 
@@ -913,37 +740,10 @@ class AsyncSharedOllamaClient:
             error_message: Error message string.
             status_code: Optional HTTP status code if applicable.
 
-        Side effects:
-            - Records metrics via MetricsCollector
-            - Logs structured event via log_request_event
-        """
+        Side effects:        """
         latency_ms = (time.perf_counter() - start_time) * 1000
         error_name = f"{error_type}:{status_code}" if status_code else error_type
 
-        MetricsCollector.record_request(
-            model=model,
-            operation="chat",
-            latency_ms=latency_ms,
-            success=False,
-            error=error_name,
-        )
-
-        log_data: dict[str, Any] = {
-            "event": "ollama_request",
-            "client_type": "async",
-            "operation": "chat",
-            "status": "error",
-            "model": model,
-            "stream": stream,
-            "request_id": request_id,
-            "latency_ms": round(latency_ms, 3),
-            "error_type": error_type,
-            "error_message": error_message,
-        }
-        if status_code is not None:
-            log_data["http_status"] = status_code
-
-        log_request_event(log_data)
 
     async def generate_stream(
         self,
@@ -990,9 +790,7 @@ class AsyncSharedOllamaClient:
 
         Side effects:
             - Makes HTTP POST request to /api/generate with stream=True
-            - Logs request event with metrics on completion
-            - Records metrics via MetricsCollector on completion
-            - May acquire semaphore slot if concurrency limiting enabled
+            - Logs request event with metrics on completion            - May acquire semaphore slot if concurrency limiting enabled
         """
         await self._ensure_client()
         if self.client is None:
@@ -1003,10 +801,8 @@ class AsyncSharedOllamaClient:
 
         payload: dict[str, Any] = {
             "model": model_str,
-            "prompt": prompt,
-            "stream": True,
+            "messages": messages,
         }
-
         if system:
             payload["system"] = system
         if format:
@@ -1049,9 +845,7 @@ class AsyncSharedOllamaClient:
                         "chunk": text_chunk,
                         "done": done,
                         "model": chunk_data.get("model", model_str),
-                        "request_id": request_id,
                     }
-
                     if done:
                         latency_ms = (time.perf_counter() - start_time) * 1000
                         load_duration = chunk_data.get("load_duration", 0)
@@ -1071,34 +865,6 @@ class AsyncSharedOllamaClient:
                                 else None,
                             }
                         )
-
-                        MetricsCollector.record_request(
-                            model=model_str,
-                            operation="generate_stream",
-                            latency_ms=latency_ms,
-                            success=True,
-                        )
-
-                        log_request_event(
-                            {
-                                "event": "ollama_request",
-                                "client_type": "async",
-                                "operation": "generate_stream",
-                                "status": "success",
-                                "model": model_str,
-                                "stream": True,
-                                "request_id": request_id,
-                                "latency_ms": round(latency_ms, 3),
-                                "total_duration_ms": chunk_dict.get("total_duration_ms"),
-                                "model_load_ms": chunk_dict.get("model_load_ms"),
-                                "model_warm_start": chunk_dict.get("model_warm_start"),
-                                "prompt_chars": len(prompt),
-                                "prompt_eval_count": chunk_dict.get("prompt_eval_count"),
-                                "generation_eval_count": chunk_dict.get("generation_eval_count"),
-                                "options": options_dict,
-                            }
-                        )
-
                     yield chunk_dict
 
         except httpx.HTTPStatusError as exc:
@@ -1173,9 +939,7 @@ class AsyncSharedOllamaClient:
 
         Side effects:
             - Makes HTTP POST request to /api/chat with stream=True
-            - Logs request event with metrics on completion
-            - Records metrics via MetricsCollector on completion
-            - May acquire semaphore slot if concurrency limiting enabled
+            - Logs request event with metrics on completion            - May acquire semaphore slot if concurrency limiting enabled
         """
         await self._ensure_client()
         if self.client is None:
@@ -1186,10 +950,9 @@ class AsyncSharedOllamaClient:
 
         payload: dict[str, Any] = {
             "model": model_str,
-            "messages": messages,
+            "prompt": prompt,
             "stream": True,
         }
-
         # Add images parameter if provided (Ollama's native format for vision models)
         if images:
             payload["images"] = images
@@ -1240,9 +1003,7 @@ class AsyncSharedOllamaClient:
                         "role": role,
                         "done": done,
                         "model": chunk_data.get("model", model_str),
-                        "request_id": request_id,
                     }
-
                     if done:
                         latency_ms = (time.perf_counter() - start_time) * 1000
                         load_duration = chunk_data.get("load_duration", 0)
@@ -1262,34 +1023,6 @@ class AsyncSharedOllamaClient:
                                 else None,
                             }
                         )
-
-                        MetricsCollector.record_request(
-                            model=model_str,
-                            operation="chat_stream",
-                            latency_ms=latency_ms,
-                            success=True,
-                        )
-
-                        log_request_event(
-                            {
-                                "event": "ollama_request",
-                                "client_type": "async",
-                                "operation": "chat_stream",
-                                "status": "success",
-                                "model": model_str,
-                                "stream": True,
-                                "request_id": request_id,
-                                "latency_ms": round(latency_ms, 3),
-                                "total_duration_ms": chunk_dict.get("total_duration_ms"),
-                                "model_load_ms": chunk_dict.get("model_load_ms"),
-                                "model_warm_start": chunk_dict.get("model_warm_start"),
-                                "messages_count": len(messages),
-                                "prompt_eval_count": chunk_dict.get("prompt_eval_count"),
-                                "generation_eval_count": chunk_dict.get("generation_eval_count"),
-                                "options": options_dict,
-                            }
-                        )
-
                     yield chunk_dict
 
         except httpx.HTTPStatusError as exc:
@@ -1335,37 +1068,10 @@ class AsyncSharedOllamaClient:
             error_message: Error message string.
             status_code: Optional HTTP status code if applicable.
 
-        Side effects:
-            - Records metrics via MetricsCollector
-            - Logs structured event via log_request_event
-        """
+        Side effects:        """
         latency_ms = (time.perf_counter() - start_time) * 1000
         error_name = f"{error_type}:{status_code}" if status_code else error_type
 
-        MetricsCollector.record_request(
-            model=model,
-            operation=operation,
-            latency_ms=latency_ms,
-            success=False,
-            error=error_name,
-        )
-
-        log_data: dict[str, Any] = {
-            "event": "ollama_request",
-            "client_type": "async",
-            "operation": operation,
-            "status": "error",
-            "model": model,
-            "stream": True,
-            "request_id": request_id,
-            "latency_ms": round(latency_ms, 3),
-            "error_type": error_type,
-            "error_message": error_message,
-        }
-        if status_code is not None:
-            log_data["http_status"] = status_code
-
-        log_request_event(log_data)
 
     async def health_check(self) -> bool:
         """Perform health check on Ollama service.
@@ -1417,6 +1123,5 @@ class AsyncSharedOllamaClient:
         """
         models = await self.list_models()
         return next((item for item in models if item.get("name") == model), None)
-
 
 __all__ = ["AsyncOllamaConfig", "AsyncSharedOllamaClient"]

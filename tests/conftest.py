@@ -257,22 +257,5 @@ def sample_chat_response():
 @pytest.fixture(autouse=True)
 def reset_global_state():
     """Reset global state before each test to ensure isolation."""
-    # Only reset if modules are already imported and have reset method
-    if "shared_ollama.telemetry.metrics" in sys.modules:
-        from shared_ollama.telemetry.metrics import MetricsCollector
-        MetricsCollector.reset()
-
-    if "shared_ollama.telemetry.performance" in sys.modules:
-        from shared_ollama.telemetry.performance import PerformanceCollector
-        PerformanceCollector.reset()
-
     yield
-
-    # Cleanup after test - only if modules are imported
-    if "shared_ollama.telemetry.metrics" in sys.modules:
-        from shared_ollama.telemetry.metrics import MetricsCollector
-        MetricsCollector.reset()
-
-    if "shared_ollama.telemetry.performance" in sys.modules:
-        from shared_ollama.telemetry.performance import PerformanceCollector
-        PerformanceCollector.reset()
+    # No global state to reset after removing telemetry

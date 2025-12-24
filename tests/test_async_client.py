@@ -10,7 +10,7 @@ import asyncio
 import httpx
 import pytest
 
-from shared_ollama import GenerateResponse, MetricsCollector
+from shared_ollama import GenerateResponse
 from shared_ollama.client import AsyncOllamaConfig, AsyncSharedOllamaClient
 
 
@@ -167,16 +167,6 @@ class TestAsyncClientGenerate:
             with pytest.raises(httpx.HTTPStatusError):
                 await client.generate("This should fail")
 
-    async def test_generate_records_metrics(self, ollama_server):
-        """Test that generate() records metrics via MetricsCollector."""
-        MetricsCollector.reset()
-        config = AsyncOllamaConfig(base_url=ollama_server.base_url)
-        async with AsyncSharedOllamaClient(config=config, verify_on_init=False) as client:
-            await client.generate("Test prompt")
-
-        metrics = MetricsCollector.get_metrics()
-        assert metrics.total_requests >= 1
-        assert metrics.successful_requests >= 1
 
 
 @pytest.mark.asyncio
@@ -519,19 +509,3 @@ class TestAsyncClientEdgeCases:
                 response = await client.generate(f"Rapid {i}")
                 assert isinstance(response, GenerateResponse)
 
-    async def test_generate_records_metrics_on_error(self, ollama_server):
-        """Test that generate() records metrics even on error."""
-        from shared_ollama.telemetry.metrics import MetricsCollector
-
-        MetricsCollector.reset()
-        ollama_server.state["generate_failures"] = 1
-        config = AsyncOllamaConfig(base_url=ollama_server.base_url)
-        async with AsyncSharedOllamaClient(config=config, verify_on_init=False) as client:
-            try:
-                await client.generate("This will fail")
-            except Exception:
-                pass
-
-        metrics = MetricsCollector.get_metrics()
-        # Should have recorded the failed request
-        assert metrics.total_requests >= 1

@@ -57,11 +57,8 @@ from tenacity import (
 )
 
 from shared_ollama.client.embeddings import embeddings_sync
-from shared_ollama.telemetry.metrics import MetricsCollector
-from shared_ollama.telemetry.structured_logging import log_request_event
 
 logger = logging.getLogger(__name__)
-
 
 def _serialize_options(options: GenerateOptions | dict[str, Any] | None) -> dict[str, Any] | None:
     """Normalize generation options into a plain dict."""
@@ -88,7 +85,6 @@ def _serialize_options(options: GenerateOptions | dict[str, Any] | None) -> dict
     options_dict.update(optional_opts)
     return options_dict
 
-
 class Model(StrEnum):
     """Supported Qwen 3 model identifiers for the client SDK."""
 
@@ -97,14 +93,12 @@ class Model(StrEnum):
     QWEN3_VL_32B = "qwen3-vl:32b"
     QWEN3_30B = "qwen3:30b"
 
-
 _DEFAULT_CLIENT_MODEL = os.getenv(
     "OLLAMA_DEFAULT_VLM_MODEL",
     Model.QWEN3_VL_8B_Q4.value,
 )
 
 MODEL_INFO_CACHE_LIMIT = 128
-
 
 @dataclass(slots=True, frozen=True)
 class OllamaConfig:
@@ -128,7 +122,6 @@ class OllamaConfig:
     timeout: int = 300
     health_check_timeout: int = 5
     verbose: bool = False
-
 
 @dataclass(slots=True, frozen=True)
 class GenerateOptions:
@@ -156,7 +149,6 @@ class GenerateOptions:
     max_tokens: int | None = None
     seed: int | None = None
     stop: list[str] | None = None
-
 
 @dataclass(slots=True)
 class GenerateResponse:
@@ -186,7 +178,6 @@ class GenerateResponse:
     prompt_eval_duration: int = 0
     eval_count: int = 0
     eval_duration: int = 0
-
 
 class SharedOllamaClient:
     """Unified Ollama client for all projects (synchronous version).
@@ -315,25 +306,6 @@ class SharedOllamaClient:
                     msg = f"Expected dict response, got {type(data).__name__}"
                     raise ValueError(msg)
 
-            latency_ms = (time.perf_counter() - start_time) * 1000
-            MetricsCollector.record_request(
-                model="system",
-                operation="list_models",
-                latency_ms=latency_ms,
-                success=True,
-            )
-            log_request_event(
-                {
-                    "event": "ollama_request",
-                    "client_type": "sync",
-                    "operation": "list_models",
-                    "status": "success",
-                    "request_id": str(uuid.uuid4()),
-                    "latency_ms": round(latency_ms, 3),
-                    "models_returned": len(models),
-                }
-            )
-
             return models
 
         except json.JSONDecodeError:
@@ -388,9 +360,7 @@ class SharedOllamaClient:
 
         Side effects:
             - Makes HTTP POST request to /api/generate
-            - Logs request event with metrics
-            - Records metrics via MetricsCollector
-        """
+            - Logs request event with metrics        """
         model_str = str(model or self.config.default_model)
 
         payload: dict[str, Any] = {
@@ -440,36 +410,6 @@ class SharedOllamaClient:
                 eval_duration=data.get("eval_duration", 0),
             )
 
-            MetricsCollector.record_request(
-                model=model_str,
-                operation="generate",
-                latency_ms=latency_ms,
-                success=True,
-            )
-
-            load_ms = result.load_duration / 1_000_000 if result.load_duration else 0.0
-            total_ms = result.total_duration / 1_000_000 if result.total_duration else 0.0
-
-            log_request_event(
-                {
-                    "event": "ollama_request",
-                    "client_type": "sync",
-                    "operation": "generate",
-                    "status": "success",
-                    "model": model_str,
-                    "stream": stream,
-                    "request_id": request_id,
-                    "latency_ms": round(latency_ms, 3),
-                    "total_duration_ms": round(total_ms, 3) if total_ms else None,
-                    "model_load_ms": round(load_ms, 3) if load_ms else 0.0,
-                    "model_warm_start": load_ms == 0.0,
-                    "prompt_chars": len(prompt),
-                    "prompt_eval_count": result.prompt_eval_count,
-                    "generation_eval_count": result.eval_count,
-                    "options": options_dict,
-                }
-            )
-
             return result
 
         except json.JSONDecodeError as exc:
@@ -500,25 +440,7 @@ class SharedOllamaClient:
 
     def _record_list_models_error(self, start_time: float, error_type: str) -> None:
         """Record list_models failure metrics/logging."""
-        latency_ms = (time.perf_counter() - start_time) * 1000
-        MetricsCollector.record_request(
-            model="system",
-            operation="list_models",
-            latency_ms=latency_ms,
-            success=False,
-            error=error_type,
-        )
-        log_request_event(
-            {
-                "event": "ollama_request",
-                "client_type": "sync",
-                "operation": "list_models",
-                "status": "error",
-                "request_id": str(uuid.uuid4()),
-                "latency_ms": round(latency_ms, 3),
-                "error_type": error_type,
-            }
-        )
+        pass
 
     def _log_generate_error(
         self,
@@ -543,37 +465,7 @@ class SharedOllamaClient:
             error_message: Error message string.
             status_code: Optional HTTP status code if applicable.
 
-        Side effects:
-            - Records metrics via MetricsCollector
-            - Logs structured event via log_request_event
         """
-        latency_ms = (time.perf_counter() - start_time) * 1000
-        error_name = f"{error_type}:{status_code}" if status_code else error_type
-
-        MetricsCollector.record_request(
-            model=model,
-            operation="generate",
-            latency_ms=latency_ms,
-            success=False,
-            error=error_name,
-        )
-
-        log_data: dict[str, Any] = {
-            "event": "ollama_request",
-            "client_type": "sync",
-            "operation": "generate",
-            "status": "error",
-            "model": model,
-            "stream": stream,
-            "request_id": request_id,
-            "latency_ms": round(latency_ms, 3),
-            "error_type": error_type,
-            "error_message": error_message,
-        }
-        if status_code is not None:
-            log_data["http_status"] = status_code
-
-        log_request_event(log_data)
 
     def chat(
         self,
@@ -612,8 +504,6 @@ class SharedOllamaClient:
 
         Side effects:
             - Makes HTTP POST request to /api/chat
-            - Logs request event with metrics
-            - Records metrics via MetricsCollector
         """
         model_str = str(model or self.config.default_model)
 
@@ -640,26 +530,6 @@ class SharedOllamaClient:
                     msg = f"Expected dict response, got {type(data).__name__}"
                     raise ValueError(msg)
 
-            latency_ms = (time.perf_counter() - start_time) * 1000
-            MetricsCollector.record_request(
-                model=model_str,
-                operation="chat",
-                latency_ms=latency_ms,
-                success=True,
-            )
-            log_request_event(
-                {
-                    "event": "ollama_request",
-                    "client_type": "sync",
-                    "operation": "chat",
-                    "status": "success",
-                    "model": model_str,
-                    "stream": stream,
-                    "request_id": request_id,
-                    "latency_ms": round(latency_ms, 3),
-                    "messages_count": len(messages),
-                }
-            )
 
             return data
 
@@ -712,20 +582,11 @@ class SharedOllamaClient:
             error_message: Error message string.
             status_code: Optional HTTP status code if applicable.
 
-        Side effects:
-            - Records metrics via MetricsCollector
-            - Logs structured event via log_request_event
-        """
+        Side effects:        """
         latency_ms = (time.perf_counter() - start_time) * 1000
         error_name = f"{error_type}:{status_code}" if status_code else error_type
 
-        MetricsCollector.record_request(
-            model=model,
-            operation="chat",
-            latency_ms=latency_ms,
-            success=False,
-            error=error_name,
-        )
+        
 
         log_data: dict[str, Any] = {
             "event": "ollama_request",
@@ -742,7 +603,7 @@ class SharedOllamaClient:
         if status_code is not None:
             log_data["http_status"] = status_code
 
-        log_request_event(log_data)
+        
 
     def pull_model(self, model: str) -> dict[str, Any]:
         """Pull/download a model from Ollama registry.
@@ -787,20 +648,6 @@ class SharedOllamaClient:
                     msg = f"Expected dict response, got {type(data).__name__}"
                     raise ValueError(msg)
 
-            latency_ms = (time.perf_counter() - start_time) * 1000
-            log_request_event(
-                {
-                    "event": "ollama_request",
-                    "client_type": "sync",
-                    "operation": "pull",
-                    "status": "success",
-                    "model": model,
-                    "request_id": request_id,
-                    "latency_ms": round(latency_ms, 3),
-                    "response": data,
-                }
-            )
-
             return data
 
         except json.JSONDecodeError as exc:
@@ -838,26 +685,8 @@ class SharedOllamaClient:
             error_message: Error message string.
             status_code: Optional HTTP status code if applicable.
 
-        Side effects:
-            - Logs structured event via log_request_event
         """
-        latency_ms = (time.perf_counter() - start_time) * 1000
-
-        log_data: dict[str, Any] = {
-            "event": "ollama_request",
-            "client_type": "sync",
-            "operation": "pull",
-            "status": "error",
-            "model": model,
-            "request_id": request_id,
-            "latency_ms": round(latency_ms, 3),
-            "error_type": error_type,
-            "error_message": error_message,
-        }
-        if status_code is not None:
-            log_data["http_status"] = status_code
-
-        log_request_event(log_data)
+        pass
 
     def health_check(self) -> bool:
         """Perform health check on Ollama service.
@@ -933,8 +762,6 @@ class SharedOllamaClient:
 
         Side effects:
             - Makes HTTP POST request to /api/embeddings
-            - Logs request event with metrics
-            - Records metrics via MetricsCollector
         """
         if not prompt or not prompt.strip():
             raise ValueError("Prompt must not be empty")
@@ -947,7 +774,6 @@ class SharedOllamaClient:
             model=model_str,
             timeout=self.config.timeout,
         )
-
 
 __all__ = [
     "GenerateOptions",

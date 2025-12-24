@@ -8,6 +8,12 @@
 - **Native Ollama Format**: Simple, efficient, direct integration
 - **OpenAI-Compatible Format**: For Docling and other OpenAI-compatible clients
 - **Automatic Management**: REST API automatically starts and manages Ollama (no manual setup needed)
+- **Embeddings API**: Generate vector embeddings for semantic search and RAG systems
+- **Response Caching**: Intelligent caching with semantic similarity matching for faster responses
+- **Model Management**: Create, copy, and manage custom models via API
+- **Automatic Memory Management**: Background service automatically unloads idle models
+- **Fine-tuning Helpers**: Scripts and tools for local model customization
+- **Agent System**: Support for Ollama 0.13.5+ agent framework
 
 **📚 Documentation**: See [docs/README.md](docs/README.md) for complete documentation index.  
 **🛠️ Stability Plan**: See [docs/STABILITY_PLAN.md](docs/STABILITY_PLAN.md) for the hardening roadmap.
@@ -114,6 +120,35 @@ curl -X POST http://0.0.0.0:8000/api/v1/vlm \
   }"
 ```
 
+**Generate Embeddings:**
+
+```bash
+curl -X POST http://0.0.0.0:8000/api/v1/embeddings \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "qwen3:14b-q4_K_M",
+    "prompt": "What is machine learning?"
+  }'
+```
+
+**Model Management:**
+
+```bash
+# List running models
+curl http://0.0.0.0:8000/api/v1/models/ps
+
+# Get detailed model information
+curl http://0.0.0.0:8000/api/v1/models/qwen3:14b-q4_K_M/show
+
+# Create a custom model from Modelfile
+curl -X POST http://0.0.0.0:8000/api/v1/models/create \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "custom-model",
+    "modelfile": "FROM qwen3:14b-q4_K_M\nSYSTEM \"You are a helpful assistant.\""
+  }'
+```
+
 ### 4. View Interactive API Documentation
 
 Open in your browser:
@@ -206,7 +241,7 @@ guardrails so your workloads stay fast and predictable:
   - Full-precision multimodal reasoning with 128K+ context and hybrid thinking
   - Ideal for workstation/desktop servers running agentic or heavy RAG workloads
 
-Models remain in memory for 5 minutes after last use (OLLAMA_KEEP_ALIVE), then are automatically unloaded to free memory. Switching between models requires a brief load time (~2-3 seconds).
+Models remain in memory for 5 minutes after last use (configurable via `idle_timeout`), then are automatically unloaded to free memory by the background cleanup service. The cleanup service also monitors system memory and aggressively unloads models when memory usage exceeds 85% to prevent memory exhaustion. Switching between models requires a brief load time (~2-3 seconds).
 
 ## Vision Language Model (VLM) Support
 
@@ -237,6 +272,66 @@ print(response.json()["message"]["content"])
 
 **📖 Complete VLM Guide**: See [docs/VLM_GUIDE.md](docs/VLM_GUIDE.md) for detailed examples, batch processing, streaming, and best practices.
 
+## New Features (Latest Release)
+
+### Embeddings API
+Generate vector embeddings for semantic search, RAG systems, and similarity matching:
+
+```bash
+curl -X POST http://0.0.0.0:8000/api/v1/embeddings \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "qwen3:14b-q4_K_M",
+    "prompt": "What is machine learning?"
+  }'
+```
+
+### Model Management
+Full CRUD operations for managing models:
+
+- **List running models**: `GET /api/v1/models/ps`
+- **Get model details**: `GET /api/v1/models/{name}/show`
+- **Create custom models**: `POST /api/v1/models/create`
+- **Copy models**: `POST /api/v1/models/{name}/copy`
+
+### Fine-tuning Helpers
+Scripts for local model customization:
+
+```bash
+# Create a Modelfile
+python scripts/maintenance/fine_tune_helper.py create-modelfile \
+  --base-model qwen3:14b-q4_K_M \
+  --system-prompt "You are a helpful coding assistant" \
+  --output Modelfile
+
+# Create model via API
+python scripts/maintenance/fine_tune_helper.py create-model \
+  --name custom-assistant \
+  --modelfile Modelfile
+```
+
+### Automatic Memory Management
+Background service automatically:
+- Unloads idle models after 5 minutes of inactivity
+- Monitors system memory and unloads models when memory > 85%
+- Runs cleanup checks every 60 seconds
+- Prevents memory exhaustion on single-machine setups
+
+### Agent System (Ollama 0.13.5+)
+Support for Ollama's agent framework:
+
+- **List agents**: `GET /api/v1/agents`
+- **Run agent**: `POST /api/v1/agents/{name}/run`
+- **Create agent**: `POST /api/v1/agents/create`
+
+### Response Caching
+Intelligent caching system with:
+- Semantic similarity matching (95% threshold)
+- LRU eviction policy
+- Configurable TTL (default: 1 hour)
+- Thread-safe operations
+- Cache statistics tracking
+
 ## Documentation
 
 Complete documentation is available in the `docs/` directory:
@@ -250,6 +345,12 @@ Complete documentation is available in the `docs/` directory:
 ### Advanced Features
 - **[POML Guide](docs/POML_GUIDE.md)** - Prompt Orchestration Markup Language support
 - **[LiteLLM Guide](docs/LITELLM_GUIDE.md)** - LiteLLM integration guide
+- **Embeddings API** - Generate vector embeddings for semantic search (`/api/v1/embeddings`)
+- **Model Management** - Create, copy, and inspect models (`/api/v1/models/*`)
+- **Fine-tuning Helpers** - Scripts for local model customization (`scripts/maintenance/fine_tune_helper.py`)
+- **Agent System** - Ollama 0.13.5+ agent framework support (`/api/v1/agents/*`)
+- **Response Caching** - Intelligent caching with semantic similarity matching
+- **Automatic Memory Management** - Background service for model cleanup
 
 ### Operations & Maintenance
 - **[Operations Guide](docs/OPERATIONS.md)** - Service operations, warm-up, and pre-loading
@@ -300,6 +401,37 @@ When adding new models or modifying the service:
 5. Document model size and use cases
 
 **📖 Development Guide**: See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) for development setup, testing, and contribution guidelines.
+
+## API Endpoints Summary
+
+### Core Endpoints
+- `POST /api/v1/generate` - Text generation
+- `POST /api/v1/chat` - Chat completion (native format)
+- `POST /api/v1/vlm` - Vision-language model (native format)
+- `POST /api/v1/vlm/openai` - Vision-language model (OpenAI format)
+- `POST /api/v1/embeddings` - Generate embeddings ⭐ NEW
+- `POST /api/v1/batch/chat` - Batch chat processing
+- `POST /api/v1/batch/vlm` - Batch VLM processing
+
+### Model Management
+- `GET /api/v1/models` - List all available models
+- `GET /api/v1/models/ps` - List running models ⭐ NEW
+- `GET /api/v1/models/{name}/show` - Get model details ⭐ NEW
+- `POST /api/v1/models/create` - Create custom model ⭐ NEW
+- `POST /api/v1/models/{name}/copy` - Copy model ⭐ NEW
+
+### Agent System
+- `GET /api/v1/agents` - List agents ⭐ NEW
+- `POST /api/v1/agents/{name}/run` - Run agent ⭐ NEW
+- `POST /api/v1/agents/create` - Create agent ⭐ NEW
+
+### System & Monitoring
+- `GET /api/v1/health` - Health check
+- `GET /api/v1/queue/stats` - Queue statistics
+- `GET /api/v1/metrics` - Service metrics
+- `GET /api/v1/performance/stats` - Performance statistics
+- `GET /api/v1/analytics` - Analytics report
+- `GET /api/v1/system/model-profile` - Hardware profile and model recommendations
 
 ## License
 

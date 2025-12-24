@@ -163,6 +163,21 @@ class ImageCacheConfig(BaseModel):
     )
 
 
+class ResponseCacheConfig(BaseModel):
+    """Response cache configuration."""
+
+    enabled: bool = Field(default=True, description="Enable response caching")
+    max_size: int = Field(
+        default=1000, ge=1, le=100000, description="Max number of cached responses"
+    )
+    ttl_seconds: int = Field(
+        default=3600, ge=60, le=86400, description="Cache TTL (seconds)"
+    )
+    similarity_threshold: float = Field(
+        default=0.95, ge=0.0, le=1.0, description="Minimum similarity for cache hits"
+    )
+
+
 class ClientConfig(BaseModel):
     """Async client configuration."""
 
@@ -208,6 +223,7 @@ class Settings(BaseModel):
     batch: BatchConfig = Field(default_factory=BatchConfig)
     image: ImageProcessingConfig = Field(default_factory=ImageProcessingConfig)
     image_cache: ImageCacheConfig = Field(default_factory=ImageCacheConfig)
+    response_cache: ResponseCacheConfig = Field(default_factory=ResponseCacheConfig)
     client: ClientConfig = Field(default_factory=ClientConfig)
     ollama_manager: OllamaManagerConfig = Field(default_factory=OllamaManagerConfig)
 
@@ -248,6 +264,7 @@ class Settings(BaseModel):
                 batch=BatchConfig(**config_data.get("batch", {})),
                 image=ImageProcessingConfig(**config_data.get("image", {})),
                 image_cache=ImageCacheConfig(**config_data.get("image_cache", {})),
+                response_cache=ResponseCacheConfig(**config_data.get("response_cache", {})),
                 client=ClientConfig(**config_data.get("client", {})),
                 ollama_manager=OllamaManagerConfig(**config_data.get("ollama_manager", {})),
             )
@@ -274,6 +291,7 @@ __all__ = [
     "OllamaConfig",
     "OllamaManagerConfig",
     "QueueConfig",
+    "ResponseCacheConfig",
     "Settings",
     "get_settings",
     "settings",

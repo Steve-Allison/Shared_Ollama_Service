@@ -11,7 +11,7 @@ requires-python = ">=3.11"
 dependencies = [
     "requests>=2.31.0,<3.0.0",
     "fastapi>=0.124.0,<1.0.0",
-    "uvicorn[standard]>=0.38.0,<0.40.0",
+    "uvicorn[standard]>=0.38.0,<0.41.0",
     "gunicorn>=22.0.0,<24.0.0",  # Production ASGI server with process management
     "slowapi>=0.1.9,<0.2.0",  # Rate limiting
     "pydantic>=2.12.4,<3.0.0",  # Keep major version constraint (v3 would be breaking)

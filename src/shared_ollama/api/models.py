@@ -1486,3 +1486,27 @@ class AnalyticsResponse(BaseModel):
     )
     start_time: datetime | None = Field(None, description="Start of reporting window")
     end_time: datetime | None = Field(None, description="End of reporting window")
+
+
+class EmbeddingsRequest(BaseModel):
+    """Request model for embeddings endpoint."""
+
+    model_config = ConfigDict(
+        str_strip_whitespace=True,
+        validate_assignment=True,
+        extra="forbid",
+    )
+
+    prompt: str = Field(..., min_length=1, description="Text prompt to generate embeddings for")
+    model: str | None = Field(None, description="Model name. Uses default if not specified")
+
+
+class EmbeddingsResponse(BaseModel):
+    """Response model for embeddings endpoint."""
+
+    model_config = ConfigDict(validate_assignment=True, extra="forbid")
+
+    embedding: list[float] = Field(..., description="Vector embedding (list of floats)")
+    model: str = Field(..., description="Model name used")
+    prompt: str = Field(..., description="Original prompt text")
+    latency_ms: float | None = Field(None, ge=0.0, description="Request latency in milliseconds")

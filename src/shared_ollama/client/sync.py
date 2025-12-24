@@ -56,6 +56,7 @@ from tenacity import (
     wait_fixed,
 )
 
+from shared_ollama.client.embeddings import embeddings_sync
 from shared_ollama.telemetry.metrics import MetricsCollector
 from shared_ollama.telemetry.structured_logging import log_request_event
 
@@ -907,6 +908,45 @@ class SharedOllamaClient:
         if len(self._model_info_cache) > MODEL_INFO_CACHE_LIMIT:
             self._model_info_cache.popitem(last=False)
         return info
+
+    def embeddings(self, prompt: str, model: str | None = None) -> dict[str, Any]:
+        """Generate embeddings for a text prompt.
+
+        Creates vector embeddings from text, useful for semantic search, RAG systems,
+        and similarity matching.
+
+        Args:
+            prompt: Text prompt to generate embeddings for. Must not be empty.
+            model: Model name to use. If None, uses config.default_model.
+
+        Returns:
+            Dictionary containing:
+                - embedding: List of float values (embedding vector)
+                - model: Model name used
+                - prompt: Original prompt text
+
+        Raises:
+            ValueError: If prompt is empty or response is invalid.
+            json.JSONDecodeError: If response is not valid JSON.
+            requests.exceptions.HTTPError: If HTTP request fails.
+            requests.exceptions.RequestException: If network error occurs.
+
+        Side effects:
+            - Makes HTTP POST request to /api/embeddings
+            - Logs request event with metrics
+            - Records metrics via MetricsCollector
+        """
+        if not prompt or not prompt.strip():
+            raise ValueError("Prompt must not be empty")
+
+        model_str = str(model or self.config.default_model)
+        return embeddings_sync(
+            session=self.session,
+            base_url=self.config.base_url,
+            prompt=prompt.strip(),
+            model=model_str,
+            timeout=self.config.timeout,
+        )
 
 
 __all__ = [

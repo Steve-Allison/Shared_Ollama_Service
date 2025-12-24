@@ -42,6 +42,7 @@ from typing import TYPE_CHECKING
 
 from shared_ollama.api.dependencies import set_dependencies
 from shared_ollama.client import AsyncOllamaConfig, AsyncSharedOllamaClient
+from shared_ollama.core.model_cleanup import ModelCleanupService
 from shared_ollama.core.ollama_manager import initialize_ollama_manager
 from shared_ollama.core.queue import RequestQueue
 from shared_ollama.core.utils import (
@@ -249,6 +250,19 @@ async def lifespan_context(app: FastAPI):
     analytics_adapter = AnalyticsCollectorAdapter()
     performance_adapter = PerformanceCollectorAdapter()
 
+    # Start background model cleanup service
+    logger.info("LIFESPAN: Starting background model cleanup service")
+    cleanup_service = ModelCleanupService(
+        base_url=settings.ollama.url,
+        idle_timeout=300,  # 5 minutes
+        memory_threshold=0.85,  # 85% memory usage
+        check_interval=60,  # Check every minute
+        enabled=True,
+    )
+    cleanup_service.start()
+    # Store cleanup service reference for shutdown
+    app.state.cleanup_service = cleanup_service
+
     # Set dependencies for dependency injection
     if client_adapter and logger_adapter and metrics_adapter:
         set_dependencies(
@@ -268,6 +282,16 @@ async def lifespan_context(app: FastAPI):
 
     # Shutdown
     logger.info("Shutting down Shared Ollama Service API")
+    
+    # Stop cleanup service
+    try:
+        cleanup_service = getattr(app.state, "cleanup_service", None)
+        if cleanup_service:
+            cleanup_service.stop()
+            logger.info("LIFESPAN: Model cleanup service stopped")
+    except Exception as exc:
+        logger.warning("Error stopping cleanup service: %s", exc)
+    
     if client:
         try:
             # Close the async client properly (we're in an async context)

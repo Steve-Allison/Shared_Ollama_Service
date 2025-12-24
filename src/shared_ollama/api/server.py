@@ -43,9 +43,12 @@ from fastapi import FastAPI
 from shared_ollama.api.lifespan import lifespan_context
 from shared_ollama.api.middleware import setup_exception_handlers, setup_middleware
 from shared_ollama.api.routes import (
+    agents_router,
     batch_router,
     chat_router,
+    embeddings_router,
     generation_router,
+    models_router,
     system_router,
     vlm_router,
 )
@@ -72,13 +75,17 @@ app.include_router(system_router, prefix="/api/v1")
 app.include_router(generation_router, prefix="/api/v1")
 app.include_router(chat_router, prefix="/api/v1")
 app.include_router(vlm_router, prefix="/api/v1")
+app.include_router(embeddings_router, prefix="/api/v1")
+app.include_router(models_router, prefix="/api/v1")
+app.include_router(agents_router, prefix="/api/v1")
 app.include_router(batch_router, prefix="/api/v1")
 
 
-# All endpoints (generate, chat, vlm, batch) are now in modular route files:
+# All endpoints (generate, chat, vlm, embeddings, batch) are now in modular route files:
 # - routes/generation.py: /api/v1/generate
 # - routes/chat.py: /api/v1/chat
 # - routes/vlm.py: /api/v1/vlm, /api/v1/vlm/openai
+# - routes/embeddings.py: /api/v1/embeddings
 # - routes/batch.py: /api/v1/batch/chat, /api/v1/batch/vlm
 # - routes/system.py: /api/v1/health, /api/v1/models, /api/v1/queue/stats, /api/v1/metrics, /api/v1/performance/stats, /api/v1/analytics
 

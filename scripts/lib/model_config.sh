@@ -70,6 +70,10 @@ memory_hint_pairs = ",".join(f"{k}:{v}" for k, v in memory_hints.items())
 profile = {
     "DEFAULT_VLM_MODEL": selected.get("vlm_model", ""),
     "DEFAULT_TEXT_MODEL": selected.get("text_model", ""),
+    "DEFAULT_EXTRACTION_MODEL": selected.get("extraction_model", ""),
+    "DEFAULT_EMBEDDING_MODEL": selected.get("embedding_model", ""),
+    "DEFAULT_EMBEDDING_SMALL_MODEL": selected.get("embedding_small_model", ""),
+    "DEFAULT_RERANKER_MODEL": selected.get("reranker_model", ""),
     "REQUIRED_MODELS_CSV": csv_list(selected.get("required_models", [])),
     "WARMUP_MODELS_CSV": csv_list(selected.get("warmup_models", [])),
     "MODEL_MEMORY_HINTS_CSV": memory_hint_pairs,
@@ -97,6 +101,10 @@ load_model_config() {
 
     DEFAULT_VLM_MODEL=$(python3 -c "import json,sys; print(json.loads(sys.argv[1])['DEFAULT_VLM_MODEL'])" "$PROFILE_JSON")
     DEFAULT_TEXT_MODEL=$(python3 -c "import json,sys; print(json.loads(sys.argv[1])['DEFAULT_TEXT_MODEL'])" "$PROFILE_JSON")
+    DEFAULT_EXTRACTION_MODEL=$(python3 -c "import json,sys; print(json.loads(sys.argv[1])['DEFAULT_EXTRACTION_MODEL'])" "$PROFILE_JSON")
+    DEFAULT_EMBEDDING_MODEL=$(python3 -c "import json,sys; print(json.loads(sys.argv[1])['DEFAULT_EMBEDDING_MODEL'])" "$PROFILE_JSON")
+    DEFAULT_EMBEDDING_SMALL_MODEL=$(python3 -c "import json,sys; print(json.loads(sys.argv[1])['DEFAULT_EMBEDDING_SMALL_MODEL'])" "$PROFILE_JSON")
+    DEFAULT_RERANKER_MODEL=$(python3 -c "import json,sys; print(json.loads(sys.argv[1])['DEFAULT_RERANKER_MODEL'])" "$PROFILE_JSON")
     REQUIRED_MODELS_CSV=$(python3 -c "import json,sys; print(json.loads(sys.argv[1])['REQUIRED_MODELS_CSV'])" "$PROFILE_JSON")
     WARMUP_MODELS_CSV=$(python3 -c "import json,sys; print(json.loads(sys.argv[1])['WARMUP_MODELS_CSV'])" "$PROFILE_JSON")
     MODEL_MEMORY_HINTS_CSV=$(python3 -c "import json,sys; print(json.loads(sys.argv[1])['MODEL_MEMORY_HINTS_CSV'])" "$PROFILE_JSON")
